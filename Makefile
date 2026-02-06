@@ -50,8 +50,12 @@ build-server: ## Build HTTP server binary
 build-extproc: ## Build Envoy ExtProc binary
 	@echo "$(GREEN)Building Envoy ExtProc...$(NC)"
 	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/$(EXTPROC_BINARY_NAME) ./$(CMD_DIR)/envoy-extproc
-	@echo "$(GREEN)✓ Built $(BIN_DIR)/$(EXTPROC_BINARY_NAME)$(NC)"
+	@if [ -d ./$(CMD_DIR)/envoy-extproc ]; then \
+		$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/$(EXTPROC_BINARY_NAME) ./$(CMD_DIR)/envoy-extproc; \
+		echo "$(GREEN)✓ Built $(BIN_DIR)/$(EXTPROC_BINARY_NAME)$(NC)"; \
+	else \
+		echo "$(YELLOW)⚠ Skipping envoy-extproc (will be added in Phase 6)$(NC)"; \
+	fi
 
 test: ## Run unit tests
 	@echo "$(GREEN)Running tests...$(NC)"

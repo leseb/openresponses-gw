@@ -1,0 +1,17 @@
+# Configuration for connecting to real OpenAI API
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeout: 60s
+
+engine:
+  # OpenAI API endpoint
+  model_endpoint: https://api.openai.com/v1
+
+  # API key - loaded from OPENAI_API_KEY environment variable
+  # Or set it directly here (not recommended for production)
+  # api_key: sk-your-key-here
+
+  max_tokens: 4096
+  timeout: 60s

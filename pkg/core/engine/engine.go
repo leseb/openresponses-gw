@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/leseb/openai-responses-gateway/pkg/core/api"
 	"github.com/leseb/openai-responses-gateway/pkg/core/config"
 	"github.com/leseb/openai-responses-gateway/pkg/core/schema"
 	"github.com/leseb/openai-responses-gateway/pkg/core/state"
@@ -17,6 +18,7 @@ import (
 type Engine struct {
 	config   *config.EngineConfig
 	sessions state.SessionStore
+	llm      api.LLMClient
 }
 
 // New creates a new Engine instance
@@ -28,9 +30,20 @@ func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
 		return nil, fmt.Errorf("session store is required")
 	}
 
+	// Create LLM client
+	var llm api.LLMClient
+	if cfg.APIKey != "" && cfg.ModelEndpoint != "" {
+		// Use real OpenAI client
+		llm = api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
+	} else {
+		// Use mock client for testing
+		llm = api.NewMockLLMClient()
+	}
+
 	return &Engine{
 		config:   cfg,
 		sessions: store,
+		llm:      llm,
 	}, nil
 }
 
@@ -59,14 +72,36 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 
 	// 5. Prepare LLM request
-	// TODO: This is a placeholder - will be implemented in later phases
-	// For now, just create a simple mock response
 	inputText := extractInputText(req.Input)
+	llmReq := &api.ChatCompletionRequest{
+		Model: req.Model,
+		Messages: []api.Message{
+			{Role: "user", Content: inputText},
+		},
+		Temperature: req.Temperature,
+		MaxTokens:   req.MaxOutputTokens,
+		Stream:      false,
+	}
 
-	// 6. Mock LLM call (will be replaced with real LLM client)
-	outputText := fmt.Sprintf("Mock response to: %s", inputText)
+	// Add instructions as system message if provided
+	if req.Instructions != "" {
+		llmReq.Messages = append([]api.Message{
+			{Role: "system", Content: req.Instructions},
+		}, llmReq.Messages...)
+	}
 
-	// 7. Build output
+	// 6. Call LLM
+	llmResp, err := e.llm.CreateChatCompletion(ctx, llmReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call LLM: %w", err)
+	}
+
+	// 7. Build output from LLM response
+	outputText := ""
+	if len(llmResp.Choices) > 0 {
+		outputText = llmResp.Choices[0].Message.Content
+	}
+
 	resp.Output = []schema.OutputItem{
 		{
 			Type: "message",
@@ -79,11 +114,11 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		},
 	}
 
-	// 8. Set usage
+	// 8. Set usage from LLM response
 	resp.Usage = &schema.Usage{
-		InputTokens:  countTokens(inputText),
-		OutputTokens: countTokens(outputText),
-		TotalTokens:  countTokens(inputText) + countTokens(outputText),
+		InputTokens:  llmResp.Usage.PromptTokens,
+		OutputTokens: llmResp.Usage.CompletionTokens,
+		TotalTokens:  llmResp.Usage.TotalTokens,
 	}
 
 	// 9. Mark as completed
@@ -130,9 +165,24 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			Response:    resp,
 		}
 
-		// Mock streaming output
+		// Prepare LLM request
 		inputText := extractInputText(req.Input)
-		outputText := fmt.Sprintf("Mock streaming response to: %s", inputText)
+		llmReq := &api.ChatCompletionRequest{
+			Model: req.Model,
+			Messages: []api.Message{
+				{Role: "user", Content: inputText},
+			},
+			Temperature: req.Temperature,
+			MaxTokens:   req.MaxOutputTokens,
+			Stream:      true,
+		}
+
+		// Add instructions as system message if provided
+		if req.Instructions != "" {
+			llmReq.Messages = append([]api.Message{
+				{Role: "system", Content: req.Instructions},
+			}, llmReq.Messages...)
+		}
 
 		// Send output_item.added event
 		events <- &schema.ResponseStreamEvent{
@@ -141,31 +191,60 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			OutputIndex: 0,
 		}
 
-		// Stream the output text in chunks
-		words := splitWords(outputText)
-		for i, word := range words {
+		// Call LLM streaming
+		chunks, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
+		if err != nil {
+			resp.MarkFailed("llm_error", "stream_error", err.Error())
 			events <- &schema.ResponseStreamEvent{
-				Type:         "response.output_text.delta",
-				SequenceNum:  2 + i,
-				Delta:        word + " ",
-				OutputIndex:  0,
-				ContentIndex: 0,
+				Type:     "response.failed",
+				Response: resp,
 			}
-			time.Sleep(50 * time.Millisecond) // Simulate streaming delay
+			return
+		}
+
+		// Stream chunks
+		seqNum := 2
+		totalOutput := ""
+		for chunk := range chunks {
+			if len(chunk.Choices) > 0 {
+				delta := chunk.Choices[0].Delta.Content
+				if delta != "" {
+					totalOutput += delta
+					events <- &schema.ResponseStreamEvent{
+						Type:         "response.output_text.delta",
+						SequenceNum:  seqNum,
+						Delta:        delta,
+						OutputIndex:  0,
+						ContentIndex: 0,
+					}
+					seqNum++
+				}
+			}
 		}
 
 		// Mark completed
 		resp.MarkCompleted()
+		resp.Output = []schema.OutputItem{
+			{
+				Type: "message",
+				ID:   generateID("msg_"),
+				Role: "assistant",
+				Content: map[string]interface{}{
+					"type": "text",
+					"text": totalOutput,
+				},
+			},
+		}
 		resp.Usage = &schema.Usage{
 			InputTokens:  countTokens(inputText),
-			OutputTokens: countTokens(outputText),
-			TotalTokens:  countTokens(inputText) + countTokens(outputText),
+			OutputTokens: countTokens(totalOutput),
+			TotalTokens:  countTokens(inputText) + countTokens(totalOutput),
 		}
 
 		// Send response.completed event
 		events <- &schema.ResponseStreamEvent{
 			Type:        "response.completed",
-			SequenceNum: 2 + len(words),
+			SequenceNum: seqNum,
 			Response:    resp,
 		}
 	}()
