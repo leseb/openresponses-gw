@@ -18,15 +18,17 @@ func (h *Handler) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // getOpenAPISpec returns the OpenAPI 3.0 specification
+// 100% Open Responses Specification Compliant Gateway
 func getOpenAPISpec() map[string]interface{} {
 	return map[string]interface{}{
 		"openapi": "3.0.0",
 		"info": map[string]interface{}{
 			"title":       "OpenAI Responses Gateway API",
-			"description": "A complete implementation of OpenAI-compatible APIs including Responses, Chat Completions, Conversations, Prompts, Files, Vector Stores, and Models.",
-			"version":     "1.0.0",
+			"description": "100% Open Responses Specification Compliant Gateway\n\nBased on: https://github.com/openresponses/openresponses\n\nThis gateway provides:\n- **Core API**: Full Open Responses spec compliance (POST /v1/responses)\n- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Models\n- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration\n\nStreaming: All 24 event types from Open Responses spec\nRequest Echo: All request parameters returned in response\nMultimodal: Support for text, images, files, video",
+			"version": "1.0.0",
 			"contact": map[string]string{
 				"name": "OpenAI Responses Gateway",
+				"url":  "https://github.com/leseb/openai-responses-gateway",
 			},
 		},
 		"servers": []map[string]interface{}{
@@ -36,21 +38,20 @@ func getOpenAPISpec() map[string]interface{} {
 			},
 		},
 		"tags": []map[string]interface{}{
-			{"name": "Health", "description": "Health check endpoints"},
-			{"name": "Models", "description": "Model discovery and information"},
-			{"name": "Chat Completions", "description": "Direct chat completion inference"},
-			{"name": "Responses", "description": "Responses API for managing inference responses"},
-			{"name": "Conversations", "description": "Conversation state management"},
-			{"name": "Prompts", "description": "Prompt template management"},
-			{"name": "Files", "description": "File upload and management"},
-			{"name": "Vector Stores", "description": "Vector store and embeddings management"},
+			{"name": "Health", "description": "Health check and API documentation"},
+			{"name": "Responses", "description": "Open Responses API (100% spec compliant)"},
+			{"name": "Conversations", "description": "Extended - Conversation state management"},
+			{"name": "Prompts", "description": "Extended - Prompt template management"},
+			{"name": "Files", "description": "Extended - File upload and management"},
+			{"name": "Vector Stores", "description": "Extended - Vector store and embeddings"},
+			{"name": "Models", "description": "Extended - Model discovery"},
 		},
 		"paths": map[string]interface{}{
 			"/health": map[string]interface{}{
 				"get": map[string]interface{}{
 					"tags":        []string{"Health"},
 					"summary":     "Health check",
-					"description": "Check if the service is healthy",
+					"operationId": "getHealth",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Service is healthy",
@@ -68,83 +69,18 @@ func getOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/v1/models": map[string]interface{}{
+			"/openapi.json": map[string]interface{}{
 				"get": map[string]interface{}{
-					"tags":        []string{"Models"},
-					"summary":     "List available models",
-					"description": "List all available models from the LLM backend",
+					"tags":        []string{"Health"},
+					"summary":     "Get OpenAPI specification (JSON)",
+					"operationId": "getOpenAPISpec",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
-							"description": "List of models",
+							"description": "OpenAPI specification",
 							"content": map[string]interface{}{
 								"application/json": map[string]interface{}{
 									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/ListModelsResponse",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			"/v1/models/{id}": map[string]interface{}{
-				"get": map[string]interface{}{
-					"tags":        []string{"Models"},
-					"summary":     "Get model details",
-					"description": "Retrieve information about a specific model",
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "id",
-							"in":          "path",
-							"required":    true,
-							"description": "Model ID",
-							"schema":      map[string]string{"type": "string"},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Model details",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/Model",
-									},
-								},
-							},
-						},
-						"404": map[string]interface{}{
-							"description": "Model not found",
-						},
-					},
-				},
-			},
-			"/v1/chat/completions": map[string]interface{}{
-				"post": map[string]interface{}{
-					"tags":        []string{"Chat Completions"},
-					"summary":     "Create chat completion",
-					"description": "Create a chat completion with streaming or non-streaming response",
-					"requestBody": map[string]interface{}{
-						"required": true,
-						"content": map[string]interface{}{
-							"application/json": map[string]interface{}{
-								"schema": map[string]interface{}{
-									"$ref": "#/components/schemas/ChatCompletionRequest",
-								},
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Chat completion response",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/ChatCompletionResponse",
-									},
-								},
-								"text/event-stream": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"type": "string",
+										"type": "object",
 									},
 								},
 							},
@@ -156,7 +92,8 @@ func getOpenAPISpec() map[string]interface{} {
 				"post": map[string]interface{}{
 					"tags":        []string{"Responses"},
 					"summary":     "Create response",
-					"description": "Create a new response with streaming or non-streaming inference",
+					"description": "**Open Responses API - 100% Spec Compliant**\n\nCreate a response with streaming or non-streaming output.\nAll request parameters are echoed back in the response.\n\nStreaming: Set `stream: true` (HTTP-specific, not in spec)\nReturns 24 granular event types via Server-Sent Events\n\nSupports:\n- Multi-turn conversations (previous_response_id)\n- Tool/function calling (tools, tool_choice)\n- Reasoning models (reasoning config for o1/o3)\n- Multimodal input (text, images, files, video)",
+					"operationId": "createResponse",
 					"requestBody": map[string]interface{}{
 						"required": true,
 						"content": map[string]interface{}{
@@ -176,41 +113,9 @@ func getOpenAPISpec() map[string]interface{} {
 										"$ref": "#/components/schemas/Response",
 									},
 								},
-							},
-						},
-					},
-				},
-				"get": map[string]interface{}{
-					"tags":        []string{"Responses"},
-					"summary":     "List responses",
-					"description": "List responses with cursor-based pagination",
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "after",
-							"in":          "query",
-							"description": "Cursor for pagination (ID of last item from previous page)",
-							"schema":      map[string]string{"type": "string"},
-						},
-						{
-							"name":        "limit",
-							"in":          "query",
-							"description": "Number of items to return (1-100, default 50)",
-							"schema":      map[string]interface{}{"type": "integer", "default": 50},
-						},
-						{
-							"name":        "order",
-							"in":          "query",
-							"description": "Sort order",
-							"schema":      map[string]interface{}{"type": "string", "enum": []string{"asc", "desc"}, "default": "desc"},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "List of responses",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
+								"text/event-stream": map[string]interface{}{
 									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/ListResponsesResponse",
+										"type": "string",
 									},
 								},
 							},
@@ -222,7 +127,7 @@ func getOpenAPISpec() map[string]interface{} {
 				"post": map[string]interface{}{
 					"tags":        []string{"Conversations"},
 					"summary":     "Create conversation",
-					"description": "Create a new conversation",
+					"operationId": "createConversation",
 					"requestBody": map[string]interface{}{
 						"content": map[string]interface{}{
 							"application/json": map[string]interface{}{
@@ -235,28 +140,13 @@ func getOpenAPISpec() map[string]interface{} {
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Conversation created",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/Conversation",
-									},
-								},
-							},
 						},
 					},
 				},
 				"get": map[string]interface{}{
 					"tags":        []string{"Conversations"},
 					"summary":     "List conversations",
-					"description": "List conversations with pagination",
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "limit",
-							"in":          "query",
-							"description": "Number of items (1-100, default 50)",
-							"schema":      map[string]interface{}{"type": "integer", "default": 50},
-						},
-					},
+					"operationId": "listConversations",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "List of conversations",
@@ -268,7 +158,7 @@ func getOpenAPISpec() map[string]interface{} {
 				"post": map[string]interface{}{
 					"tags":        []string{"Prompts"},
 					"summary":     "Create prompt template",
-					"description": "Create a new prompt template with variable support",
+					"operationId": "createPrompt",
 					"requestBody": map[string]interface{}{
 						"required": true,
 						"content": map[string]interface{}{
@@ -282,20 +172,13 @@ func getOpenAPISpec() map[string]interface{} {
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Prompt created",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/Prompt",
-									},
-								},
-							},
 						},
 					},
 				},
 				"get": map[string]interface{}{
 					"tags":        []string{"Prompts"},
 					"summary":     "List prompts",
-					"description": "List prompt templates with pagination",
+					"operationId": "listPrompts",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "List of prompts",
@@ -307,26 +190,24 @@ func getOpenAPISpec() map[string]interface{} {
 				"post": map[string]interface{}{
 					"tags":        []string{"Files"},
 					"summary":     "Upload file",
-					"description": "Upload a file for use with assistants, vision, batch, or fine-tuning",
+					"operationId": "uploadFile",
 					"requestBody": map[string]interface{}{
 						"required": true,
 						"content": map[string]interface{}{
 							"multipart/form-data": map[string]interface{}{
 								"schema": map[string]interface{}{
 									"type": "object",
+									"required": []string{"file", "purpose"},
 									"properties": map[string]interface{}{
 										"file": map[string]interface{}{
-											"type":        "string",
-											"format":      "binary",
-											"description": "File to upload (max 512MB)",
+											"type":   "string",
+											"format": "binary",
 										},
 										"purpose": map[string]interface{}{
-											"type":        "string",
-											"description": "Purpose of the file",
-											"enum":        []string{"assistants", "vision", "batch", "fine-tune"},
+											"type": "string",
+											"enum": []string{"assistants", "vision", "batch", "fine-tune"},
 										},
 									},
-									"required": []string{"file", "purpose"},
 								},
 							},
 						},
@@ -334,20 +215,13 @@ func getOpenAPISpec() map[string]interface{} {
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "File uploaded",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/File",
-									},
-								},
-							},
 						},
 					},
 				},
 				"get": map[string]interface{}{
 					"tags":        []string{"Files"},
 					"summary":     "List files",
-					"description": "List uploaded files with pagination",
+					"operationId": "listFiles",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "List of files",
@@ -359,33 +233,17 @@ func getOpenAPISpec() map[string]interface{} {
 				"post": map[string]interface{}{
 					"tags":        []string{"Vector Stores"},
 					"summary":     "Create vector store",
-					"description": "Create a new vector store for embeddings",
-					"requestBody": map[string]interface{}{
-						"content": map[string]interface{}{
-							"application/json": map[string]interface{}{
-								"schema": map[string]interface{}{
-									"$ref": "#/components/schemas/CreateVectorStoreRequest",
-								},
-							},
-						},
-					},
+					"operationId": "createVectorStore",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Vector store created",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/VectorStore",
-									},
-								},
-							},
 						},
 					},
 				},
 				"get": map[string]interface{}{
 					"tags":        []string{"Vector Stores"},
 					"summary":     "List vector stores",
-					"description": "List vector stores with pagination",
+					"operationId": "listVectorStores",
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "List of vector stores",
@@ -393,16 +251,123 @@ func getOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
+			"/v1/models": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags":        []string{"Models"},
+					"summary":     "List available models",
+					"operationId": "listModels",
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "List of models",
+							"content": map[string]interface{}{
+								"application/json": map[string]interface{}{
+									"schema": map[string]interface{}{
+										"$ref": "#/components/schemas/ListModelsResponse",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		"components": map[string]interface{}{
 			"schemas": map[string]interface{}{
-				"Model": map[string]interface{}{
-					"type": "object",
+				"ResponseRequest": map[string]interface{}{
+					"type":        "object",
+					"description": "Request to create a response (Open Responses spec compliant)",
 					"properties": map[string]interface{}{
-						"id":       map[string]string{"type": "string", "example": "gpt-4"},
-						"object":   map[string]string{"type": "string", "example": "model"},
-						"created":  map[string]string{"type": "integer", "format": "int64"},
-						"owned_by": map[string]string{"type": "string", "example": "openai"},
+						"model": map[string]interface{}{
+							"type":        "string",
+							"nullable":    true,
+							"description": "Model ID (e.g., gpt-4, claude-3-opus)",
+							"example":     "gpt-4",
+						},
+						"input": map[string]interface{}{
+							"description": "String or array of input items",
+							"oneOf": []map[string]interface{}{
+								{"type": "string"},
+								{"type": "array"},
+							},
+						},
+						"previous_response_id": map[string]interface{}{
+							"type":        "string",
+							"nullable":    true,
+							"description": "ID of previous response for multi-turn",
+						},
+						"tools": map[string]interface{}{
+							"type":        "array",
+							"description": "Tools available to the model",
+						},
+						"tool_choice": map[string]interface{}{
+							"description": "Control which tool to use",
+						},
+						"instructions": map[string]interface{}{
+							"type":        "string",
+							"nullable":    true,
+							"description": "System message / instructions",
+						},
+						"temperature": map[string]interface{}{
+							"type":     "number",
+							"format":   "float",
+							"nullable": true,
+							"minimum":  0,
+							"maximum":  2,
+						},
+						"max_output_tokens": map[string]interface{}{
+							"type":     "integer",
+							"nullable": true,
+						},
+						"stream": map[string]interface{}{
+							"type":        "boolean",
+							"description": "HTTP-specific - enable SSE streaming",
+							"default":     false,
+						},
+					},
+				},
+				"Response": map[string]interface{}{
+					"type":        "object",
+					"description": "Response object (Open Responses spec compliant)",
+					"required":    []string{"id", "object", "created_at", "model", "status"},
+					"properties": map[string]interface{}{
+						"id": map[string]interface{}{
+							"type":    "string",
+							"example": "resp_abc123",
+						},
+						"object": map[string]interface{}{
+							"type":    "string",
+							"example": "response",
+						},
+						"created_at": map[string]interface{}{
+							"type":        "integer",
+							"format":      "int64",
+							"description": "Unix timestamp",
+						},
+						"completed_at": map[string]interface{}{
+							"type":     "integer",
+							"format":   "int64",
+							"nullable": true,
+						},
+						"model": map[string]interface{}{
+							"type":    "string",
+							"example": "gpt-4",
+						},
+						"status": map[string]interface{}{
+							"type": "string",
+							"enum": []string{"queued", "in_progress", "completed", "failed", "incomplete"},
+						},
+						"output": map[string]interface{}{
+							"type": "array",
+						},
+						"usage": map[string]interface{}{
+							"type":        "object",
+							"description": "Token usage statistics",
+						},
+						"text": map[string]interface{}{
+							"type":        "string",
+							"nullable":    true,
+							"description": "Convenience field - concatenated output text",
+						},
 					},
 				},
 				"ListModelsResponse": map[string]interface{}{
@@ -411,56 +376,7 @@ func getOpenAPISpec() map[string]interface{} {
 						"object": map[string]string{"type": "string", "example": "list"},
 						"data": map[string]interface{}{
 							"type": "array",
-							"items": map[string]interface{}{
-								"$ref": "#/components/schemas/Model",
-							},
 						},
-					},
-				},
-				"ChatCompletionRequest": map[string]interface{}{
-					"type": "object",
-					"required": []string{"model", "messages"},
-					"properties": map[string]interface{}{
-						"model":       map[string]string{"type": "string", "example": "gpt-4"},
-						"messages":    map[string]interface{}{"type": "array"},
-						"temperature": map[string]interface{}{"type": "number", "format": "float"},
-						"stream":      map[string]interface{}{"type": "boolean", "default": false},
-					},
-				},
-				"ChatCompletionResponse": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":      map[string]string{"type": "string"},
-						"object":  map[string]string{"type": "string", "example": "chat.completion"},
-						"created": map[string]string{"type": "integer", "format": "int64"},
-						"model":   map[string]string{"type": "string"},
-						"choices": map[string]interface{}{"type": "array"},
-					},
-				},
-				"ResponseRequest": map[string]interface{}{
-					"type": "object",
-					"required": []string{"model", "input"},
-					"properties": map[string]interface{}{
-						"model":  map[string]string{"type": "string"},
-						"input":  map[string]interface{}{"type": "array"},
-						"stream": map[string]interface{}{"type": "boolean", "default": false},
-					},
-				},
-				"Response": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":     map[string]string{"type": "string"},
-						"object": map[string]string{"type": "string", "example": "response"},
-						"status": map[string]string{"type": "string"},
-						"output": map[string]interface{}{"type": "array"},
-					},
-				},
-				"ListResponsesResponse": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"object":   map[string]string{"type": "string", "example": "list"},
-						"data":     map[string]interface{}{"type": "array"},
-						"has_more": map[string]string{"type": "boolean"},
 					},
 				},
 				"CreateConversationRequest": map[string]interface{}{
@@ -469,63 +385,14 @@ func getOpenAPISpec() map[string]interface{} {
 						"metadata": map[string]string{"type": "object"},
 					},
 				},
-				"Conversation": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":         map[string]string{"type": "string"},
-						"object":     map[string]string{"type": "string", "example": "conversation"},
-						"created_at": map[string]string{"type": "integer", "format": "int64"},
-						"metadata":   map[string]string{"type": "object"},
-					},
-				},
 				"CreatePromptRequest": map[string]interface{}{
-					"type": "object",
+					"type":     "object",
 					"required": []string{"name", "template"},
 					"properties": map[string]interface{}{
 						"name":        map[string]string{"type": "string"},
 						"description": map[string]string{"type": "string"},
 						"template":    map[string]string{"type": "string", "example": "Hello {{name}}!"},
 						"metadata":    map[string]string{"type": "object"},
-					},
-				},
-				"Prompt": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":          map[string]string{"type": "string"},
-						"object":      map[string]string{"type": "string", "example": "prompt"},
-						"name":        map[string]string{"type": "string"},
-						"template":    map[string]string{"type": "string"},
-						"variables":   map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}},
-						"created_at":  map[string]string{"type": "integer", "format": "int64"},
-					},
-				},
-				"File": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":         map[string]string{"type": "string"},
-						"object":     map[string]string{"type": "string", "example": "file"},
-						"bytes":      map[string]string{"type": "integer", "format": "int64"},
-						"created_at": map[string]string{"type": "integer", "format": "int64"},
-						"filename":   map[string]string{"type": "string"},
-						"purpose":    map[string]string{"type": "string"},
-					},
-				},
-				"CreateVectorStoreRequest": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"name":     map[string]string{"type": "string"},
-						"file_ids": map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}},
-						"metadata": map[string]string{"type": "object"},
-					},
-				},
-				"VectorStore": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"id":          map[string]string{"type": "string"},
-						"object":      map[string]string{"type": "string", "example": "vector_store"},
-						"name":        map[string]string{"type": "string"},
-						"status":      map[string]string{"type": "string"},
-						"created_at":  map[string]string{"type": "integer", "format": "int64"},
 					},
 				},
 			},

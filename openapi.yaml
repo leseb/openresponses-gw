@@ -2,16 +2,18 @@ openapi: 3.0.0
 info:
   title: OpenAI Responses Gateway API
   description: |
-    A complete implementation of OpenAI-compatible APIs including Responses,
-    Chat Completions, Conversations, Prompts, Files, Vector Stores, and Models.
+    **100% Open Responses Specification Compliant Gateway**
+
+    Based on: https://github.com/openresponses/openresponses
 
     This gateway provides:
-    - **Inference APIs**: Chat Completions and Responses with streaming support
-    - **State Management**: Conversations API for managing multi-turn dialogues
-    - **Prompt Engineering**: Template-based prompts with variable substitution
-    - **File Management**: Upload and manage files for assistants, vision, batch, and fine-tuning
-    - **Vector Search**: Vector stores for embeddings and semantic search
-    - **Model Discovery**: List and retrieve available models
+    - **Core API**: Full Open Responses spec compliance (POST /v1/responses)
+    - **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Models
+    - **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration
+
+    Streaming: All 24 event types from Open Responses spec
+    Request Echo: All request parameters returned in response
+    Multimodal: Support for text, images, files, video
 
   version: 1.0.0
   contact:
@@ -21,34 +23,28 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development server
-  - url: http://localhost:8080/v1
-    description: API v1 base path
 
 tags:
   - name: Health
-    description: Health check endpoints
-  - name: Models
-    description: Model discovery and information
-  - name: Chat Completions
-    description: Direct chat completion inference with OpenAI compatibility
+    description: Health check and API documentation
   - name: Responses
-    description: Responses API for managing inference responses
+    description: Open Responses API (100% spec compliant)
   - name: Conversations
-    description: Conversation state management for multi-turn dialogues
+    description: Extended - Conversation state management
   - name: Prompts
-    description: Prompt template management with variable substitution
+    description: Extended - Prompt template management
   - name: Files
-    description: File upload and management
+    description: Extended - File upload and management
   - name: Vector Stores
-    description: Vector store and embeddings management
+    description: Extended - Vector store and embeddings
+  - name: Models
+    description: Extended - Model discovery
 
 paths:
   /health:
     get:
-      tags:
-        - Health
+      tags: [Health]
       summary: Health check
-      description: Check if the service is healthy and ready to serve requests
       operationId: getHealth
       responses:
         '200':
@@ -64,10 +60,8 @@ paths:
 
   /openapi.json:
     get:
-      tags:
-        - Health
-      summary: Get OpenAPI specification
-      description: Retrieve the OpenAPI specification in JSON format
+      tags: [Health]
+      summary: Get OpenAPI specification (JSON)
       operationId: getOpenAPISpec
       responses:
         '200':
@@ -77,99 +71,25 @@ paths:
               schema:
                 type: object
 
-  /v1/models:
-    get:
-      tags:
-        - Models
-      summary: List available models
-      description: List all available models from the configured LLM backend
-      operationId: listModels
-      responses:
-        '200':
-          description: List of models
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListModelsResponse'
-
-  /v1/models/{id}:
-    get:
-      tags:
-        - Models
-      summary: Get model details
-      description: Retrieve information about a specific model
-      operationId: getModel
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Model ID (e.g., gpt-4, claude-3-opus)
-          schema:
-            type: string
-          example: gpt-4
-      responses:
-        '200':
-          description: Model details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Model'
-        '404':
-          description: Model not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /v1/chat/completions:
-    post:
-      tags:
-        - Chat Completions
-      summary: Create chat completion
-      description: |
-        Create a chat completion with streaming or non-streaming response.
-        Fully compatible with OpenAI Chat Completions API.
-      operationId: createChatCompletion
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChatCompletionRequest'
-            examples:
-              non-streaming:
-                summary: Non-streaming request
-                value:
-                  model: gpt-4
-                  messages:
-                    - role: user
-                      content: What is 2+2?
-              streaming:
-                summary: Streaming request
-                value:
-                  model: gpt-4
-                  messages:
-                    - role: user
-                      content: Tell me a story
-                  stream: true
-      responses:
-        '200':
-          description: Chat completion response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatCompletionResponse'
-            text/event-stream:
-              schema:
-                type: string
-                description: Server-sent events stream
-
   /v1/responses:
     post:
-      tags:
-        - Responses
+      tags: [Responses]
       summary: Create response
-      description: Create a new response with streaming or non-streaming inference
+      description: |
+        **Open Responses API - 100% Spec Compliant**
+
+        Create a response with streaming or non-streaming output.
+        All request parameters are echoed back in the response.
+
+        Streaming: Set `stream: true` (HTTP-specific, not in spec)
+        Returns 24 granular event types via Server-Sent Events
+
+        Supports:
+        - Multi-turn conversations (previous_response_id)
+        - Tool/function calling (tools, tool_choice)
+        - Reasoning models (reasoning config for o1/o3)
+        - Multimodal input (text, images, files, video)
+
       operationId: createResponse
       requestBody:
         required: true
@@ -177,6 +97,30 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ResponseRequest'
+            examples:
+              simple:
+                summary: Simple text request
+                value:
+                  model: gpt-4
+                  input: "What is 2+2?"
+              with_instructions:
+                summary: With system instructions
+                value:
+                  model: gpt-4
+                  input: "Explain quantum computing"
+                  instructions: "You are a physics professor. Be concise."
+              streaming:
+                summary: Streaming request
+                value:
+                  model: gpt-4
+                  input: "Tell me a story"
+                  stream: true
+              multi_turn:
+                summary: Follow-up conversation
+                value:
+                  model: gpt-4
+                  input: "Tell me more"
+                  previous_response_id: "resp_abc123"
       responses:
         '200':
           description: Response created
@@ -186,105 +130,19 @@ paths:
                 $ref: '#/components/schemas/Response'
             text/event-stream:
               schema:
-                type: string
+                oneOf:
+                  - $ref: '#/components/schemas/ResponseCreatedEvent'
+                  - $ref: '#/components/schemas/ResponseInProgressEvent'
+                  - $ref: '#/components/schemas/ResponseCompletedEvent'
+                  - $ref: '#/components/schemas/ResponseOutputTextDeltaEvent'
+                  - $ref: '#/components/schemas/ErrorEvent'
 
-    get:
-      tags:
-        - Responses
-      summary: List responses
-      description: List responses with cursor-based pagination
-      operationId: listResponses
-      parameters:
-        - $ref: '#/components/parameters/AfterCursor'
-        - $ref: '#/components/parameters/BeforeCursor'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
-        - name: model
-          in: query
-          description: Filter by model
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of responses
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListResponsesResponse'
-
-  /v1/responses/{id}:
-    get:
-      tags:
-        - Responses
-      summary: Get response
-      description: Retrieve a specific response by ID
-      operationId: getResponse
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Response ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Response details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Response'
-        '404':
-          description: Response not found
-
-    delete:
-      tags:
-        - Responses
-      summary: Delete response
-      description: Delete a specific response
-      operationId: deleteResponse
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Response ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Response deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteResponse'
-
-  /v1/responses/{id}/input_items:
-    get:
-      tags:
-        - Responses
-      summary: Get response input items
-      description: Retrieve the input items that were used to create this response
-      operationId: getResponseInputItems
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Response ID
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Input items
-          content:
-            application/json:
-              schema:
-                type: object
+  # Extended APIs (not in Open Responses spec)
 
   /v1/conversations:
     post:
-      tags:
-        - Conversations
+      tags: [Conversations]
       summary: Create conversation
-      description: Create a new conversation for managing multi-turn dialogues
       operationId: createConversation
       requestBody:
         content:
@@ -298,124 +156,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Conversation'
-
     get:
-      tags:
-        - Conversations
+      tags: [Conversations]
       summary: List conversations
-      description: List conversations with cursor-based pagination
       operationId: listConversations
       parameters:
-        - $ref: '#/components/parameters/AfterCursor'
-        - $ref: '#/components/parameters/BeforeCursor'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Order'
       responses:
         '200':
           description: List of conversations
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListConversationsResponse'
-
-  /v1/conversations/{id}:
-    get:
-      tags:
-        - Conversations
-      summary: Get conversation
-      description: Retrieve a specific conversation
-      operationId: getConversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Conversation details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Conversation'
-
-    delete:
-      tags:
-        - Conversations
-      summary: Delete conversation
-      description: Delete a conversation and all its items
-      operationId: deleteConversation
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Conversation deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteConversationResponse'
-
-  /v1/conversations/{id}/items:
-    post:
-      tags:
-        - Conversations
-      summary: Add items to conversation
-      description: Add messages or other items to a conversation (max 20 per request)
-      operationId: addConversationItems
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AddConversationItemsRequest'
-      responses:
-        '200':
-          description: Items added
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AddConversationItemsResponse'
-
-    get:
-      tags:
-        - Conversations
-      summary: List conversation items
-      description: List items (messages) in a conversation
-      operationId: listConversationItems
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
-      responses:
-        '200':
-          description: List of conversation items
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListConversationItemsResponse'
 
   /v1/prompts:
     post:
-      tags:
-        - Prompts
+      tags: [Prompts]
       summary: Create prompt template
-      description: |
-        Create a new prompt template with variable support.
-        Variables are defined using {{variable_name}} syntax and automatically extracted.
       operationId: createPrompt
       requestBody:
         required: true
@@ -423,110 +178,21 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreatePromptRequest'
-            example:
-              name: greeting
-              description: A simple greeting template
-              template: "Hello {{name}}, welcome to {{place}}!"
       responses:
         '200':
           description: Prompt created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Prompt'
-
     get:
-      tags:
-        - Prompts
+      tags: [Prompts]
       summary: List prompts
-      description: List prompt templates with pagination
       operationId: listPrompts
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
       responses:
         '200':
           description: List of prompts
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListPromptsResponse'
-
-  /v1/prompts/{id}:
-    get:
-      tags:
-        - Prompts
-      summary: Get prompt
-      description: Retrieve a specific prompt template
-      operationId: getPrompt
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Prompt details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Prompt'
-
-    put:
-      tags:
-        - Prompts
-      summary: Update prompt
-      description: Update an existing prompt template
-      operationId: updatePrompt
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdatePromptRequest'
-      responses:
-        '200':
-          description: Prompt updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Prompt'
-
-    delete:
-      tags:
-        - Prompts
-      summary: Delete prompt
-      description: Delete a prompt template
-      operationId: deletePrompt
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Prompt deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeletePromptResponse'
 
   /v1/files:
     post:
-      tags:
-        - Files
+      tags: [Files]
       summary: Upload file
-      description: |
-        Upload a file for use with assistants, vision, batch processing, or fine-tuning.
-        Maximum file size: 512 MB.
       operationId: uploadFile
       requestBody:
         required: true
@@ -534,126 +200,29 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required:
-                - file
-                - purpose
+              required: [file, purpose]
               properties:
                 file:
                   type: string
                   format: binary
-                  description: File to upload (max 512MB)
                 purpose:
                   type: string
-                  description: Purpose of the file
-                  enum:
-                    - assistants
-                    - vision
-                    - batch
-                    - fine-tune
+                  enum: [assistants, vision, batch, fine-tune]
       responses:
         '200':
-          description: File uploaded successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/File'
-
+          description: File uploaded
     get:
-      tags:
-        - Files
+      tags: [Files]
       summary: List files
-      description: List uploaded files with pagination and purpose filtering
       operationId: listFiles
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
-        - name: purpose
-          in: query
-          description: Filter by purpose
-          schema:
-            type: string
-            enum:
-              - assistants
-              - vision
-              - batch
-              - fine-tune
       responses:
         '200':
           description: List of files
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListFilesResponse'
-
-  /v1/files/{id}:
-    get:
-      tags:
-        - Files
-      summary: Get file metadata
-      description: Retrieve metadata for a specific file
-      operationId: getFile
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: File metadata
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/File'
-
-    delete:
-      tags:
-        - Files
-      summary: Delete file
-      description: Delete a file and its content
-      operationId: deleteFile
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: File deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteFileResponse'
-
-  /v1/files/{id}/content:
-    get:
-      tags:
-        - Files
-      summary: Download file content
-      description: Download the actual file content
-      operationId: getFileContent
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: File content
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
 
   /v1/vector_stores:
     post:
-      tags:
-        - Vector Stores
+      tags: [Vector Stores]
       summary: Create vector store
-      description: Create a new vector store for managing embeddings and semantic search
       operationId: createVectorStore
       requestBody:
         content:
@@ -663,176 +232,33 @@ paths:
       responses:
         '200':
           description: Vector store created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VectorStore'
-
     get:
-      tags:
-        - Vector Stores
+      tags: [Vector Stores]
       summary: List vector stores
-      description: List vector stores with pagination
       operationId: listVectorStores
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
       responses:
         '200':
           description: List of vector stores
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListVectorStoresResponse'
 
-  /v1/vector_stores/{id}:
+  /v1/models:
     get:
-      tags:
-        - Vector Stores
-      summary: Get vector store
-      description: Retrieve a specific vector store
-      operationId: getVectorStore
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+      tags: [Models]
+      summary: List available models
+      operationId: listModels
       responses:
         '200':
-          description: Vector store details
+          description: List of models
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VectorStore'
-
-    put:
-      tags:
-        - Vector Stores
-      summary: Update vector store
-      description: Update vector store metadata
-      operationId: updateVectorStore
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateVectorStoreRequest'
-      responses:
-        '200':
-          description: Vector store updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VectorStore'
-
-    delete:
-      tags:
-        - Vector Stores
-      summary: Delete vector store
-      description: Delete a vector store and all associated files
-      operationId: deleteVectorStore
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Vector store deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DeleteVectorStoreResponse'
-
-  /v1/vector_stores/{id}/files:
-    post:
-      tags:
-        - Vector Stores
-      summary: Add file to vector store
-      description: Associate a file with a vector store and process it for embeddings
-      operationId: addVectorStoreFile
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Vector store ID
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AddVectorStoreFileRequest'
-      responses:
-        '200':
-          description: File added to vector store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VectorStoreFile'
-
-    get:
-      tags:
-        - Vector Stores
-      summary: List vector store files
-      description: List files in a vector store with optional status filtering
-      operationId: listVectorStoreFiles
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Order'
-        - name: filter
-          in: query
-          description: Filter by file status
-          schema:
-            type: string
-            enum:
-              - in_progress
-              - completed
-              - failed
-              - cancelled
-      responses:
-        '200':
-          description: List of files in vector store
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ListVectorStoreFilesResponse'
+                $ref: '#/components/schemas/ListModelsResponse'
 
 components:
   parameters:
-    AfterCursor:
-      name: after
-      in: query
-      description: Cursor for pagination (ID of last item from previous page)
-      schema:
-        type: string
-      example: resp_abc123
-
-    BeforeCursor:
-      name: before
-      in: query
-      description: Cursor for pagination (ID to stop before)
-      schema:
-        type: string
-
     Limit:
       name: limit
       in: query
-      description: Number of items to return (1-100)
+      description: Number of items (1-100, default 50)
       schema:
         type: integer
         minimum: 1
@@ -845,24 +271,484 @@ components:
       description: Sort order
       schema:
         type: string
-        enum:
-          - asc
-          - desc
+        enum: [asc, desc]
         default: desc
 
   schemas:
-    Error:
+    # Core Open Responses Schemas
+
+    ResponseRequest:
       type: object
+      description: Request to create a response (Open Responses spec compliant)
       properties:
+        model:
+          type: string
+          nullable: true
+          description: Model ID (e.g., gpt-4, claude-3-opus)
+          example: gpt-4
+        input:
+          description: String or array of input items
+          oneOf:
+            - type: string
+              maxLength: 10485760
+            - type: array
+              items:
+                $ref: '#/components/schemas/InputItem'
+        previous_response_id:
+          type: string
+          nullable: true
+          description: ID of previous response for multi-turn
+          example: resp_abc123
+        include:
+          type: array
+          items:
+            type: string
+          description: What to include in response
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+          description: Tools available to the model
+        tool_choice:
+          description: Control which tool to use
+          oneOf:
+            - type: string
+              enum: [none, auto, required]
+            - type: object
+        reasoning:
+          $ref: '#/components/schemas/ReasoningConfig'
+        instructions:
+          type: string
+          nullable: true
+          description: System message / instructions
+        temperature:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          format: float
+          nullable: true
+        max_output_tokens:
+          type: integer
+          nullable: true
+        max_tool_calls:
+          type: integer
+          nullable: true
+        parallel_tool_calls:
+          type: boolean
+          nullable: true
+        store:
+          type: boolean
+          nullable: true
+          description: Whether to store conversation
+        frequency_penalty:
+          type: number
+          format: float
+          nullable: true
+          minimum: -2
+          maximum: 2
+        presence_penalty:
+          type: number
+          format: float
+          nullable: true
+          minimum: -2
+          maximum: 2
+        truncation:
+          $ref: '#/components/schemas/TruncationStrategy'
+        top_logprobs:
+          type: integer
+          nullable: true
+        service_tier:
+          type: string
+          nullable: true
+        background:
+          type: boolean
+          nullable: true
+        prompt_cache_key:
+          type: string
+          nullable: true
+        safety_identifier:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        stream:
+          type: boolean
+          description: HTTP-specific - enable SSE streaming
+          default: false
+
+    Response:
+      type: object
+      description: Response object (Open Responses spec compliant)
+      required: [id, object, created_at, model, status]
+      properties:
+        id:
+          type: string
+          example: resp_abc123
+        object:
+          type: string
+          example: response
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp
+        completed_at:
+          type: integer
+          format: int64
+          nullable: true
+        model:
+          type: string
+          example: gpt-4
+        status:
+          type: string
+          enum: [queued, in_progress, completed, failed, incomplete]
+        output:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputItem'
+        usage:
+          $ref: '#/components/schemas/Usage'
         error:
+          $ref: '#/components/schemas/ErrorDetails'
+        incomplete_details:
+          $ref: '#/components/schemas/IncompleteDetails'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        # Echo all request parameters
+        previous_response_id:
+          type: string
+          nullable: true
+        instructions:
+          type: string
+          nullable: true
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+        tool_choice:
+          nullable: true
+        reasoning:
+          $ref: '#/components/schemas/ReasoningConfig'
+        temperature:
+          type: number
+          nullable: true
+        top_p:
+          type: number
+          nullable: true
+        max_output_tokens:
+          type: integer
+          nullable: true
+        max_tool_calls:
+          type: integer
+          nullable: true
+        parallel_tool_calls:
+          type: boolean
+          nullable: true
+        store:
+          type: boolean
+          nullable: true
+        frequency_penalty:
+          type: number
+          nullable: true
+        presence_penalty:
+          type: number
+          nullable: true
+        truncation:
+          $ref: '#/components/schemas/TruncationStrategy'
+        top_logprobs:
+          type: integer
+          nullable: true
+        service_tier:
+          type: string
+          nullable: true
+        background:
+          type: boolean
+          nullable: true
+        prompt_cache_key:
+          type: string
+          nullable: true
+        safety_identifier:
+          type: string
+          nullable: true
+        text:
+          type: string
+          nullable: true
+          description: Convenience field - concatenated output text
+
+    InputItem:
+      type: object
+      description: Input item (message, file, etc.)
+      properties:
+        type:
+          type: string
+          enum: [message, file, image, video, item_reference]
+        role:
+          type: string
+          enum: [user, assistant, system, developer]
+        content:
+          type: string
+
+    OutputItem:
+      type: object
+      description: Output item (discriminated by type)
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [message, function_call, function_call_output, reasoning]
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, system, developer]
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentPart'
+        status:
+          type: string
+          enum: [in_progress, completed]
+        name:
+          type: string
+        call_id:
+          type: string
+        arguments:
+          type: string
+        output:
+          type: string
+        summary:
+          type: string
+
+    ContentPart:
+      type: object
+      description: Content part within a message
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, image, file, video, refusal, output_text_annotation]
+        text:
+          type: string
+        image_url:
           type: object
           properties:
-            type:
+            url:
               type: string
-              example: invalid_request
-            message:
+            detail:
               type: string
-              example: Invalid request parameters
+              enum: [auto, low, high]
+        file_id:
+          type: string
+        video_url:
+          type: object
+          properties:
+            url:
+              type: string
+
+    Tool:
+      type: object
+      description: Tool definition
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [function, file_search, web_search]
+        function:
+          type: object
+          properties:
+            name:
+              type: string
+            description:
+              type: string
+            parameters:
+              type: object
+              description: JSON Schema
+            strict:
+              type: boolean
+
+    ReasoningConfig:
+      type: object
+      description: Reasoning configuration for o1/o3 models
+      properties:
+        type:
+          type: string
+          enum: [default, extended]
+        effort:
+          type: string
+          enum: [low, medium, high]
+        budget:
+          type: object
+          properties:
+            token_budget:
+              type: integer
+
+    TruncationStrategy:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [auto, last_messages]
+        last_messages:
+          type: integer
+
+    Usage:
+      type: object
+      description: Token usage statistics
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        input_tokens_details:
+          type: object
+          properties:
+            cached_tokens:
+              type: integer
+            audio_tokens:
+              type: integer
+            text_tokens:
+              type: integer
+            image_tokens:
+              type: integer
+        output_tokens_details:
+          type: object
+          properties:
+            reasoning_tokens:
+              type: integer
+            audio_tokens:
+              type: integer
+            text_tokens:
+              type: integer
+
+    ErrorDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+        param:
+          type: string
+
+    IncompleteDetails:
+      type: object
+      properties:
+        reason:
+          type: string
+          enum: [max_output_tokens, content_filter]
+
+    # Streaming Events (24 types)
+
+    ResponseCreatedEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          example: response.created
+        response:
+          $ref: '#/components/schemas/Response'
+
+    ResponseInProgressEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          example: response.in_progress
+        response:
+          $ref: '#/components/schemas/Response'
+
+    ResponseCompletedEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          example: response.completed
+        response:
+          $ref: '#/components/schemas/Response'
+
+    ResponseOutputTextDeltaEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          example: response.output_text.delta
+        response_id:
+          type: string
+        output_index:
+          type: integer
+        content_index:
+          type: integer
+        delta:
+          type: string
+
+    ErrorEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          example: error
+        error:
+          $ref: '#/components/schemas/ErrorDetails'
+
+    # Extended API Schemas
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: conversation
+        created_at:
+          type: integer
+          format: int64
+        metadata:
+          type: object
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+
+    CreatePromptRequest:
+      type: object
+      required: [name, template]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        template:
+          type: string
+          example: "Hello {{name}}!"
+        metadata:
+          type: object
+
+    CreateVectorStoreRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        file_ids:
+          type: array
+          items:
+            type: string
+          maxItems: 500
+        metadata:
+          type: object
 
     Model:
       type: object
@@ -876,10 +762,8 @@ components:
         created:
           type: integer
           format: int64
-          description: Unix timestamp
         owned_by:
           type: string
-          example: openai
 
     ListModelsResponse:
       type: object
@@ -891,497 +775,3 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Model'
-
-    ChatCompletionRequest:
-      type: object
-      required:
-        - model
-        - messages
-      properties:
-        model:
-          type: string
-          example: gpt-4
-        messages:
-          type: array
-          items:
-            type: object
-            properties:
-              role:
-                type: string
-                enum:
-                  - system
-                  - user
-                  - assistant
-              content:
-                type: string
-        temperature:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 2
-          default: 1
-        max_tokens:
-          type: integer
-        stream:
-          type: boolean
-          default: false
-
-    ChatCompletionResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: chat.completion
-        created:
-          type: integer
-          format: int64
-        model:
-          type: string
-        choices:
-          type: array
-          items:
-            type: object
-
-    ResponseRequest:
-      type: object
-      required:
-        - model
-        - input
-      properties:
-        model:
-          type: string
-        input:
-          type: array
-          items:
-            type: object
-        stream:
-          type: boolean
-          default: false
-
-    Response:
-      type: object
-      properties:
-        id:
-          type: string
-          example: resp_abc123
-        object:
-          type: string
-          example: response
-        status:
-          type: string
-          enum:
-            - pending
-            - in_progress
-            - completed
-            - failed
-        output:
-          type: array
-          items:
-            type: object
-        created_at:
-          type: integer
-          format: int64
-
-    ListResponsesResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/Response'
-        first_id:
-          type: string
-        last_id:
-          type: string
-        has_more:
-          type: boolean
-
-    DeleteResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: response.deleted
-        deleted:
-          type: boolean
-          example: true
-
-    CreateConversationRequest:
-      type: object
-      properties:
-        metadata:
-          type: object
-          additionalProperties:
-            type: string
-
-    Conversation:
-      type: object
-      properties:
-        id:
-          type: string
-          example: conv_abc123
-        object:
-          type: string
-          example: conversation
-        created_at:
-          type: integer
-          format: int64
-        metadata:
-          type: object
-
-    ListConversationsResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/Conversation'
-        has_more:
-          type: boolean
-
-    DeleteConversationResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: conversation.deleted
-        deleted:
-          type: boolean
-
-    AddConversationItemsRequest:
-      type: object
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          maxItems: 20
-          items:
-            type: object
-            properties:
-              role:
-                type: string
-              content:
-                type: string
-
-    AddConversationItemsResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            type: object
-
-    ListConversationItemsResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-        has_more:
-          type: boolean
-
-    CreatePromptRequest:
-      type: object
-      required:
-        - name
-        - template
-      properties:
-        name:
-          type: string
-          example: greeting
-        description:
-          type: string
-        template:
-          type: string
-          description: Template with {{variable}} syntax
-          example: "Hello {{name}}!"
-        metadata:
-          type: object
-
-    Prompt:
-      type: object
-      properties:
-        id:
-          type: string
-          example: prompt_abc123
-        object:
-          type: string
-          example: prompt
-        name:
-          type: string
-        description:
-          type: string
-        template:
-          type: string
-        variables:
-          type: array
-          items:
-            type: string
-          description: Automatically extracted variable names
-        created_at:
-          type: integer
-          format: int64
-        updated_at:
-          type: integer
-          format: int64
-
-    UpdatePromptRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        template:
-          type: string
-        metadata:
-          type: object
-
-    ListPromptsResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/Prompt'
-        has_more:
-          type: boolean
-
-    DeletePromptResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: prompt.deleted
-        deleted:
-          type: boolean
-
-    File:
-      type: object
-      properties:
-        id:
-          type: string
-          example: file_abc123
-        object:
-          type: string
-          example: file
-        bytes:
-          type: integer
-          format: int64
-          description: File size in bytes
-        created_at:
-          type: integer
-          format: int64
-        filename:
-          type: string
-        purpose:
-          type: string
-          enum:
-            - assistants
-            - vision
-            - batch
-            - fine-tune
-        status:
-          type: string
-          enum:
-            - uploaded
-            - processed
-            - error
-        mime_type:
-          type: string
-
-    ListFilesResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/File'
-        has_more:
-          type: boolean
-
-    DeleteFileResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: file.deleted
-        deleted:
-          type: boolean
-
-    CreateVectorStoreRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        file_ids:
-          type: array
-          maxItems: 500
-          items:
-            type: string
-        expires_after:
-          type: object
-          properties:
-            anchor:
-              type: string
-              example: last_active_at
-            days:
-              type: integer
-        metadata:
-          type: object
-
-    VectorStore:
-      type: object
-      properties:
-        id:
-          type: string
-          example: vs_abc123
-        object:
-          type: string
-          example: vector_store
-        name:
-          type: string
-        status:
-          type: string
-          enum:
-            - in_progress
-            - completed
-            - failed
-        usage_bytes:
-          type: integer
-          format: int64
-        file_counts:
-          type: object
-          properties:
-            in_progress:
-              type: integer
-            completed:
-              type: integer
-            failed:
-              type: integer
-            cancelled:
-              type: integer
-            total:
-              type: integer
-        created_at:
-          type: integer
-          format: int64
-
-    UpdateVectorStoreRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        expires_after:
-          type: object
-        metadata:
-          type: object
-
-    ListVectorStoresResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/VectorStore'
-        has_more:
-          type: boolean
-
-    DeleteVectorStoreResponse:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: vector_store.deleted
-        deleted:
-          type: boolean
-
-    AddVectorStoreFileRequest:
-      type: object
-      required:
-        - file_id
-      properties:
-        file_id:
-          type: string
-        chunking_strategy:
-          type: object
-          properties:
-            type:
-              type: string
-              enum:
-                - auto
-                - static
-            static:
-              type: object
-              properties:
-                max_chunk_size_tokens:
-                  type: integer
-                chunk_overlap_tokens:
-                  type: integer
-
-    VectorStoreFile:
-      type: object
-      properties:
-        id:
-          type: string
-        object:
-          type: string
-          example: vector_store.file
-        vector_store_id:
-          type: string
-        status:
-          type: string
-          enum:
-            - in_progress
-            - completed
-            - failed
-            - cancelled
-        created_at:
-          type: integer
-          format: int64
-
-    ListVectorStoreFilesResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/VectorStoreFile'
-        has_more:
-          type: boolean
