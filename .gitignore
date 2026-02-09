@@ -64,3 +64,4 @@ testdata/output/
 .conformance-tests/
 .server-test.log
 .server-test.pid
+openai-spec.yaml
