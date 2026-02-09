@@ -45,6 +45,8 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("GET /openapi.json", h.handleOpenAPI)
 
 	// Responses API (Open Responses compliant - single endpoint)
+	// Support both /responses (Open Responses spec) and /v1/responses (OpenAI compatibility)
+	h.mux.HandleFunc("POST /responses", h.handleResponses)
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
 
 	// Conversations API

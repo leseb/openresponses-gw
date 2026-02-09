@@ -76,20 +76,44 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 	resp := schema.NewResponse(respID, model)
 
-	// Echo request parameters
+	// Echo ALL request parameters (Open Responses spec requires echoing all fields)
 	resp.PreviousResponseID = req.PreviousResponseID
 	resp.Instructions = req.Instructions
-	resp.Temperature = req.Temperature
-	resp.TopP = req.TopP
+	resp.Tools = convertToolsToResponse(req.Tools)
+	resp.ToolChoice = req.ToolChoice
+	resp.Reasoning = convertReasoningToResponse(req.Reasoning)
+	// Required number fields - use pointer value or default to 0
+	if req.Temperature != nil {
+		resp.Temperature = *req.Temperature
+	}
+	if req.TopP != nil {
+		resp.TopP = *req.TopP
+	}
 	resp.MaxOutputTokens = req.MaxOutputTokens
 	resp.MaxToolCalls = req.MaxToolCalls
-	resp.ParallelToolCalls = req.ParallelToolCalls
-	resp.Store = req.Store
-	resp.FrequencyPenalty = req.FrequencyPenalty
-	resp.PresencePenalty = req.PresencePenalty
-	resp.TopLogprobs = req.TopLogprobs
-	resp.ServiceTier = req.ServiceTier
-	resp.Background = req.Background
+	// Required boolean fields - use pointer value or default to false
+	if req.ParallelToolCalls != nil {
+		resp.ParallelToolCalls = *req.ParallelToolCalls
+	}
+	if req.Store != nil {
+		resp.Store = *req.Store
+	}
+	if req.FrequencyPenalty != nil {
+		resp.FrequencyPenalty = *req.FrequencyPenalty
+	}
+	if req.PresencePenalty != nil {
+		resp.PresencePenalty = *req.PresencePenalty
+	}
+	resp.Truncation = req.Truncation
+	if req.TopLogprobs != nil {
+		resp.TopLogprobs = *req.TopLogprobs
+	}
+	if req.ServiceTier != nil {
+		resp.ServiceTier = *req.ServiceTier
+	}
+	if req.Background != nil {
+		resp.Background = *req.Background
+	}
 	resp.PromptCacheKey = req.PromptCacheKey
 	resp.SafetyIdentifier = req.SafetyIdentifier
 	resp.Metadata = req.Metadata
@@ -161,8 +185,8 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		TotalTokens:  llmResp.Usage.TotalTokens,
 	}
 
-	// 9. Set convenience text field
-	resp.Text = &outputText
+	// 9. Text field is complex object - skip for now (not a simple string)
+	resp.Text = nil
 
 	// 10. Mark as completed
 	resp.MarkCompleted()
@@ -210,12 +234,46 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		resp := schema.NewResponse(respID, model)
 
-		// Echo request parameters
+		// Echo ALL request parameters (Open Responses spec requires echoing all fields)
 		resp.PreviousResponseID = req.PreviousResponseID
 		resp.Instructions = req.Instructions
-		resp.Temperature = req.Temperature
-		resp.TopP = req.TopP
+		resp.Tools = convertToolsToResponse(req.Tools)
+		resp.ToolChoice = req.ToolChoice
+		resp.Reasoning = convertReasoningToResponse(req.Reasoning)
+		// Required number fields - use pointer value or default to 0
+		if req.Temperature != nil {
+			resp.Temperature = *req.Temperature
+		}
+		if req.TopP != nil {
+			resp.TopP = *req.TopP
+		}
 		resp.MaxOutputTokens = req.MaxOutputTokens
+		resp.MaxToolCalls = req.MaxToolCalls
+		// Required boolean fields - use pointer value or default to false
+		if req.ParallelToolCalls != nil {
+			resp.ParallelToolCalls = *req.ParallelToolCalls
+		}
+		if req.Store != nil {
+			resp.Store = *req.Store
+		}
+		if req.FrequencyPenalty != nil {
+			resp.FrequencyPenalty = *req.FrequencyPenalty
+		}
+		if req.PresencePenalty != nil {
+			resp.PresencePenalty = *req.PresencePenalty
+		}
+		resp.Truncation = req.Truncation
+		if req.TopLogprobs != nil {
+			resp.TopLogprobs = *req.TopLogprobs
+		}
+		if req.ServiceTier != nil {
+			resp.ServiceTier = *req.ServiceTier
+		}
+		if req.Background != nil {
+			resp.Background = *req.Background
+		}
+		resp.PromptCacheKey = req.PromptCacheKey
+		resp.SafetyIdentifier = req.SafetyIdentifier
 		resp.Metadata = req.Metadata
 
 		// Send response.created event
@@ -339,7 +397,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Update response
 		resp.Output = []schema.ItemField{messageItem}
 		resp.MarkCompleted()
-		resp.Text = &fullText
+		resp.Text = nil // Text field is complex object - skip for now
 
 		// Send response.completed event
 		events <- &schema.ResponseCompletedStreamingEvent{
@@ -385,4 +443,42 @@ func timePtr(t *int64) *time.Time {
 	}
 	tm := time.Unix(*t, 0)
 	return &tm
+}
+
+// convertToolsToResponse converts request tools to response tools
+func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.ResponsesTool {
+	if reqTools == nil || len(reqTools) == 0 {
+		return make([]schema.ResponsesTool, 0) // Return empty array, not nil
+	}
+	respTools := make([]schema.ResponsesTool, len(reqTools))
+	for i, t := range reqTools {
+		respTools[i] = schema.ResponsesTool{
+			Type:     t.Type,
+			Function: t.Function,
+		}
+	}
+	return respTools
+}
+
+// convertReasoningToResponse converts request reasoning to response reasoning
+func convertReasoningToResponse(reqReasoning *schema.ReasoningParam) *schema.ReasoningConfig {
+	if reqReasoning == nil {
+		return nil
+	}
+	return &schema.ReasoningConfig{
+		Type:   reqReasoning.Type,
+		Effort: reqReasoning.Effort,
+		Budget: reqReasoning.Budget,
+	}
+}
+
+// convertTruncationToResponse converts request truncation to response truncation
+func convertTruncationToResponse(reqTruncation *schema.TruncationStrategyParam) *schema.TruncationStrategy {
+	if reqTruncation == nil {
+		return nil
+	}
+	return &schema.TruncationStrategy{
+		Type:         reqTruncation.Type,
+		LastMessages: reqTruncation.LastMessages,
+	}
 }

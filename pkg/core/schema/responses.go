@@ -120,29 +120,29 @@ type Response struct {
 	// Metadata (echoed from request)
 	Metadata map[string]string `json:"metadata,omitempty"`
 
-	// Echo request parameters
-	PreviousResponseID *string             `json:"previous_response_id,omitempty"`
-	Instructions       *string             `json:"instructions,omitempty"`
-	Tools              []ResponsesTool     `json:"tools,omitempty"`
-	ToolChoice         interface{}         `json:"tool_choice,omitempty"`
-	Reasoning          *ReasoningConfig    `json:"reasoning,omitempty"`
-	Temperature        *float64            `json:"temperature,omitempty"`
-	TopP               *float64            `json:"top_p,omitempty"`
-	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
-	MaxToolCalls       *int                `json:"max_tool_calls,omitempty"`
-	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
-	Store              *bool               `json:"store,omitempty"`
-	FrequencyPenalty   *float64            `json:"frequency_penalty,omitempty"`
-	PresencePenalty    *float64            `json:"presence_penalty,omitempty"`
-	Truncation         *TruncationStrategy `json:"truncation,omitempty"`
-	TopLogprobs        *int                `json:"top_logprobs,omitempty"`
-	ServiceTier        *string             `json:"service_tier,omitempty"`
-	Background         *bool               `json:"background,omitempty"`
-	PromptCacheKey     *string             `json:"prompt_cache_key,omitempty"`
-	SafetyIdentifier   *string             `json:"safety_identifier,omitempty"`
+	// Echo request parameters (all fields must be present per Open Responses spec)
+	PreviousResponseID *string             `json:"previous_response_id"` // nullable
+	Instructions       *string             `json:"instructions"`         // nullable
+	Tools              []ResponsesTool     `json:"tools"`                // required array (empty if no tools)
+	ToolChoice         interface{}         `json:"tool_choice"`          // nullable
+	Reasoning          *ReasoningConfig    `json:"reasoning"`            // nullable
+	Temperature        float64             `json:"temperature"`          // required number
+	TopP               float64             `json:"top_p"`                // required number
+	MaxOutputTokens    *int                `json:"max_output_tokens"`    // nullable
+	MaxToolCalls       *int                `json:"max_tool_calls"`       // nullable
+	ParallelToolCalls  bool                `json:"parallel_tool_calls"`  // required boolean
+	Store              bool                `json:"store"`                // required boolean
+	FrequencyPenalty   float64             `json:"frequency_penalty"`    // required number
+	PresencePenalty    float64             `json:"presence_penalty"`     // required number
+	Truncation         interface{}         `json:"truncation"`           // required (complex type)
+	TopLogprobs        int                 `json:"top_logprobs"`         // required number
+	ServiceTier        string              `json:"service_tier"`         // required string
+	Background         bool                `json:"background"`           // required boolean
+	PromptCacheKey     *string             `json:"prompt_cache_key"`     // nullable
+	SafetyIdentifier   *string             `json:"safety_identifier"`    // nullable
 
-	// Convenience field: concatenated text from all output items
-	Text *string `json:"text,omitempty"`
+	// Text field: object with format and optional verbosity (not a string!)
+	Text interface{} `json:"text"` // nullable (complex type)
 }
 
 // ItemField represents an output item (discriminated union by type)
@@ -504,6 +504,18 @@ func NewResponse(id, model string) *Response {
 		Model:     model,
 		Status:    "in_progress",
 		Output:    make([]ItemField, 0),
+		// Initialize required fields with defaults (Open Responses spec)
+		Tools:             make([]ResponsesTool, 0), // empty array, not nil
+		Temperature:       0.0,
+		TopP:              0.0,
+		ParallelToolCalls: false,
+		Store:             false,
+		FrequencyPenalty:  0.0,
+		PresencePenalty:   0.0,
+		TopLogprobs:       0,
+		ServiceTier:       "",
+		Background:        false,
+		Truncation:        nil, // Will be set explicitly
 	}
 }
 
