@@ -1,0 +1,396 @@
+{
+  "openai_spec": "openai-spec.yaml",
+  "openresponses_spec": null,
+  "gateway_spec": "openapi.yaml",
+  "summary": {
+    "endpoints": {
+      "implemented": 16,
+      "total": 97,
+      "missing": [
+        "/assistants",
+        "/assistants/{assistant_id}",
+        "/audio/speech",
+        "/audio/transcriptions",
+        "/audio/translations",
+        "/batches",
+        "/batches/{batch_id}",
+        "/batches/{batch_id}/cancel",
+        "/chat/completions",
+        "/chat/completions/{completion_id}",
+        "/chat/completions/{completion_id}/messages",
+        "/completions",
+        "/embeddings",
+        "/evals",
+        "/evals/{eval_id}",
+        "/evals/{eval_id}/runs",
+        "/evals/{eval_id}/runs/{run_id}",
+        "/evals/{eval_id}/runs/{run_id}/output_items",
+        "/evals/{eval_id}/runs/{run_id}/output_items/{output_item_id}",
+        "/fine_tuning/checkpoints/{fine_tuned_model_checkpoint}/permissions",
+        "/fine_tuning/checkpoints/{fine_tuned_model_checkpoint}/permissions/{permission_id}",
+        "/fine_tuning/jobs",
+        "/fine_tuning/jobs/{fine_tuning_job_id}",
+        "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+        "/fine_tuning/jobs/{fine_tuning_job_id}/checkpoints",
+        "/fine_tuning/jobs/{fine_tuning_job_id}/events",
+        "/images/edits",
+        "/images/generations",
+        "/images/variations",
+        "/models/{model}",
+        "/moderations",
+        "/organization/audit_logs",
+        "/organization/certificates",
+        "/organization/certificates/activate",
+        "/organization/certificates/deactivate",
+        "/organization/certificates/{certificate_id}",
+        "/organization/costs",
+        "/organization/invites",
+        "/organization/invites/{invite_id}",
+        "/organization/projects",
+        "/organization/projects/{project_id}",
+        "/organization/projects/{project_id}/api_keys",
+        "/organization/projects/{project_id}/api_keys/{key_id}",
+        "/organization/projects/{project_id}/archive",
+        "/organization/projects/{project_id}/certificates",
+        "/organization/projects/{project_id}/certificates/activate",
+        "/organization/projects/{project_id}/certificates/deactivate",
+        "/organization/projects/{project_id}/rate_limits",
+        "/organization/projects/{project_id}/rate_limits/{rate_limit_id}",
+        "/organization/projects/{project_id}/service_accounts",
+        "/organization/projects/{project_id}/service_accounts/{service_account_id}",
+        "/organization/projects/{project_id}/users",
+        "/organization/projects/{project_id}/users/{user_id}",
+        "/organization/usage/audio_speeches",
+        "/organization/usage/audio_transcriptions",
+        "/organization/usage/code_interpreter_sessions",
+        "/organization/usage/completions",
+        "/organization/usage/embeddings",
+        "/organization/usage/images",
+        "/organization/usage/moderations",
+        "/organization/usage/vector_stores",
+        "/organization/users",
+        "/organization/users/{user_id}",
+        "/realtime/sessions",
+        "/realtime/transcription_sessions",
+        "/responses/{response_id}/input_items",
+        "/threads",
+        "/threads/runs",
+        "/threads/{thread_id}",
+        "/threads/{thread_id}/messages",
+        "/threads/{thread_id}/messages/{message_id}",
+        "/threads/{thread_id}/runs",
+        "/threads/{thread_id}/runs/{run_id}",
+        "/threads/{thread_id}/runs/{run_id}/cancel",
+        "/threads/{thread_id}/runs/{run_id}/steps",
+        "/threads/{thread_id}/runs/{run_id}/steps/{step_id}",
+        "/threads/{thread_id}/runs/{run_id}/submit_tool_outputs",
+        "/uploads",
+        "/uploads/{upload_id}/cancel",
+        "/uploads/{upload_id}/complete",
+        "/uploads/{upload_id}/parts"
+      ]
+    },
+    "conformance": {
+      "score": 99.5,
+      "issues": 4,
+      "missing_properties": 0,
+      "total_problems": 4,
+      "total_properties": 852
+    }
+  },
+  "categories": {
+    "Files": {
+      "score": 100.0,
+      "issues": 0,
+      "missing_properties": 0,
+      "total_properties": 42,
+      "endpoints": [
+        {
+          "path": "/files",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/files/{file_id}",
+          "operations": [
+            {
+              "method": "DELETE",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/files/{file_id}/content",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        }
+      ]
+    },
+    "Models": {
+      "score": 83.3,
+      "issues": 1,
+      "missing_properties": 0,
+      "total_properties": 6,
+      "endpoints": [
+        {
+          "path": "/models",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [
+                {
+                  "property": "GET.responses.200.content.application/json.properties.data.items",
+                  "details": [
+                    "Type added: ['object']"
+                  ]
+                }
+              ],
+              "missing_count": 0,
+              "issues_count": 1
+            }
+          ]
+        }
+      ]
+    },
+    "Responses": {
+      "score": 100.0,
+      "issues": 0,
+      "missing_properties": 0,
+      "total_properties": 499,
+      "endpoints": [
+        {
+          "path": "/responses",
+          "operations": [
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/responses/{response_id}",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        }
+      ]
+    },
+    "Vector stores": {
+      "score": 99.0,
+      "issues": 3,
+      "missing_properties": 0,
+      "total_properties": 305,
+      "endpoints": [
+        {
+          "path": "/vector_stores",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [
+                {
+                  "property": "POST.requestBody.content.application/json.properties.chunking_strategy",
+                  "details": [
+                    "Type removed: ['object']",
+                    "Union variants added: 2",
+                    "Union variants removed: 2"
+                  ]
+                }
+              ],
+              "missing_count": 0,
+              "issues_count": 1
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/file_batches",
+          "operations": [
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [
+                {
+                  "property": "POST.requestBody.content.application/json.properties.chunking_strategy",
+                  "details": [
+                    "Type removed: ['object']",
+                    "Union variants added: 2",
+                    "Union variants removed: 2"
+                  ]
+                }
+              ],
+              "missing_count": 0,
+              "issues_count": 1
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/file_batches/{batch_id}",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/file_batches/{batch_id}/cancel",
+          "operations": [
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/file_batches/{batch_id}/files",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/files",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [
+                {
+                  "property": "POST.requestBody.content.application/json.properties.chunking_strategy",
+                  "details": [
+                    "Type removed: ['object']",
+                    "Union variants added: 2",
+                    "Union variants removed: 2"
+                  ]
+                }
+              ],
+              "missing_count": 0,
+              "issues_count": 1
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/files/{file_id}",
+          "operations": [
+            {
+              "method": "DELETE",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/files/{file_id}/content",
+          "operations": [
+            {
+              "method": "GET",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        },
+        {
+          "path": "/vector_stores/{vector_store_id}/search",
+          "operations": [
+            {
+              "method": "POST",
+              "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

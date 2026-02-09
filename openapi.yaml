@@ -137,6 +137,32 @@ paths:
                   - $ref: '#/components/schemas/ResponseOutputTextDeltaEvent'
                   - $ref: '#/components/schemas/ErrorEvent'
 
+  /v1/responses/{response_id}:
+    get:
+      tags: [Responses]
+      summary: Retrieve response
+      operationId: getResponse
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: include
+          in: query
+          description: What to include in the response
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: Response retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+
   # Extended APIs (not in Open Responses spec)
 
   /v1/conversations:
@@ -207,7 +233,7 @@ paths:
                   format: binary
                 purpose:
                   type: string
-                  enum: [assistants, vision, batch, fine-tune]
+                  enum: [assistants, vision, batch, fine-tune, user_data, evals]
       responses:
         '200':
           description: File uploaded
@@ -215,9 +241,79 @@ paths:
       tags: [Files]
       summary: List files
       operationId: listFiles
+      parameters:
+        - name: purpose
+          in: query
+          description: Filter by file purpose
+          schema:
+            type: string
+            enum: [assistants, vision, batch, fine-tune, user_data, evals]
+        - name: after
+          in: query
+          description: Cursor for pagination (file ID)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of files to return (1-100, default 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
       responses:
         '200':
           description: List of files
+
+  /v1/files/{file_id}:
+    get:
+      tags: [Files]
+      summary: Retrieve file metadata
+      operationId: getFile
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File metadata retrieved
+    delete:
+      tags: [Files]
+      summary: Delete file
+      operationId: deleteFile
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File deleted
+
+  /v1/files/{file_id}/content:
+    get:
+      tags: [Files]
+      summary: Download file content
+      operationId: getFileContent
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
 
   /v1/vector_stores:
     post:
@@ -236,9 +332,441 @@ paths:
       tags: [Vector Stores]
       summary: List vector stores
       operationId: listVectorStores
+      parameters:
+        - name: after
+          in: query
+          description: Cursor for pagination (vector store ID)
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Cursor for reverse pagination
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of items to return (1-100, default 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
       responses:
         '200':
           description: List of vector stores
+
+  /v1/vector_stores/{vector_store_id}:
+    get:
+      tags: [Vector Stores]
+      summary: Retrieve vector store
+      operationId: getVectorStore
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Vector store retrieved
+
+  /v1/vector_stores/{vector_store_id}/files:
+    post:
+      tags: [Vector Stores]
+      summary: Add file to vector store
+      operationId: addVectorStoreFile
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file_id:
+                  type: string
+                chunking_strategy:
+                  description: The chunking strategy used to chunk the file(s). If not set, will use the auto strategy
+                  oneOf:
+                    - type: object
+                      title: Auto Chunking Strategy
+                      description: The default strategy
+                      additionalProperties: false
+                      properties:
+                        type:
+                          type: string
+                          description: Always auto
+                          enum: [auto]
+                          x-stainless-const: true
+                      required:
+                        - type
+                    - type: object
+                      title: Static Chunking Strategy
+                      additionalProperties: false
+                      properties:
+                        type:
+                          type: string
+                          description: Always static
+                          enum: [static]
+                          x-stainless-const: true
+                        static:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            max_chunk_size_tokens:
+                              type: integer
+                              minimum: 100
+                              maximum: 4096
+                              description: Maximum number of tokens in each chunk
+                            chunk_overlap_tokens:
+                              type: integer
+                              description: Number of tokens that overlap between chunks
+                          required:
+                            - max_chunk_size_tokens
+                            - chunk_overlap_tokens
+                      required:
+                        - type
+                        - static
+                attributes:
+                  type: object
+                  description: Custom attributes for the file
+      responses:
+        '200':
+          description: File added
+    get:
+      tags: [Vector Stores]
+      summary: List files in vector store
+      operationId: listVectorStoreFiles
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: after
+          in: query
+          description: Cursor for pagination (file ID)
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Cursor for reverse pagination
+          schema:
+            type: string
+        - name: filter
+          in: query
+          description: Filter by file status
+          schema:
+            type: string
+            enum: [in_progress, completed, failed, cancelled]
+        - name: limit
+          in: query
+          description: Number of items to return (1-100, default 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of files
+
+  /v1/vector_stores/{vector_store_id}/files/{file_id}:
+    get:
+      tags: [Vector Stores]
+      summary: Get vector store file
+      operationId: getVectorStoreFile
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File retrieved
+    delete:
+      tags: [Vector Stores]
+      summary: Remove file from vector store
+      operationId: deleteVectorStoreFile
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File removed
+
+  /v1/vector_stores/{vector_store_id}/files/{file_id}/content:
+    get:
+      tags: [Vector Stores]
+      summary: Download file content from vector store
+      operationId: getVectorStoreFileContent
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+
+  /v1/vector_stores/{vector_store_id}/search:
+    post:
+      tags: [Vector Stores]
+      summary: Search vector store
+      operationId: searchVectorStore
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  description: A query string or array of query strings for search
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                      minItems: 1
+                rewrite_query:
+                  description: Whether to rewrite the natural language query for vector search
+                  type: boolean
+                  default: false
+                max_num_results:
+                  description: Maximum number of results to return (1-50)
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                  default: 10
+                filters:
+                  description: A filter to apply based on file attributes
+                  oneOf:
+                    - $ref: '#/components/schemas/ComparisonFilter'
+                    - $ref: '#/components/schemas/CompoundFilter'
+                ranking_options:
+                  description: Ranking options for search
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    ranker:
+                      type: string
+                      enum: [auto, default-2024-11-15]
+                      default: auto
+                    score_threshold:
+                      type: number
+                      minimum: 0
+                      maximum: 1
+                      default: 0
+      responses:
+        '200':
+          description: Search results
+
+  /v1/vector_stores/{vector_store_id}/file_batches:
+    post:
+      tags: [Vector Stores]
+      summary: Create file batch
+      operationId: createVectorStoreFileBatch
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file_ids:
+                  type: array
+                  items:
+                    type: string
+                chunking_strategy:
+                  description: The chunking strategy used to chunk the file(s). If not set, will use the auto strategy
+                  oneOf:
+                    - type: object
+                      title: Auto Chunking Strategy
+                      description: The default strategy
+                      additionalProperties: false
+                      properties:
+                        type:
+                          type: string
+                          description: Always auto
+                          enum: [auto]
+                          x-stainless-const: true
+                      required:
+                        - type
+                    - type: object
+                      title: Static Chunking Strategy
+                      additionalProperties: false
+                      properties:
+                        type:
+                          type: string
+                          description: Always static
+                          enum: [static]
+                          x-stainless-const: true
+                        static:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            max_chunk_size_tokens:
+                              type: integer
+                              minimum: 100
+                              maximum: 4096
+                              description: Maximum number of tokens in each chunk
+                            chunk_overlap_tokens:
+                              type: integer
+                              description: Number of tokens that overlap between chunks
+                          required:
+                            - max_chunk_size_tokens
+                            - chunk_overlap_tokens
+                      required:
+                        - type
+                        - static
+                attributes:
+                  type: object
+                  description: Custom attributes for the batch
+      responses:
+        '200':
+          description: Batch created
+
+  /v1/vector_stores/{vector_store_id}/file_batches/{batch_id}:
+    get:
+      tags: [Vector Stores]
+      summary: Get file batch
+      operationId: getVectorStoreFileBatch
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Batch retrieved
+
+  /v1/vector_stores/{vector_store_id}/file_batches/{batch_id}/files:
+    get:
+      tags: [Vector Stores]
+      summary: List files in batch
+      operationId: listVectorStoreFileBatchFiles
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: after
+          in: query
+          description: Cursor for pagination (file ID)
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Cursor for reverse pagination
+          schema:
+            type: string
+        - name: filter
+          in: query
+          description: Filter by file status
+          schema:
+            type: string
+            enum: [in_progress, completed, failed, cancelled]
+        - name: limit
+          in: query
+          description: Number of items to return (1-100, default 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of batch files
+
+  /v1/vector_stores/{vector_store_id}/file_batches/{batch_id}/cancel:
+    post:
+      tags: [Vector Stores]
+      summary: Cancel file batch
+      operationId: cancelVectorStoreFileBatch
+      parameters:
+        - name: vector_store_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Batch cancelled
 
   /v1/models:
     get:
@@ -747,31 +1275,194 @@ components:
           items:
             type: string
           maxItems: 500
+        chunking_strategy:
+          description: The chunking strategy used to chunk the file(s). If not set, will use the auto strategy
+          oneOf:
+            - type: object
+              title: Auto Chunking Strategy
+              description: The default strategy
+              additionalProperties: false
+              properties:
+                type:
+                  type: string
+                  description: Always auto
+                  enum: [auto]
+              required:
+                - type
+            - type: object
+              title: Static Chunking Strategy
+              additionalProperties: false
+              properties:
+                type:
+                  type: string
+                  description: Always static
+                  enum: [static]
+                static:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    max_chunk_size_tokens:
+                      type: integer
+                      minimum: 100
+                      maximum: 4096
+                      description: Maximum number of tokens in each chunk
+                    chunk_overlap_tokens:
+                      type: integer
+                      description: Number of tokens that overlap between chunks
+                  required:
+                    - max_chunk_size_tokens
+                    - chunk_overlap_tokens
+              required:
+                - type
+                - static
+        expires_after:
+          type: object
+          description: Expiration policy
+          properties:
+            anchor:
+              type: string
+              enum: [last_active_at]
+            days:
+              type: integer
+              minimum: 1
+              maximum: 365
         metadata:
           type: object
 
+    ChunkingStrategy:
+      description: The chunking strategy used to chunk the file(s). If not set, will use the auto strategy
+      oneOf:
+        - type: object
+          title: Auto Chunking Strategy
+          description: The default strategy
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              description: Always auto
+              enum: [auto]
+              x-stainless-const: true
+          required:
+            - type
+        - type: object
+          title: Static Chunking Strategy
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              description: Always static
+              enum: [static]
+              x-stainless-const: true
+            static:
+              type: object
+              additionalProperties: false
+              properties:
+                max_chunk_size_tokens:
+                  type: integer
+                  minimum: 100
+                  maximum: 4096
+                  description: Maximum number of tokens in each chunk
+                chunk_overlap_tokens:
+                  type: integer
+                  description: Number of tokens that overlap between chunks
+              required:
+                - max_chunk_size_tokens
+                - chunk_overlap_tokens
+          required:
+            - type
+            - static
+
+    ComparisonFilter:
+      type: object
+      additionalProperties: false
+      title: Comparison Filter
+      description: A filter used to compare a specified attribute key to a given value using a defined comparison operation
+      properties:
+        type:
+          type: string
+          default: eq
+          enum:
+            - eq
+            - ne
+            - gt
+            - gte
+            - lt
+            - lte
+          description: "Specifies the comparison operator: eq (equals), ne (not equal), gt (greater than), gte (greater than or equal), lt (less than), lte (less than or equal)"
+        key:
+          type: string
+          description: The key to compare against the value
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+          description: The value to compare against the attribute key; supports string, number, or boolean types
+      required:
+        - type
+        - key
+        - value
+
+    CompoundFilter:
+      type: object
+      additionalProperties: false
+      title: Compound Filter
+      description: Combine multiple filters using and or or
+      properties:
+        type:
+          type: string
+          description: "Type of operation: and or or"
+          enum:
+            - and
+            - or
+        filters:
+          type: array
+          description: Array of filters to combine. Items can be ComparisonFilter or CompoundFilter
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/ComparisonFilter'
+              - $ref: '#/components/schemas/CompoundFilter'
+      required:
+        - type
+        - filters
+
     Model:
       type: object
+      description: Describes an OpenAI model offering that can be used with the API
       properties:
         id:
           type: string
+          description: The model identifier
           example: gpt-4
         object:
           type: string
+          description: The object type, which is always "model"
+          enum: [model]
           example: model
         created:
           type: integer
           format: int64
+          description: The Unix timestamp (in seconds) when the model was created
         owned_by:
           type: string
+          description: The organization that owns the model
+      required:
+        - id
+        - object
+        - created
+        - owned_by
 
     ListModelsResponse:
       type: object
       properties:
         object:
           type: string
+          enum: [list]
           example: list
         data:
           type: array
           items:
             $ref: '#/components/schemas/Model'
+      required:
+        - object
+        - data

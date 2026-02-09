@@ -387,6 +387,309 @@ After passing conformance tests:
 4. 🔄 Run tests in CI/CD on every commit
 5. 📊 Monitor test results over time
 
+---
+
+## Architecture: Single Source of Truth with Multiple Adapters
+
+The gateway follows a clean architecture pattern where the **core business logic is implemented once** and multiple **protocol adapters** translate between different protocols and the core:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    ARCHITECTURE                          │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────────┐           ┌──────────────┐           │
+│  │   HTTP API   │           │ Envoy Proxy  │           │
+│  │   (REST)     │           │  (ExtProc)   │           │
+│  └──────┬───────┘           └──────┬───────┘           │
+│         │                          │                    │
+│         ▼                          ▼                    │
+│  ┌──────────────────────────────────────────┐          │
+│  │         ADAPTER LAYER                     │          │
+│  ├──────────────────┬───────────────────────┤          │
+│  │  HTTP Adapter    │   Envoy Adapter       │          │
+│  │  - handler.go    │   - processor.go      │          │
+│  │  - models.go     │   - translator.go     │          │
+│  │  - prompts.go    │                       │          │
+│  └────────┬─────────┴───────────┬───────────┘          │
+│           │                     │                       │
+│           └─────────┬───────────┘                       │
+│                     ▼                                   │
+│           ┌─────────────────────┐                       │
+│           │   CORE ENGINE       │  ◄── Single Source   │
+│           │   engine.go         │      of Truth        │
+│           │                     │                       │
+│           │  - ProcessRequest() │                       │
+│           │  - ProcessStream()  │                       │
+│           └──────────┬──────────┘                       │
+│                      │                                  │
+│                      ▼                                  │
+│           ┌─────────────────────┐                       │
+│           │   STATE LAYER       │                       │
+│           │   SessionStore      │                       │
+│           │   (in-memory)       │                       │
+│           └─────────────────────┘                       │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Benefits
+
+✅ **Single Implementation**: All Open Responses logic lives in `pkg/core/engine/`
+✅ **Protocol Agnostic**: Adapters only translate protocols, not business logic
+✅ **Extensible**: Easy to add new protocols (gRPC, WebSocket, etc.)
+✅ **Testable**: Can test core logic independently of protocol
+
+### What's in Each Layer?
+
+#### Core Engine (`pkg/core/engine/`)
+- ✅ Request validation
+- ✅ Response generation
+- ✅ Streaming logic
+- ✅ Tool calling
+- ✅ Conversation state management
+
+#### HTTP Adapter (`pkg/adapters/http/`)
+- Translates HTTP requests → `ResponseRequest`
+- Translates `Response` → HTTP JSON
+- Handles SSE streaming
+- Routes `/v1/responses`, `/v1/models`, etc.
+
+#### Envoy ExtProc Adapter (`pkg/adapters/envoy/`)
+- Translates Envoy ExtProc messages → `ResponseRequest`
+- Translates `Response` → Envoy `ImmediateResponse`
+- Implements gRPC ExtProc protocol
+- Handles Envoy lifecycle phases
+
+---
+
+## Testing the Envoy ExtProc Adapter
+
+The Envoy adapter can be tested at multiple levels:
+
+### 1. Unit Tests (Protocol Translation)
+
+Test the translator logic that converts between Envoy messages and core types:
+
+```bash
+# Run Envoy adapter unit tests
+go test ./pkg/adapters/envoy/... -v
+
+# Run with coverage
+go test ./pkg/adapters/envoy/... -cover
+```
+
+**What's tested:**
+- ✅ Request extraction from ExtProc messages
+- ✅ Response formatting to ExtProc messages
+- ✅ Error response generation
+- ✅ Header manipulation
+- ✅ Status code translation
+
+**Example test:**
+```go
+func TestExtractResponseRequest(t *testing.T) {
+    req := &extproc.ProcessingRequest{
+        Request: &extproc.ProcessingRequest_RequestBody{
+            RequestBody: &extproc.HttpBody{
+                Body: []byte(`{"model":"llama3.2:3b","input":"Hello"}`),
+            },
+        },
+    }
+
+    got, err := ExtractResponseRequest(req)
+    // Verify extraction logic
+}
+```
+
+### 2. Integration Tests (End-to-End with Docker)
+
+Test the full stack: Client → Envoy → ExtProc → Core Engine:
+
+```bash
+# Run integration tests
+./scripts/test-envoy-extproc.sh
+
+# Run with custom model
+MODEL=gpt-4 ./scripts/test-envoy-extproc.sh
+```
+
+**What's tested:**
+- ✅ Request flows through Envoy to ExtProc
+- ✅ ExtProc processes request via core engine
+- ✅ Response returns through Envoy to client
+- ✅ Error handling at each boundary
+- ✅ Envoy filter statistics
+
+**Test scenarios:**
+1. Basic non-streaming request
+2. Request with system instructions
+3. Request with tools
+4. Invalid request handling
+5. Response structure validation
+6. ExtProc filter metrics
+
+### 3. Debugging Integration Tests
+
+```bash
+# Start the stack manually
+cd examples/envoy
+docker-compose up
+
+# In another terminal, make requests
+curl -X POST http://localhost:8080/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{"model":"llama3.2:3b","input":"Hello"}'
+
+# Check ExtProc logs
+docker-compose logs -f envoy-extproc
+
+# Check Envoy logs
+docker-compose logs -f envoy
+
+# Check Envoy stats
+curl http://localhost:9901/stats | grep ext_proc
+
+# Stop the stack
+docker-compose down
+```
+
+---
+
+## Test Matrix
+
+| Test Type | HTTP Adapter | Envoy Adapter | What's Tested |
+|-----------|--------------|---------------|---------------|
+| **Conformance** | ✅ | ⚠️ Via HTTP | Spec compliance |
+| **Unit** | ❌ | ✅ | Protocol translation |
+| **Integration** | ✅ | ✅ | Full E2E flow |
+
+**Note**: Conformance tests currently run against the HTTP adapter. The Envoy adapter reuses the same core engine, so it inherits spec compliance.
+
+---
+
+## OpenAPI Conformance Testing
+
+The gateway includes an OpenAPI conformance checker that compares our API spec against OpenAI's official spec to ensure compatibility.
+
+### Running OpenAPI Conformance Tests
+
+```bash
+# Check conformance (uses cached OpenAI spec)
+./scripts/openapi_conformance.py
+
+# Force re-download of OpenAI spec
+rm openai-spec.yaml && ./scripts/openapi_conformance.py
+
+# Save results to JSON
+./scripts/openapi_conformance.py --output conformance-results.json
+
+# Verbose output
+./scripts/openapi_conformance.py --verbose
+```
+
+### What It Checks
+
+The conformance test compares three API categories:
+
+1. **Files API** - File upload, retrieval, deletion
+2. **Vector Stores API** - Vector store management and search
+3. **Responses API** - Response creation and retrieval
+
+For each category, it identifies:
+- ❌ Missing endpoints (in OpenAI but not in gateway)
+- ⚠️ Schema differences (different request/response structures)
+- ✅ Implemented endpoints
+
+### Interpreting Results
+
+```
+✅ 90-100%: Excellent - High OpenAI compatibility
+⚠️  70-89%: Good - Moderate gaps
+❌ 0-69%: Needs Work - Significant gaps
+```
+
+**Current Baseline (as of initial implementation):**
+- Files API: 0% (missing CRUD endpoints)
+- Vector Stores API: 0% (missing all endpoints)
+- Responses API: 25% (missing GET endpoint)
+- **Overall: 8.3%**
+
+See [OPENAPI_CONFORMANCE.md](./OPENAPI_CONFORMANCE.md) for detailed gap analysis and implementation roadmap.
+
+### Adding to CI/CD
+
+```yaml
+# .github/workflows/conformance.yml
+- name: Check OpenAPI Conformance
+  run: |
+    uv run --with pyyaml ./scripts/openapi_conformance.py --output conformance.json
+
+    # Fail if below 70% threshold
+    python3 -c "
+    import json
+    with open('conformance.json') as f:
+        results = json.load(f)
+    scores = [r['score'] for r in results.values()]
+    avg = sum(scores) / len(scores)
+    if avg < 70.0:
+        raise SystemExit(f'Conformance {avg:.1f}% below 70% threshold')
+    "
+```
+
+### Pre-Commit Hook
+
+The OpenAPI conformance check is integrated with pre-commit hooks:
+
+**Automatic Check** (when `openapi.yaml` changes):
+```bash
+# Pre-commit will automatically run conformance check when you modify openapi.yaml
+git add openapi.yaml
+git commit -m "Update API spec"
+# Hook runs and shows conformance summary (non-blocking)
+```
+
+**Manual Check** (anytime):
+```bash
+# Run conformance check explicitly
+pre-commit run openapi-conformance --all-files
+
+# Or use Make target for full output
+make test-openapi-conformance
+```
+
+**Important Notes:**
+- The pre-commit hook is **non-blocking** - it won't prevent commits
+- It shows a conformance summary to inform you of schema differences
+- For detailed analysis, run `make test-openapi-conformance`
+- The hook caches the OpenAI spec locally for faster runs
+
+---
+
+## Running All Tests
+
+```bash
+# 1. Unit tests (all adapters)
+go test ./...
+
+# 2. Conformance tests (HTTP adapter)
+./scripts/test-conformance.sh llama3.2:3b
+
+# 3. Smoke tests (critical path validation)
+./scripts/test-smoke.sh
+
+# 4. OpenAPI conformance (spec compatibility)
+./scripts/openapi_conformance.py
+
+# 5. Integration tests (Envoy adapter)
+./scripts/test-envoy-extproc.sh
+
+# 6. Pre-commit hooks
+pre-commit run --all-files
+```
+
+---
+
 ## Resources
 
 - [Open Responses Specification](https://github.com/openresponses/openresponses)

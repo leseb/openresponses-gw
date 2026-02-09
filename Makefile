@@ -195,6 +195,21 @@ test-conformance-custom: build-server ## Run conformance tests with custom model
 	API_KEY="${API_KEY:-none}"; \
 	./scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
 
+test-openapi-conformance: ## Check OpenAPI conformance against OpenAI spec
+	@echo "$(GREEN)Checking OpenAPI conformance...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	uv run --with pyyaml ./scripts/openapi_conformance.py
+
+test-openapi-conformance-verbose: ## Check OpenAPI conformance with verbose output
+	@echo "$(GREEN)Checking OpenAPI conformance (verbose)...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	uv run --with pyyaml ./scripts/openapi_conformance.py --verbose
+
+test-openapi-conformance-json: ## Check OpenAPI conformance and save JSON report
+	@echo "$(GREEN)Checking OpenAPI conformance (saving to JSON)...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	uv run --with pyyaml ./scripts/openapi_conformance.py --output conformance-results.json
+
 validate-openapi: ## Validate OpenAPI spec consistency
 	@echo "$(GREEN)Validating OpenAPI spec...$(NC)"
 	./scripts/validate-openapi-sync.sh

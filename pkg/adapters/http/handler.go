@@ -48,6 +48,7 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	// Support both /responses (Open Responses spec) and /v1/responses (OpenAI compatibility)
 	h.mux.HandleFunc("POST /responses", h.handleResponses)
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
+	h.mux.HandleFunc("GET /v1/responses/{id}", h.handleGetResponse)
 
 	// Conversations API
 	h.mux.HandleFunc("POST /v1/conversations", h.handleCreateConversation)
@@ -83,6 +84,14 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("DELETE /v1/vector_stores/{id}", h.handleDeleteVectorStore)
 	h.mux.HandleFunc("POST /v1/vector_stores/{id}/files", h.handleAddVectorStoreFile)
 	h.mux.HandleFunc("GET /v1/vector_stores/{id}/files", h.handleListVectorStoreFiles)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}/files/{file_id}", h.handleGetVectorStoreFile)
+	h.mux.HandleFunc("DELETE /v1/vector_stores/{id}/files/{file_id}", h.handleDeleteVectorStoreFile)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}/files/{file_id}/content", h.handleGetVectorStoreFileContent)
+	h.mux.HandleFunc("POST /v1/vector_stores/{id}/search", h.handleSearchVectorStore)
+	h.mux.HandleFunc("POST /v1/vector_stores/{id}/file_batches", h.handleCreateVectorStoreFileBatch)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}/file_batches/{batch_id}", h.handleGetVectorStoreFileBatch)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}/file_batches/{batch_id}/files", h.handleListVectorStoreFileBatchFiles)
+	h.mux.HandleFunc("POST /v1/vector_stores/{id}/file_batches/{batch_id}/cancel", h.handleCancelVectorStoreFileBatch)
 
 	return h
 }
@@ -143,6 +152,35 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 
 	h.logger.Info("Response sent",
+		"response_id", resp.ID,
+		"status", resp.Status)
+}
+
+// handleGetResponse handles GET /v1/responses/{id}
+func (h *Handler) handleGetResponse(w http.ResponseWriter, r *http.Request) {
+	// Extract response ID from path
+	responseID := r.PathValue("id")
+	if responseID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Response ID is required")
+		return
+	}
+
+	h.logger.Info("Getting response", "response_id", responseID)
+
+	// Get response from session store
+	resp, err := h.engine.GetResponse(r.Context(), responseID)
+	if err != nil {
+		h.logger.Error("Failed to get response", "error", err, "response_id", responseID)
+		h.writeError(w, http.StatusNotFound, "response_not_found", err.Error())
+		return
+	}
+
+	// Write response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+
+	h.logger.Info("Response retrieved",
 		"response_id", resp.ID,
 		"status", resp.Status)
 }

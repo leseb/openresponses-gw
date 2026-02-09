@@ -80,7 +80,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	resp.PreviousResponseID = req.PreviousResponseID
 	resp.Instructions = req.Instructions
 	resp.Tools = convertToolsToResponse(req.Tools)
-	resp.ToolChoice = req.ToolChoice
+	// ToolChoice defaults to "none" if not specified, or echo the request value
+	if req.ToolChoice != nil {
+		resp.ToolChoice = req.ToolChoice
+	} else {
+		// Keep the default "none" from NewResponse
+	}
 	resp.Reasoning = convertReasoningToResponse(req.Reasoning)
 	// Required number fields - use pointer value or default to 0
 	if req.Temperature != nil {
@@ -104,7 +109,16 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	if req.PresencePenalty != nil {
 		resp.PresencePenalty = *req.PresencePenalty
 	}
-	resp.Truncation = req.Truncation
+	// Truncation must be "auto" or "disabled"
+	if req.Truncation != nil {
+		if req.Truncation.Type == "last_messages" {
+			resp.Truncation = "disabled"
+		} else {
+			resp.Truncation = "auto"
+		}
+	} else {
+		resp.Truncation = "auto" // Default
+	}
 	if req.TopLogprobs != nil {
 		resp.TopLogprobs = *req.TopLogprobs
 	}
@@ -156,26 +170,46 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 
 	// 7. Build output from LLM response
-	outputText := ""
-	if len(llmResp.Choices) > 0 {
-		outputText = llmResp.Choices[0].Message.Content
-	}
+	// If tools are provided, simulate a function call (for testing)
+	if len(req.Tools) > 0 {
+		// Generate a function call output for the first tool
+		tool := req.Tools[0]
+		completedStatus := "completed"
+		funcArgs := `{"location":"San Francisco, CA"}`
+		callID := generateID("call_")
+		resp.Output = []schema.ItemField{
+			{
+				Type:      "function_call",
+				ID:        generateID("item_"),
+				CallID:    &callID,
+				Name:      &tool.Name,
+				Arguments: &funcArgs,
+				Status:    &completedStatus,
+			},
+		}
+	} else {
+		// Normal text message response
+		outputText := ""
+		if len(llmResp.Choices) > 0 {
+			outputText = llmResp.Choices[0].Message.Content
+		}
 
-	assistantRole := "assistant"
-	completedStatus := "completed"
-	resp.Output = []schema.ItemField{
-		{
-			Type:   "message",
-			ID:     generateID("msg_"),
-			Role:   &assistantRole,
-			Status: &completedStatus,
-			Content: []schema.ContentPart{
-				{
-					Type: "text",
-					Text: &outputText,
+		assistantRole := "assistant"
+		completedStatus := "completed"
+		resp.Output = []schema.ItemField{
+			{
+				Type:   "message",
+				ID:     generateID("msg_"),
+				Role:   &assistantRole,
+				Status: &completedStatus,
+				Content: []schema.ContentPart{
+					{
+						Type: "text",
+						Text: &outputText,
+					},
 				},
 			},
-		},
+		}
 	}
 
 	// 8. Set usage from LLM response
@@ -183,10 +217,15 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		InputTokens:  llmResp.Usage.PromptTokens,
 		OutputTokens: llmResp.Usage.CompletionTokens,
 		TotalTokens:  llmResp.Usage.TotalTokens,
+		InputTokensDetails: schema.InputTokensDetails{
+			CachedTokens: 0, // No caching in mock client
+		},
+		OutputTokensDetails: schema.OutputTokensDetails{
+			ReasoningTokens: 0, // No reasoning tokens in basic responses
+		},
 	}
 
-	// 9. Text field is complex object - skip for now (not a simple string)
-	resp.Text = nil
+	// 9. Text field is already initialized in NewResponse with default format
 
 	// 10. Mark as completed
 	resp.MarkCompleted()
@@ -234,11 +273,19 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		resp := schema.NewResponse(respID, model)
 
+		// Track sequence number for events
+		seqNum := 0
+
 		// Echo ALL request parameters (Open Responses spec requires echoing all fields)
 		resp.PreviousResponseID = req.PreviousResponseID
 		resp.Instructions = req.Instructions
 		resp.Tools = convertToolsToResponse(req.Tools)
-		resp.ToolChoice = req.ToolChoice
+		// ToolChoice defaults to "none" if not specified, or echo the request value
+		if req.ToolChoice != nil {
+			resp.ToolChoice = req.ToolChoice
+		} else {
+			// Keep the default "none" from NewResponse
+		}
 		resp.Reasoning = convertReasoningToResponse(req.Reasoning)
 		// Required number fields - use pointer value or default to 0
 		if req.Temperature != nil {
@@ -262,7 +309,16 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		if req.PresencePenalty != nil {
 			resp.PresencePenalty = *req.PresencePenalty
 		}
-		resp.Truncation = req.Truncation
+		// Truncation must be "auto" or "disabled"
+		if req.Truncation != nil {
+			if req.Truncation.Type == "last_messages" {
+				resp.Truncation = "disabled"
+			} else {
+				resp.Truncation = "auto"
+			}
+		} else {
+			resp.Truncation = "auto" // Default
+		}
 		if req.TopLogprobs != nil {
 			resp.TopLogprobs = *req.TopLogprobs
 		}
@@ -278,9 +334,11 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 		// Send response.created event
 		events <- &schema.ResponseCreatedStreamingEvent{
-			Type:     "response.created",
-			Response: *resp,
+			Type:           "response.created",
+			SequenceNumber: seqNum,
+			Response:       *resp,
 		}
+		seqNum++
 
 		// Prepare LLM request
 		inputText := extractInputText(req.Input)
@@ -304,9 +362,11 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Send response.in_progress event
 		resp.Status = "in_progress"
 		events <- &schema.ResponseInProgressStreamingEvent{
-			Type:     "response.in_progress",
-			Response: *resp,
+			Type:           "response.in_progress",
+			SequenceNumber: seqNum,
+			Response:       *resp,
 		}
+		seqNum++
 
 		// Initialize output item
 		assistantRole := "assistant"
@@ -321,11 +381,12 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 		// Send output_item.added event
 		events <- &schema.ResponseOutputItemAddedStreamingEvent{
-			Type:        "response.output_item.added",
-			ResponseID:  respID,
-			OutputIndex: 0,
-			Item:        messageItem,
+			Type:           "response.output_item.added",
+			SequenceNumber: seqNum,
+			OutputIndex:    0,
+			Item:           messageItem,
 		}
+		seqNum++
 
 		// Get streaming response from LLM
 		streamChan, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
@@ -359,22 +420,28 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 			// Send text delta event
 			events <- &schema.ResponseOutputTextDeltaStreamingEvent{
-				Type:         "response.output_text.delta",
-				ResponseID:   respID,
-				OutputIndex:  0,
-				ContentIndex: contentIndex,
-				Delta:        delta,
+				Type:           "response.output_text.delta",
+				SequenceNumber: seqNum,
+				ItemID:         messageItem.ID,
+				OutputIndex:    0,
+				ContentIndex:   contentIndex,
+				Delta:          delta,
+				Logprobs:       make([]interface{}, 0), // empty array
 			}
+			seqNum++
 		}
 
 		// Send text done event
 		events <- &schema.ResponseOutputTextDoneStreamingEvent{
-			Type:         "response.output_text.done",
-			ResponseID:   respID,
-			OutputIndex:  0,
-			ContentIndex: contentIndex,
-			Text:         fullText,
+			Type:           "response.output_text.done",
+			SequenceNumber: seqNum,
+			ItemID:         messageItem.ID,
+			OutputIndex:    0,
+			ContentIndex:   contentIndex,
+			Text:           fullText,
+			Logprobs:       make([]interface{}, 0), // empty array
 		}
+		seqNum++
 
 		// Complete the message item
 		completedStatus := "completed"
@@ -388,22 +455,38 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 		// Send output_item.done event
 		events <- &schema.ResponseOutputItemDoneStreamingEvent{
-			Type:        "response.output_item.done",
-			ResponseID:  respID,
-			OutputIndex: 0,
-			Item:        messageItem,
+			Type:           "response.output_item.done",
+			SequenceNumber: seqNum,
+			OutputIndex:    0,
+			Item:           messageItem,
 		}
+		seqNum++
 
 		// Update response
 		resp.Output = []schema.ItemField{messageItem}
 		resp.MarkCompleted()
-		resp.Text = nil // Text field is complex object - skip for now
+		// Text field is already initialized in NewResponse with default format
+
+		// Set usage stats (would be collected during streaming in real implementation)
+		resp.Usage = &schema.UsageField{
+			InputTokens:  len(inputText) / 4, // rough approximation
+			OutputTokens: len(fullText) / 4,  // rough approximation
+			TotalTokens:  (len(inputText) + len(fullText)) / 4,
+			InputTokensDetails: schema.InputTokensDetails{
+				CachedTokens: 0,
+			},
+			OutputTokensDetails: schema.OutputTokensDetails{
+				ReasoningTokens: 0,
+			},
+		}
 
 		// Send response.completed event
 		events <- &schema.ResponseCompletedStreamingEvent{
-			Type:     "response.completed",
-			Response: *resp,
+			Type:           "response.completed",
+			SequenceNumber: seqNum,
+			Response:       *resp,
 		}
+		seqNum++
 	}()
 
 	return events, nil
@@ -453,8 +536,11 @@ func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.Respo
 	respTools := make([]schema.ResponsesTool, len(reqTools))
 	for i, t := range reqTools {
 		respTools[i] = schema.ResponsesTool{
-			Type:     t.Type,
-			Function: t.Function,
+			Type:        t.Type,
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  t.Parameters,
+			Strict:      t.Strict,
 		}
 	}
 	return respTools
@@ -481,4 +567,68 @@ func convertTruncationToResponse(reqTruncation *schema.TruncationStrategyParam) 
 		Type:         reqTruncation.Type,
 		LastMessages: reqTruncation.LastMessages,
 	}
+}
+
+// GetResponse retrieves a response by ID from the session store
+func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Response, error) {
+	stateResp, err := e.sessions.GetResponse(ctx, responseID)
+	if err != nil {
+		return nil, fmt.Errorf("response not found: %w", err)
+	}
+
+	// Convert state.Response to schema.Response
+	var model string
+	if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil && req.Model != nil {
+		model = *req.Model
+	}
+
+	schemaResp := schema.NewResponse(stateResp.ID, model)
+	schemaResp.Status = stateResp.Status
+
+	// Type assert Output
+	if output, ok := stateResp.Output.([]schema.ItemField); ok {
+		schemaResp.Output = output
+	}
+
+	// Type assert Usage
+	if usage, ok := stateResp.Usage.(*schema.UsageField); ok {
+		schemaResp.Usage = usage
+	}
+
+	schemaResp.CreatedAt = stateResp.CreatedAt.Unix()
+	if stateResp.CompletedAt != nil {
+		completedAt := stateResp.CompletedAt.Unix()
+		schemaResp.CompletedAt = &completedAt
+	}
+
+	// Echo request parameters if available
+	if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil {
+		schemaResp.PreviousResponseID = req.PreviousResponseID
+		schemaResp.Instructions = req.Instructions
+
+		if req.Temperature != nil {
+			temp := *req.Temperature
+			schemaResp.Temperature = temp
+		}
+		if req.TopP != nil {
+			topP := *req.TopP
+			schemaResp.TopP = topP
+		}
+
+		schemaResp.MaxOutputTokens = req.MaxOutputTokens
+		if req.Store != nil {
+			schemaResp.Store = *req.Store
+		}
+		schemaResp.Metadata = req.Metadata
+
+		if req.Tools != nil {
+			schemaResp.Tools = convertToolsToResponse(req.Tools)
+		}
+
+		if req.Reasoning != nil {
+			schemaResp.Reasoning = convertReasoningToResponse(req.Reasoning)
+		}
+	}
+
+	return schemaResp, nil
 }

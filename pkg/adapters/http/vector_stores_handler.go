@@ -448,3 +448,331 @@ func convertToSchemaVectorStoreFile(vsFile *memory.VectorStoreFile) schema.Vecto
 		ChunkingStrategy: chunkingStrategy,
 	}
 }
+
+// handleGetVectorStoreFile handles GET /v1/vector_stores/{id}/files/{file_id}
+func (h *Handler) handleGetVectorStoreFile(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	fileID := r.PathValue("file_id")
+
+	if vsID == "" || fileID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and file ID are required")
+		return
+	}
+
+	h.logger.Info("Getting vector store file", "vector_store_id", vsID, "file_id", fileID)
+
+	vsFile, err := h.vectorStoresStore.GetVectorStoreFile(r.Context(), vsID, fileID)
+	if err != nil {
+		h.logger.Error("Failed to get vector store file", "error", err)
+		h.writeError(w, http.StatusNotFound, "file_not_found", err.Error())
+		return
+	}
+
+	schemaVSFile := convertToSchemaVectorStoreFile(vsFile)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(schemaVSFile)
+}
+
+// handleDeleteVectorStoreFile handles DELETE /v1/vector_stores/{id}/files/{file_id}
+func (h *Handler) handleDeleteVectorStoreFile(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	fileID := r.PathValue("file_id")
+
+	if vsID == "" || fileID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and file ID are required")
+		return
+	}
+
+	h.logger.Info("Deleting vector store file", "vector_store_id", vsID, "file_id", fileID)
+
+	err := h.vectorStoresStore.DeleteVectorStoreFile(r.Context(), vsID, fileID)
+	if err != nil {
+		h.logger.Error("Failed to delete vector store file", "error", err)
+		h.writeError(w, http.StatusNotFound, "file_not_found", err.Error())
+		return
+	}
+
+	deleteResp := schema.DeleteVectorStoreFileResponse{
+		ID:      fileID,
+		Object:  "vector_store.file.deleted",
+		Deleted: true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(deleteResp)
+}
+
+// handleGetVectorStoreFileContent handles GET /v1/vector_stores/{id}/files/{file_id}/content
+func (h *Handler) handleGetVectorStoreFileContent(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	fileID := r.PathValue("file_id")
+
+	if vsID == "" || fileID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and file ID are required")
+		return
+	}
+
+	h.logger.Info("Getting vector store file content", "vector_store_id", vsID, "file_id", fileID)
+
+	// Get file metadata from files store (not vector store)
+	file, err := h.filesStore.GetFile(r.Context(), fileID)
+	if err != nil {
+		h.logger.Error("Failed to get file", "error", err)
+		h.writeError(w, http.StatusNotFound, "file_not_found", err.Error())
+		return
+	}
+
+	// Get file content
+	content, err := h.filesStore.GetFileContent(r.Context(), fileID)
+	if err != nil {
+		h.logger.Error("Failed to get file content", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "read_error", err.Error())
+		return
+	}
+
+	// Set content headers
+	w.Header().Set("Content-Type", file.MimeType)
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Filename+"\"")
+	w.Header().Set("Content-Length", strconv.FormatInt(file.Bytes, 10))
+
+	// Write content
+	w.WriteHeader(http.StatusOK)
+	w.Write(content)
+}
+
+// handleSearchVectorStore handles POST /v1/vector_stores/{id}/search
+func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+
+	if vsID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID is required")
+		return
+	}
+
+	// Parse request body
+	var req schema.SearchVectorStoreRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("Failed to parse search request", "error", err)
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse request body")
+		return
+	}
+
+	h.logger.Info("Searching vector store", "vector_store_id", vsID, "query", req.Query)
+
+	// TODO: Implement actual vector search
+	// For now, return empty results
+	searchResp := schema.SearchVectorStoreResponse{
+		Object: "list",
+		Data:   []schema.VectorStoreSearchResult{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(searchResp)
+}
+
+// handleCreateVectorStoreFileBatch handles POST /v1/vector_stores/{id}/file_batches
+func (h *Handler) handleCreateVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+
+	if vsID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID is required")
+		return
+	}
+
+	// Parse request body
+	var req schema.CreateVectorStoreFileBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("Failed to parse batch request", "error", err)
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse request body")
+		return
+	}
+
+	h.logger.Info("Creating file batch", "vector_store_id", vsID, "file_count", len(req.FileIDs))
+
+	// Create batch
+	batchID := generateID("vsfb_")
+	now := time.Now()
+
+	batch := &memory.VectorStoreFileBatch{
+		ID:            batchID,
+		VectorStoreID: vsID,
+		Status:        "completed", // Simplified: mark as completed immediately
+		FileCounts: memory.VectorStoreFileCounts{
+			Completed: len(req.FileIDs),
+			Total:     len(req.FileIDs),
+		},
+		CreatedAt: now,
+	}
+
+	err := h.vectorStoresStore.CreateVectorStoreFileBatch(r.Context(), batch)
+	if err != nil {
+		h.logger.Error("Failed to create batch", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "creation_error", err.Error())
+		return
+	}
+
+	// Add files to batch
+	for _, fileID := range req.FileIDs {
+		vsFile := &memory.VectorStoreFile{
+			ID:            generateID("vsf_"),
+			VectorStoreID: vsID,
+			FileID:        fileID,
+			Status:        "completed",
+			CreatedAt:     now,
+		}
+		h.vectorStoresStore.AddVectorStoreFile(r.Context(), vsFile)
+	}
+
+	// Return batch
+	schemaBatch := convertToSchemaFileBatch(batch)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(schemaBatch)
+}
+
+// handleGetVectorStoreFileBatch handles GET /v1/vector_stores/{id}/file_batches/{batch_id}
+func (h *Handler) handleGetVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	batchID := r.PathValue("batch_id")
+
+	if vsID == "" || batchID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and batch ID are required")
+		return
+	}
+
+	h.logger.Info("Getting file batch", "vector_store_id", vsID, "batch_id", batchID)
+
+	batch, err := h.vectorStoresStore.GetVectorStoreFileBatch(r.Context(), vsID, batchID)
+	if err != nil {
+		h.logger.Error("Failed to get batch", "error", err)
+		h.writeError(w, http.StatusNotFound, "batch_not_found", err.Error())
+		return
+	}
+
+	schemaBatch := convertToSchemaFileBatch(batch)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(schemaBatch)
+}
+
+// handleListVectorStoreFileBatchFiles handles GET /v1/vector_stores/{id}/file_batches/{batch_id}/files
+func (h *Handler) handleListVectorStoreFileBatchFiles(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	batchID := r.PathValue("batch_id")
+
+	if vsID == "" || batchID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and batch ID are required")
+		return
+	}
+
+	// Parse query parameters
+	query := r.URL.Query()
+	after := query.Get("after")
+	before := query.Get("before")
+	filter := query.Get("filter")
+	order := query.Get("order")
+	if order == "" {
+		order = "desc"
+	}
+
+	limit := 20
+	if limitStr := query.Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	h.logger.Info("Listing batch files", "vector_store_id", vsID, "batch_id", batchID)
+
+	// For now, return all files in the vector store (since we don't track batch membership)
+	files, hasMore, err := h.vectorStoresStore.ListVectorStoreFilesPaginated(
+		r.Context(), vsID, after, before, limit, order, filter,
+	)
+	if err != nil {
+		h.logger.Error("Failed to list batch files", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "list_error", err.Error())
+		return
+	}
+
+	// Convert to schema
+	schemaFiles := make([]schema.VectorStoreFile, 0, len(files))
+	for _, vsFile := range files {
+		schemaFiles = append(schemaFiles, convertToSchemaVectorStoreFile(vsFile))
+	}
+
+	// Build response
+	listResp := schema.ListVectorStoreFilesResponse{
+		Object:  "list",
+		Data:    schemaFiles,
+		HasMore: hasMore,
+	}
+
+	if len(schemaFiles) > 0 {
+		listResp.FirstID = schemaFiles[0].ID
+		listResp.LastID = schemaFiles[len(schemaFiles)-1].ID
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(listResp)
+}
+
+// handleCancelVectorStoreFileBatch handles POST /v1/vector_stores/{id}/file_batches/{batch_id}/cancel
+func (h *Handler) handleCancelVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
+	vsID := r.PathValue("id")
+	batchID := r.PathValue("batch_id")
+
+	if vsID == "" || batchID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Vector store ID and batch ID are required")
+		return
+	}
+
+	h.logger.Info("Canceling file batch", "vector_store_id", vsID, "batch_id", batchID)
+
+	// Get batch
+	batch, err := h.vectorStoresStore.GetVectorStoreFileBatch(r.Context(), vsID, batchID)
+	if err != nil {
+		h.logger.Error("Failed to get batch", "error", err)
+		h.writeError(w, http.StatusNotFound, "batch_not_found", err.Error())
+		return
+	}
+
+	// Update status to cancelled
+	batch.Status = "cancelled"
+	err = h.vectorStoresStore.UpdateVectorStoreFileBatch(r.Context(), batch)
+	if err != nil {
+		h.logger.Error("Failed to cancel batch", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "cancel_error", err.Error())
+		return
+	}
+
+	schemaBatch := convertToSchemaFileBatch(batch)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(schemaBatch)
+}
+
+// convertToSchemaFileBatch converts internal batch to schema
+func convertToSchemaFileBatch(batch *memory.VectorStoreFileBatch) schema.VectorStoreFileBatch {
+	return schema.VectorStoreFileBatch{
+		ID:            batch.ID,
+		Object:        "vector_store.file_batch",
+		VectorStoreID: batch.VectorStoreID,
+		Status:        batch.Status,
+		FileCounts: schema.VectorStoreFileCounts{
+			InProgress: batch.FileCounts.InProgress,
+			Completed:  batch.FileCounts.Completed,
+			Failed:     batch.FileCounts.Failed,
+			Cancelled:  batch.FileCounts.Cancelled,
+			Total:      batch.FileCounts.Total,
+		},
+		CreatedAt: batch.CreatedAt.Unix(),
+	}
+}

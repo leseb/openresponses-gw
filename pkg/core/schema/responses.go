@@ -97,7 +97,7 @@ type Response struct {
 	CreatedAt int64 `json:"created_at"`
 
 	// Completion timestamp
-	CompletedAt *int64 `json:"completed_at,omitempty"`
+	CompletedAt *int64 `json:"completed_at"` // nullable
 
 	// Model used
 	Model string `json:"model"`
@@ -106,64 +106,64 @@ type Response struct {
 	Status string `json:"status"`
 
 	// Output items
-	Output []ItemField `json:"output,omitempty"`
+	Output []ItemField `json:"output"` // required array (empty or populated)
 
 	// Token usage
-	Usage *UsageField `json:"usage,omitempty"`
+	Usage *UsageField `json:"usage"` // nullable
 
-	// Error details if status is "failed"
-	Error *ErrorField `json:"error,omitempty"`
+	// Error details if status is "failed" (must be present, can be null)
+	Error *ErrorField `json:"error"`
 
-	// Incomplete details if status is "incomplete"
-	IncompleteDetails *IncompleteDetailsField `json:"incomplete_details,omitempty"`
+	// Incomplete details if status is "incomplete" (must be present, can be null)
+	IncompleteDetails *IncompleteDetailsField `json:"incomplete_details"`
 
 	// Metadata (echoed from request)
 	Metadata map[string]string `json:"metadata,omitempty"`
 
 	// Echo request parameters (all fields must be present per Open Responses spec)
-	PreviousResponseID *string             `json:"previous_response_id"` // nullable
-	Instructions       *string             `json:"instructions"`         // nullable
-	Tools              []ResponsesTool     `json:"tools"`                // required array (empty if no tools)
-	ToolChoice         interface{}         `json:"tool_choice"`          // nullable
-	Reasoning          *ReasoningConfig    `json:"reasoning"`            // nullable
-	Temperature        float64             `json:"temperature"`          // required number
-	TopP               float64             `json:"top_p"`                // required number
-	MaxOutputTokens    *int                `json:"max_output_tokens"`    // nullable
-	MaxToolCalls       *int                `json:"max_tool_calls"`       // nullable
-	ParallelToolCalls  bool                `json:"parallel_tool_calls"`  // required boolean
-	Store              bool                `json:"store"`                // required boolean
-	FrequencyPenalty   float64             `json:"frequency_penalty"`    // required number
-	PresencePenalty    float64             `json:"presence_penalty"`     // required number
-	Truncation         interface{}         `json:"truncation"`           // required (complex type)
-	TopLogprobs        int                 `json:"top_logprobs"`         // required number
-	ServiceTier        string              `json:"service_tier"`         // required string
-	Background         bool                `json:"background"`           // required boolean
-	PromptCacheKey     *string             `json:"prompt_cache_key"`     // nullable
-	SafetyIdentifier   *string             `json:"safety_identifier"`    // nullable
+	PreviousResponseID *string          `json:"previous_response_id"` // nullable
+	Instructions       *string          `json:"instructions"`         // nullable
+	Tools              []ResponsesTool  `json:"tools"`                // required array (empty if no tools)
+	ToolChoice         interface{}      `json:"tool_choice"`          // string enum ("none", "auto", "required") or object
+	Reasoning          *ReasoningConfig `json:"reasoning"`            // nullable
+	Temperature        float64          `json:"temperature"`          // required number
+	TopP               float64          `json:"top_p"`                // required number
+	MaxOutputTokens    *int             `json:"max_output_tokens"`    // nullable
+	MaxToolCalls       *int             `json:"max_tool_calls"`       // nullable
+	ParallelToolCalls  bool             `json:"parallel_tool_calls"`  // required boolean
+	Store              bool             `json:"store"`                // required boolean
+	FrequencyPenalty   float64          `json:"frequency_penalty"`    // required number
+	PresencePenalty    float64          `json:"presence_penalty"`     // required number
+	Truncation         string           `json:"truncation"`           // required: "auto" or "disabled"
+	TopLogprobs        int              `json:"top_logprobs"`         // required number
+	ServiceTier        string           `json:"service_tier"`         // required string
+	Background         bool             `json:"background"`           // required boolean
+	PromptCacheKey     *string          `json:"prompt_cache_key"`     // nullable
+	SafetyIdentifier   *string          `json:"safety_identifier"`    // nullable
 
-	// Text field: object with format and optional verbosity (not a string!)
-	Text interface{} `json:"text"` // nullable (complex type)
+	// Text field: object with format (required)
+	Text *TextField `json:"text"` // nullable
 }
 
 // ItemField represents an output item (discriminated union by type)
 type ItemField struct {
 	Type string `json:"type"` // "message", "function_call", "function_call_output", "reasoning"
-	ID   string `json:"id,omitempty"`
+	ID   string `json:"id"`   // required for all item types
 
-	// Message fields
-	Role    *string       `json:"role,omitempty"` // "user", "assistant", "system", "developer"
-	Content []ContentPart `json:"content,omitempty"`
-	Status  *string       `json:"status,omitempty"` // "in_progress", "completed"
+	// Message fields (required when type="message")
+	Role    *string       `json:"role"`    // required for message, "user", "assistant", "system", "developer"
+	Content []ContentPart `json:"content"` // required for message
+	Status  *string       `json:"status"`  // required for message, "in_progress", "completed"
 
-	// Function call fields
+	// Function call fields (required when type="function_call")
 	Name      *string `json:"name,omitempty"`
 	CallID    *string `json:"call_id,omitempty"`
 	Arguments *string `json:"arguments,omitempty"`
 
-	// Function output fields
+	// Function output fields (required when type="function_call_output")
 	Output *string `json:"output,omitempty"`
 
-	// Reasoning fields
+	// Reasoning fields (required when type="reasoning")
 	Summary *string `json:"summary,omitempty"`
 }
 
@@ -202,16 +202,16 @@ type VideoURL struct {
 
 // UsageField represents token usage
 type UsageField struct {
-	InputTokens         int                  `json:"input_tokens"`
-	OutputTokens        int                  `json:"output_tokens"`
-	TotalTokens         int                  `json:"total_tokens"`
-	InputTokensDetails  *InputTokensDetails  `json:"input_tokens_details,omitempty"`
-	OutputTokensDetails *OutputTokensDetails `json:"output_tokens_details,omitempty"`
+	InputTokens         int                 `json:"input_tokens"`
+	OutputTokens        int                 `json:"output_tokens"`
+	TotalTokens         int                 `json:"total_tokens"`
+	InputTokensDetails  InputTokensDetails  `json:"input_tokens_details"`  // required
+	OutputTokensDetails OutputTokensDetails `json:"output_tokens_details"` // required
 }
 
 // InputTokensDetails provides breakdown of input tokens
 type InputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens int `json:"cached_tokens"` // required
 	AudioTokens  int `json:"audio_tokens,omitempty"`
 	TextTokens   int `json:"text_tokens,omitempty"`
 	ImageTokens  int `json:"image_tokens,omitempty"`
@@ -219,9 +219,19 @@ type InputTokensDetails struct {
 
 // OutputTokensDetails provides breakdown of output tokens
 type OutputTokensDetails struct {
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	ReasoningTokens int `json:"reasoning_tokens"` // required
 	AudioTokens     int `json:"audio_tokens,omitempty"`
 	TextTokens      int `json:"text_tokens,omitempty"`
+}
+
+// TextField represents the text output format configuration
+type TextField struct {
+	Format TextFormat `json:"format"`
+}
+
+// TextFormat represents the response format type
+type TextFormat struct {
+	Type string `json:"type"` // "text", "json_object", "json_schema"
 }
 
 // ErrorField represents error information
@@ -239,23 +249,20 @@ type IncompleteDetailsField struct {
 
 // ResponsesToolParam represents a tool definition (request)
 type ResponsesToolParam struct {
-	Type     string              `json:"type"` // "function", "file_search", "web_search"
-	Function *FunctionDefinition `json:"function,omitempty"`
-	// Additional tool-specific fields can be added
-}
-
-// ResponsesTool represents a tool (response echo)
-type ResponsesTool struct {
-	Type     string              `json:"type"`
-	Function *FunctionDefinition `json:"function,omitempty"`
-}
-
-// FunctionDefinition represents a function tool
-type FunctionDefinition struct {
-	Name        string                 `json:"name"`
+	Type        string                 `json:"type"` // "function", "file_search", "web_search"
+	Name        string                 `json:"name,omitempty"`
 	Description *string                `json:"description,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema
 	Strict      *bool                  `json:"strict,omitempty"`
+}
+
+// ResponsesTool represents a tool (response echo) - flat structure per Open Responses spec
+type ResponsesTool struct {
+	Type        string                 `json:"type"`
+	Name        string                 `json:"name"`
+	Description *string                `json:"description"` // nullable
+	Parameters  map[string]interface{} `json:"parameters"`  // nullable
+	Strict      *bool                  `json:"strict"`      // nullable
 }
 
 // ReasoningParam represents reasoning configuration (request)
@@ -298,54 +305,60 @@ type BaseStreamingEvent struct {
 
 // ResponseCreatedStreamingEvent - response.created
 type ResponseCreatedStreamingEvent struct {
-	Type     string   `json:"type"` // "response.created"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.created"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseQueuedStreamingEvent - response.queued
 type ResponseQueuedStreamingEvent struct {
-	Type     string   `json:"type"` // "response.queued"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.queued"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseInProgressStreamingEvent - response.in_progress
 type ResponseInProgressStreamingEvent struct {
-	Type     string   `json:"type"` // "response.in_progress"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.in_progress"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseCompletedStreamingEvent - response.completed
 type ResponseCompletedStreamingEvent struct {
-	Type     string   `json:"type"` // "response.completed"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.completed"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseFailedStreamingEvent - response.failed
 type ResponseFailedStreamingEvent struct {
-	Type     string   `json:"type"` // "response.failed"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.failed"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseIncompleteStreamingEvent - response.incomplete
 type ResponseIncompleteStreamingEvent struct {
-	Type     string   `json:"type"` // "response.incomplete"
-	Response Response `json:"response"`
+	Type           string   `json:"type"` // "response.incomplete"
+	SequenceNumber int      `json:"sequence_number"`
+	Response       Response `json:"response"`
 }
 
 // ResponseOutputItemAddedStreamingEvent - response.output_item.added
 type ResponseOutputItemAddedStreamingEvent struct {
-	Type        string    `json:"type"` // "response.output_item.added"
-	ResponseID  string    `json:"response_id"`
-	OutputIndex int       `json:"output_index"`
-	Item        ItemField `json:"item"`
+	Type           string    `json:"type"` // "response.output_item.added"
+	SequenceNumber int       `json:"sequence_number"`
+	OutputIndex    int       `json:"output_index"`
+	Item           ItemField `json:"item"`
 }
 
 // ResponseOutputItemDoneStreamingEvent - response.output_item.done
 type ResponseOutputItemDoneStreamingEvent struct {
-	Type        string    `json:"type"` // "response.output_item.done"
-	ResponseID  string    `json:"response_id"`
-	OutputIndex int       `json:"output_index"`
-	Item        ItemField `json:"item"`
+	Type           string    `json:"type"` // "response.output_item.done"
+	SequenceNumber int       `json:"sequence_number"`
+	OutputIndex    int       `json:"output_index"`
+	Item           ItemField `json:"item"`
 }
 
 // ResponseContentPartAddedStreamingEvent - response.content_part.added
@@ -368,20 +381,24 @@ type ResponseContentPartDoneStreamingEvent struct {
 
 // ResponseOutputTextDeltaStreamingEvent - response.output_text.delta
 type ResponseOutputTextDeltaStreamingEvent struct {
-	Type         string `json:"type"` // "response.output_text.delta"
-	ResponseID   string `json:"response_id"`
-	OutputIndex  int    `json:"output_index"`
-	ContentIndex int    `json:"content_index"`
-	Delta        string `json:"delta"`
+	Type           string        `json:"type"` // "response.output_text.delta"
+	SequenceNumber int           `json:"sequence_number"`
+	ItemID         string        `json:"item_id"`
+	OutputIndex    int           `json:"output_index"`
+	ContentIndex   int           `json:"content_index"`
+	Delta          string        `json:"delta"`
+	Logprobs       []interface{} `json:"logprobs"` // required array of log prob objects
 }
 
 // ResponseOutputTextDoneStreamingEvent - response.output_text.done
 type ResponseOutputTextDoneStreamingEvent struct {
-	Type         string `json:"type"` // "response.output_text.done"
-	ResponseID   string `json:"response_id"`
-	OutputIndex  int    `json:"output_index"`
-	ContentIndex int    `json:"content_index"`
-	Text         string `json:"text"`
+	Type           string        `json:"type"` // "response.output_text.done"
+	SequenceNumber int           `json:"sequence_number"`
+	ItemID         string        `json:"item_id"`
+	OutputIndex    int           `json:"output_index"`
+	ContentIndex   int           `json:"content_index"`
+	Text           string        `json:"text"`
+	Logprobs       []interface{} `json:"logprobs"` // required array of log prob objects
 }
 
 // ResponseRefusalDeltaStreamingEvent - response.refusal.delta
@@ -506,6 +523,7 @@ func NewResponse(id, model string) *Response {
 		Output:    make([]ItemField, 0),
 		// Initialize required fields with defaults (Open Responses spec)
 		Tools:             make([]ResponsesTool, 0), // empty array, not nil
+		ToolChoice:        "none",                   // default to "none" (string enum)
 		Temperature:       0.0,
 		TopP:              0.0,
 		ParallelToolCalls: false,
@@ -515,7 +533,12 @@ func NewResponse(id, model string) *Response {
 		TopLogprobs:       0,
 		ServiceTier:       "",
 		Background:        false,
-		Truncation:        nil, // Will be set explicitly
+		Truncation:        "auto", // Default: "auto" or "disabled"
+		Text: &TextField{
+			Format: TextFormat{
+				Type: "text",
+			},
+		},
 	}
 }
 

@@ -74,7 +74,8 @@ type StaticChunkingStrategy struct {
 type VectorStoresStore struct {
 	mu           sync.RWMutex
 	vectorStores map[string]*VectorStore
-	vsFiles      map[string]*VectorStoreFile // Key: vector_store_id:file_id
+	vsFiles      map[string]*VectorStoreFile      // Key: vector_store_id:file_id
+	vsBatches    map[string]*VectorStoreFileBatch // Key: batch_id
 }
 
 // NewVectorStoresStore creates a new vector stores store
@@ -82,6 +83,7 @@ func NewVectorStoresStore() *VectorStoresStore {
 	return &VectorStoresStore{
 		vectorStores: make(map[string]*VectorStore),
 		vsFiles:      make(map[string]*VectorStoreFile),
+		vsBatches:    make(map[string]*VectorStoreFileBatch),
 	}
 }
 
@@ -339,4 +341,52 @@ func (s *VectorStoresStore) ListVectorStoreFilesPaginated(ctx context.Context, v
 	hasMore := len(allFiles) > len(filtered) && len(filtered) == limit
 
 	return filtered, hasMore, nil
+}
+
+// VectorStoreFileBatch represents a batch of files being processed
+type VectorStoreFileBatch struct {
+	ID            string
+	VectorStoreID string
+	Status        string // "in_progress", "completed", "cancelled", "failed"
+	FileCounts    VectorStoreFileCounts
+	CreatedAt     time.Time
+}
+
+// CreateVectorStoreFileBatch creates a new file batch
+func (s *VectorStoresStore) CreateVectorStoreFileBatch(ctx context.Context, batch *VectorStoreFileBatch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.vsBatches == nil {
+		s.vsBatches = make(map[string]*VectorStoreFileBatch)
+	}
+
+	s.vsBatches[batch.ID] = batch
+	return nil
+}
+
+// GetVectorStoreFileBatch retrieves a file batch by ID
+func (s *VectorStoresStore) GetVectorStoreFileBatch(ctx context.Context, vsID, batchID string) (*VectorStoreFileBatch, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	batch, exists := s.vsBatches[batchID]
+	if !exists || batch.VectorStoreID != vsID {
+		return nil, fmt.Errorf("batch %s not found in vector store %s", batchID, vsID)
+	}
+
+	return batch, nil
+}
+
+// UpdateVectorStoreFileBatch updates a file batch
+func (s *VectorStoresStore) UpdateVectorStoreFileBatch(ctx context.Context, batch *VectorStoreFileBatch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.vsBatches[batch.ID]; !exists {
+		return fmt.Errorf("batch %s not found", batch.ID)
+	}
+
+	s.vsBatches[batch.ID] = batch
+	return nil
 }
