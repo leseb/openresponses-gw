@@ -1,39 +1,54 @@
 # OpenAI Responses API Gateway
 
 ![Open Responses Compliant](https://img.shields.io/badge/Open%20Responses-100%25%20Compliant-brightgreen)
+![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20API-99.5%25%20Schema%20Compatible-blue)
 
-A production-ready, gateway-agnostic implementation of the [Open Responses API](https://github.com/openresponses/openresponses) with **100% specification compliance** and support for multiple deployment modes.
+A production-ready, gateway-agnostic implementation of the [Open Responses API](https://github.com/openresponses/openresponses) with **100% specification compliance** and **99.5% OpenAI API schema compatibility**.
 
 ## Features
 
-- ✅ **100% Open Responses Compliant**: Passes all official conformance tests
+- ✅ **100% Open Responses Compliant**: Passes all 6 official conformance tests
+- ✅ **99.5% OpenAI API Compatible**: Near-perfect schema alignment with OpenAI's API
 - 🌐 **Gateway-Agnostic**: Works with Envoy, Kong, standalone HTTP server, or any gateway
-- 🔄 **Stateful API**: Full support for conversations, sessions, and response history
-- 🛠️ **Tool Execution**: Built-in tools (file search, web search, code interpreter) + custom tools (MCP, functions)
 - 📡 **Streaming Support**: All 24 SSE event types from Open Responses spec
-- 📊 **Production-Ready**: Observability, security, and performance optimization built-in
+- 🔌 **Multiple Backends**: OpenAI, Ollama, vLLM, or any OpenAI-compatible API
+- 📊 **Comprehensive Testing**: Conformance, smoke, and integration tests
+
+### ⚠️ Known Limitations
+
+See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for complete details:
+- **Parameter Support**: 5/18 request parameters fully functional (model, input, instructions, temperature, max_output_tokens)
+- **Tool Calling**: Currently mocked (returns fake data, not connected to LLM)
+- **Multi-turn Conversations**: Not yet implemented (previous_response_id accepted but not used)
+- **RAG/Vector Search**: Endpoints exist but return stub data
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Gateway Layer                            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Envoy ExtProc│  │ Kong Plugin  │  │ HTTP Server  │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│                         Adapter Layer                            │
+│  ┌──────────────┐  ┌──────────────┐                             │
+│  │ HTTP Server  │  │ Envoy ExtProc│  (Kong - planned)           │
+│  └──────────────┘  └──────────────┘                             │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────────┐
 │                    Core Engine (Gateway-Agnostic)                │
-│  - Responses API Handler                                         │
-│  - Session Management                                            │
-│  - Tool Execution                                                │
+│  • Responses API → Chat Completions Translation                 │
+│  • Request Validation & Parameter Handling                       │
+│  • Streaming (SSE) Support                                       │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────────┐
-│              Supporting APIs & Storage                           │
-│  - Conversations, Files, Vector Stores, Search                   │
-│  - PostgreSQL, Redis, S3                                         │
+│                   LLM Backend Integration                        │
+│  • OpenAI Client (via openai-go SDK)                            │
+│  • Supports: OpenAI, Ollama, vLLM, etc.                         │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────────────┐
+│                       Storage Layer                              │
+│  • In-Memory Store (current)                                     │
+│  • PostgreSQL, Redis (planned)                                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,38 +99,46 @@ curl -X POST http://localhost:8080/v1/responses \
 
 ## Project Status
 
-**Current Phase:** Phase 1 - Foundation (Week 1-2)
+**Current State:** Schema-complete, functionally partial
 
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the complete implementation roadmap.
+### ✅ Completed
+- [x] HTTP server implementation
+- [x] Core engine with LLM integration
+- [x] Request/response handling (non-streaming + streaming)
+- [x] 99.5% OpenAI API schema conformance
+- [x] Files API (5 endpoints)
+- [x] Vector Stores API (13 endpoints)
+- [x] Responses API (2 endpoints)
+- [x] Models API (1 endpoint)
+- [x] Comprehensive test infrastructure
 
-### Phase 1 Milestones
-- [x] Project initialization
-- [ ] HTTP server implementation
-- [ ] Core engine basics
-- [ ] Basic request/response handling
+### 🚧 In Progress
+- [ ] Full parameter support (currently 5/18 working)
+- [ ] Real tool calling (currently mocked)
+- [ ] Multi-turn conversation history
+- [ ] Vector search implementation
+- [ ] RAG integration
+
+See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation details and [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the complete roadmap.
 
 ## Configuration
 
-```yaml
-# config.yaml
-server:
-  host: 0.0.0.0
-  port: 8080
-  timeout: 60s
+```bash
+# Environment variables
+export MODEL_ENDPOINT="http://localhost:11434/v1"  # Ollama, OpenAI, vLLM, etc.
+export API_KEY="your-api-key"                       # Optional for local backends
 
-storage:
-  postgres:
-    host: localhost
-    port: 5432
-    database: responses_gateway
-
-llm:
-  provider: openai
-  endpoint: https://api.openai.com/v1
-  api_key: ${OPENAI_API_KEY}
+# Start server
+./bin/responses-gateway-server
 ```
 
-See [examples/standalone/config.yaml](examples/standalone/config.yaml) for full configuration.
+**Current Storage:** In-memory only (session data not persisted)
+**Planned:** PostgreSQL, Redis (see roadmap)
+
+Connect to any OpenAI-compatible backend:
+- **OpenAI**: `https://api.openai.com/v1` + API key
+- **Ollama**: `http://localhost:11434/v1` + no key
+- **vLLM**: `http://your-server:8000/v1` + optional key
 
 ## API Documentation
 
@@ -187,26 +210,30 @@ make build-extproc      # Build Envoy ExtProc adapter
 ### Test
 
 ```bash
-make test               # Run unit tests
-make test-integration   # Run integration tests
-make test-e2e           # Run end-to-end tests
-make test-coverage      # Generate coverage report
-make test-conformance   # Run Open Responses conformance tests
+make test                        # Run unit tests
+make test-conformance            # Open Responses spec conformance (6/6 passing)
+make test-openapi-conformance    # OpenAI API schema conformance (99.5%)
+./scripts/test-smoke.sh          # Quick smoke tests (~15 seconds)
+./scripts/test-responses-minimal.sh  # Minimal validation (4 tests)
+./scripts/test-envoy-extproc.sh  # Envoy integration tests
 ```
 
 ### Conformance Testing
 
-This project maintains **100% compliance** with the [Open Responses Specification](https://github.com/openresponses/openresponses).
+This project maintains:
+- ✅ **100% Open Responses compliance** - All 6 conformance tests pass
+- ✅ **99.5% OpenAI schema compatibility** - Near-perfect API alignment
 
 ```bash
-# Install pre-commit hooks (runs tests automatically)
+# Install pre-commit hooks (runs conformance checks on openapi.yaml)
 make pre-commit-install
 
-# Run conformance tests manually
-make test-conformance
+# Run all conformance tests
+make test-conformance              # Open Responses spec
+make test-openapi-conformance      # OpenAI API comparison
 ```
 
-The conformance test suite validates:
+**Open Responses Conformance:** (100%)
 - ✅ Basic text responses
 - ✅ Streaming with all 24 event types
 - ✅ System prompts and instructions
@@ -214,21 +241,19 @@ The conformance test suite validates:
 - ✅ Multimodal input (images)
 - ✅ Multi-turn conversations
 
-See [CONFORMANCE.md](./CONFORMANCE.md) for detailed testing documentation.
+**OpenAI API Conformance:** (99.5%)
+- ✅ Files API: 100%
+- ✅ Responses API: 100%
+- ✅ Vector Stores API: 99%
+- ✅ Models API: 83%
+
+See [TESTING.md](./TESTING.md) for testing guide and [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation details.
 
 ### Lint
 
 ```bash
 make lint               # Run golangci-lint
 make fmt                # Format code
-```
-
-### Database
-
-```bash
-make migrate-up         # Run database migrations
-make migrate-down       # Rollback migrations
-make migrate-create NAME=add_users  # Create new migration
 ```
 
 ### Docker
@@ -245,47 +270,55 @@ make docker-push        # Push to registry
 .
 ├── cmd/
 │   ├── server/           # Standalone HTTP server
-│   └── envoy-extproc/    # Envoy External Processor
+│   └── envoy-extproc/    # Envoy External Processor (planned)
 ├── pkg/
 │   ├── core/             # Gateway-agnostic core
-│   │   ├── engine/       # Main orchestration
-│   │   ├── schema/       # API schemas
-│   │   ├── state/        # State management
-│   │   ├── tools/        # Tool execution
-│   │   └── api/          # Supporting API clients
+│   │   ├── engine/       # Main orchestration & LLM translation
+│   │   ├── schema/       # API schemas (Responses, Files, Vector Stores)
+│   │   ├── state/        # State management interfaces
+│   │   ├── config/       # Configuration
+│   │   └── api/          # LLM client (OpenAI-compatible)
 │   ├── adapters/         # Gateway-specific adapters
-│   │   ├── http/         # Standard HTTP
-│   │   └── envoy/        # Envoy ExtProc
-│   ├── storage/          # Storage implementations
-│   │   ├── postgres/     # PostgreSQL
-│   │   ├── redis/        # Redis cache
-│   │   └── memory/       # In-memory (dev)
-│   └── observability/    # Metrics, tracing, logging
+│   │   ├── http/         # HTTP server (handlers, routes)
+│   │   └── envoy/        # Envoy ExtProc (planned)
+│   └── storage/          # Storage implementations
+│       └── memory/       # In-memory (current - sessions, files, vectors)
+├── scripts/              # Testing & conformance scripts
 ├── examples/
-│   ├── standalone/       # Standalone deployment
-│   └── envoy/            # Envoy deployment
-└── tests/
-    ├── integration/      # Integration tests
-    └── e2e/              # End-to-end tests
+│   └── envoy/            # Envoy deployment examples
+└── docs/
+    ├── FUNCTIONAL_CONFORMANCE.md  # What actually works
+    ├── CONFORMANCE_STATUS.md      # OpenAPI conformance journey
+    └── TESTING.md                 # Test infrastructure guide
 ```
 
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed architecture.
+See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation details.
 
-## Supported APIs
+## API Implementation Status
 
-- ✅ Responses API (`/v1/responses`)
-- 🚧 Conversations API (`/v1/conversations`) - Phase 3
-- 🚧 Files API (`/v1/files`) - Phase 3
-- 🚧 Vector Stores API (`/v1/vector-stores`) - Phase 3
-- 🚧 Search API (`/v1/search`) - Phase 3
+### ✅ Fully Implemented (Schema + Endpoints)
 
-## Supported Tools
+| API | Endpoints | Schema Conformance | Status |
+|-----|-----------|-------------------|---------|
+| **Responses API** | 2/2 | 100% | ✅ Working |
+| **Files API** | 5/5 | 100% | ✅ Working |
+| **Vector Stores API** | 13/13 | 99% | ✅ Endpoints work, search is stub |
+| **Models API** | 1/1 | 83% | ✅ Working |
 
-- 🚧 File Search - Phase 4
-- 🚧 Web Search - Phase 4
-- 🚧 Code Interpreter - Phase 4
-- 🚧 Function Calling - Phase 4
-- 🚧 MCP Connectors - Phase 4
+### ⚠️ Partially Implemented
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| **Tool Calling** | 🔄 Mocked | Accepts tools, returns fake data |
+| **Multi-turn** | 🔄 Schema only | Accepts `previous_response_id`, doesn't use it |
+| **Vector Search** | 🔄 Stub | Endpoint exists, returns empty results |
+
+### ❌ Not Implemented
+
+- ❌ Conversations API (planned)
+- ❌ RAG integration (planned)
+- ❌ File attachments in responses (planned)
+- ❌ Vision/multimodal (planned)
 
 ## Deployment Modes
 
@@ -346,16 +379,27 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines.
 
 Apache 2.0 - See [LICENSE](./LICENSE)
 
-## References
+## Documentation
 
+### Conformance & Testing
+- [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) - **What actually works** (schema vs functional)
+- [CONFORMANCE_STATUS.md](./CONFORMANCE_STATUS.md) - OpenAPI conformance journey (8.3% → 99.5%)
+- [TESTING.md](./TESTING.md) - Complete testing guide
+- [OPENAPI_CONFORMANCE.md](./OPENAPI_CONFORMANCE.md) - Detailed gap analysis
+
+### Specifications
 - [Open Responses Specification](https://github.com/openresponses/openresponses) - The unified API spec we implement
-- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) - Original implementation
-- [Conformance Testing Guide](./CONFORMANCE.md) - How we validate compliance
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Envoy External Processing](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter)
+- [OpenAI API Reference](https://platform.openai.com/docs/api-reference) - OpenAI compatibility target
+
+### Development
+- [PROJECT_PLAN.md](./PROJECT_PLAN.md) - Implementation roadmap
+- [openapi.yaml](./openapi.yaml) - Complete API specification
 
 ## Roadmap
 
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the 14-week implementation roadmap.
+See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the complete implementation roadmap.
 
-**Current Status:** Week 1 - Foundation Phase
+**Current Status:**
+- ✅ Schema implementation complete (99.5%)
+- 🚧 Functional implementation partial (~35%)
+- 🎯 Next: Full parameter support, real tool calling
