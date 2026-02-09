@@ -22,9 +22,9 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-imports
       - id: go-mod-tidy
       # Note: Run 'make lint' manually for full linting with golangci-lint
+      # Note: go-imports requires Go bin in PATH - run manually if needed
 
   # Local validation hooks
   - repo: local

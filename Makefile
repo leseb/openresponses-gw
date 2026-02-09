@@ -178,9 +178,22 @@ pre-commit-install: ## Install pre-commit hooks
 	pre-commit install
 	@echo "$(GREEN)✓ Pre-commit hooks installed$(NC)"
 
-test-conformance: build-server ## Run Open Responses conformance tests
+test-conformance: ## Run conformance tests (assumes server is already running)
 	@echo "$(GREEN)Running conformance tests...$(NC)"
-	./scripts/run-conformance-tests.sh
+	@echo "$(YELLOW)Note: Server must be running on port 8080$(NC)"
+	@echo "$(YELLOW)Use 'make test-conformance-auto' to start server automatically$(NC)"
+	./scripts/test-conformance.sh
+
+test-conformance-auto: build-server ## Run conformance tests (starts server automatically)
+	@echo "$(GREEN)Running conformance tests with auto-started server...$(NC)"
+	./scripts/test-conformance-with-server.sh
+
+test-conformance-custom: build-server ## Run conformance tests with custom model (MODEL=... make test-conformance-custom)
+	@echo "$(GREEN)Running conformance tests with custom parameters...$(NC)"
+	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
+	PORT="${PORT:-8080}"; \
+	API_KEY="${API_KEY:-none}"; \
+	./scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
 
 validate-openapi: ## Validate OpenAPI spec consistency
 	@echo "$(GREEN)Validating OpenAPI spec...$(NC)"

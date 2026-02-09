@@ -58,9 +58,39 @@ pre-commit run openresponses-conformance --all-files
 
 ## Conformance Testing
 
-### run-conformance-tests.sh
+The project includes three scripts for running Open Responses conformance tests:
 
-Runs the official Open Responses conformance test suite against the local server.
+### test-conformance.sh (Simple - Server Must Be Running)
+
+Runs conformance tests against an already-running server.
+
+**Requirements:**
+- Node.js with `npx` OR Bun runtime
+- Server already running on the target port
+
+**Usage:**
+```bash
+# Default: model=ollama/gpt-oss:20b, url=http://localhost:8080, api-key=none
+./scripts/test-conformance.sh
+
+# Custom model
+./scripts/test-conformance.sh "gpt-4"
+
+# Custom model and URL
+./scripts/test-conformance.sh "claude-3-opus" "http://localhost:9000"
+
+# All custom parameters
+./scripts/test-conformance.sh "gpt-4" "http://localhost:8080" "sk-test-key"
+```
+
+**Arguments:**
+1. `MODEL` - Model to use (default: `ollama/gpt-oss:20b`)
+2. `BASE_URL` - Server URL (default: `http://localhost:8080`)
+3. `API_KEY` - API key (default: `none`)
+
+### test-conformance-with-server.sh (Auto - Starts Server)
+
+Automatically starts the server and runs conformance tests.
 
 **Requirements:**
 - Node.js with `npx` OR Bun runtime
@@ -68,34 +98,55 @@ Runs the official Open Responses conformance test suite against the local server
 
 **Usage:**
 ```bash
+# Default: model=ollama/gpt-oss:20b, port=8080, api-key=none
+./scripts/test-conformance-with-server.sh
+
+# Custom model
+./scripts/test-conformance-with-server.sh "gpt-4"
+
+# Custom model and port
+./scripts/test-conformance-with-server.sh "claude-3-opus" "9000"
+
+# All custom parameters
+./scripts/test-conformance-with-server.sh "gpt-4" "8080" "sk-test-key"
+```
+
+**Arguments:**
+1. `MODEL` - Model to use (default: `ollama/gpt-oss:20b`)
+2. `SERVER_PORT` - Port for server (default: `8080`)
+3. `API_KEY` - API key (default: `none`)
+
+**What it does:**
+1. Builds server binary if needed
+2. Stops any existing process on the port
+3. Starts the server
+4. Waits for server to be ready
+5. Runs conformance tests
+6. Automatically stops server on exit
+
+### run-conformance-tests.sh (Legacy - Full Automation)
+
+Original comprehensive script (kept for backward compatibility).
+
+**Usage:**
+```bash
 # Run with defaults
 ./scripts/run-conformance-tests.sh
 
-# Run with custom port
-SERVER_PORT=9000 ./scripts/run-conformance-tests.sh
-
-# Run with specific model
-OPENRESPONSES_MODEL=gpt-4 ./scripts/run-conformance-tests.sh
+# Run with custom settings
+SERVER_PORT=9000 OPENRESPONSES_MODEL=gpt-4 ./scripts/run-conformance-tests.sh
 ```
 
-**Environment Variables:**
-- `SERVER_PORT` - Port for test server (default: 8080)
-- `OPENRESPONSES_MODEL` - Model to use in tests (default: gpt-4)
-- `OPENAI_API_KEY` - API key for backend LLM (default: test-key)
+## Conformance Test Suite
 
-**What it does:**
-1. Clones/updates the openresponses conformance test repository
-2. Installs test dependencies (Bun or npm)
-3. Builds and starts the server
-4. Runs 6 conformance tests:
-   - Basic text response
-   - Streaming response
-   - System prompt
-   - Tool calling
-   - Image input
-   - Multi-turn conversation
-5. Reports results with colored output
-6. Cleans up server process
+All scripts run the same 6 official conformance tests:
+
+1. **Basic text response** - Fundamental request/response
+2. **Streaming response** - SSE with all 24 event types
+3. **System prompt** - Instruction following
+4. **Tool calling** - Function invocation
+5. **Image input** - Multimodal capabilities
+6. **Multi-turn conversation** - Conversation history
 
 **Exit codes:**
 - `0` - All tests passed
