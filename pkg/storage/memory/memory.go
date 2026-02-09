@@ -167,3 +167,232 @@ func (s *Store) LinkResponses(ctx context.Context, currentID, previousID string)
 	current.PreviousResponseID = previousID
 	return nil
 }
+
+// ListResponsesPaginated lists responses with pagination
+func (s *Store) ListResponsesPaginated(ctx context.Context, after, before string, limit int, order, model string) ([]*state.Response, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Default limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	// Default order
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	// Collect all responses into a slice
+	var allResponses []*state.Response
+	for _, resp := range s.responses {
+		// Filter by model if specified
+		if model != "" {
+			// Note: We'd need to store model in state.Response for this to work
+			// For now, skip model filtering in memory store
+		}
+		allResponses = append(allResponses, resp)
+	}
+
+	// Sort by created time
+	// Note: This is a simplified implementation
+	// In production, use a proper sorting library or DB query
+
+	// Apply cursor-based pagination
+	var filtered []*state.Response
+	foundAfter := after == "" // If no after cursor, start from beginning
+
+	for _, resp := range allResponses {
+		// Handle after cursor
+		if after != "" && !foundAfter {
+			if resp.ID == after {
+				foundAfter = true
+			}
+			continue
+		}
+
+		// Handle before cursor
+		if before != "" && resp.ID == before {
+			break
+		}
+
+		filtered = append(filtered, resp)
+
+		// Limit results
+		if len(filtered) >= limit {
+			break
+		}
+	}
+
+	// Check if there are more results
+	hasMore := len(allResponses) > len(filtered) && len(filtered) == limit
+
+	return filtered, hasMore, nil
+}
+
+// DeleteResponse deletes a response
+func (s *Store) DeleteResponse(ctx context.Context, responseID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.responses[responseID]; !exists {
+		return fmt.Errorf("response %s not found", responseID)
+	}
+
+	delete(s.responses, responseID)
+	return nil
+}
+
+// GetResponseInputItems retrieves input items for a response
+func (s *Store) GetResponseInputItems(ctx context.Context, responseID string) (interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	resp, exists := s.responses[responseID]
+	if !exists {
+		return nil, fmt.Errorf("response %s not found", responseID)
+	}
+
+	// Return the request field which contains input items
+	return resp.Request, nil
+}
+
+// CreateConversation creates a new conversation
+func (s *Store) CreateConversation(ctx context.Context, conv *state.Conversation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.conversations[conv.ID]; exists {
+		return fmt.Errorf("conversation %s already exists", conv.ID)
+	}
+
+	s.conversations[conv.ID] = conv
+	return nil
+}
+
+// ListConversationsPaginated lists conversations with pagination
+func (s *Store) ListConversationsPaginated(ctx context.Context, after, before string, limit int, order string) ([]*state.Conversation, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Default limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	// Default order
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	// Collect all conversations
+	var allConvs []*state.Conversation
+	for _, conv := range s.conversations {
+		allConvs = append(allConvs, conv)
+	}
+
+	// Apply cursor-based pagination
+	var filtered []*state.Conversation
+	foundAfter := after == ""
+
+	for _, conv := range allConvs {
+		// Handle after cursor
+		if after != "" && !foundAfter {
+			if conv.ID == after {
+				foundAfter = true
+			}
+			continue
+		}
+
+		// Handle before cursor
+		if before != "" && conv.ID == before {
+			break
+		}
+
+		filtered = append(filtered, conv)
+
+		// Limit results
+		if len(filtered) >= limit {
+			break
+		}
+	}
+
+	// Check if there are more results
+	hasMore := len(allConvs) > len(filtered) && len(filtered) == limit
+
+	return filtered, hasMore, nil
+}
+
+// DeleteConversation deletes a conversation
+func (s *Store) DeleteConversation(ctx context.Context, conversationID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.conversations[conversationID]; !exists {
+		return fmt.Errorf("conversation %s not found", conversationID)
+	}
+
+	delete(s.conversations, conversationID)
+	return nil
+}
+
+// AddConversationItems adds items to a conversation
+func (s *Store) AddConversationItems(ctx context.Context, conversationID string, items []state.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	conv, exists := s.conversations[conversationID]
+	if !exists {
+		return fmt.Errorf("conversation %s not found", conversationID)
+	}
+
+	conv.Messages = append(conv.Messages, items...)
+	return nil
+}
+
+// ListConversationItems lists items in a conversation with pagination
+func (s *Store) ListConversationItems(ctx context.Context, conversationID string, after, before string, limit int, order string) ([]state.Message, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	conv, exists := s.conversations[conversationID]
+	if !exists {
+		return nil, false, fmt.Errorf("conversation %s not found", conversationID)
+	}
+
+	// Default limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	// Apply cursor-based pagination
+	var filtered []state.Message
+	foundAfter := after == ""
+
+	for _, msg := range conv.Messages {
+		// Handle after cursor
+		if after != "" && !foundAfter {
+			if msg.ID == after {
+				foundAfter = true
+			}
+			continue
+		}
+
+		// Handle before cursor
+		if before != "" && msg.ID == before {
+			break
+		}
+
+		filtered = append(filtered, msg)
+
+		// Limit results
+		if len(filtered) >= limit {
+			break
+		}
+	}
+
+	// Check if there are more results
+	hasMore := len(conv.Messages) > len(filtered) && len(filtered) == limit
+
+	return filtered, hasMore, nil
+}

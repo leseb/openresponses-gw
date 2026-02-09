@@ -18,7 +18,7 @@ import (
 type Engine struct {
 	config   *config.EngineConfig
 	sessions state.SessionStore
-	llm      api.LLMClient
+	llm      api.ChatCompletionClient
 }
 
 // New creates a new Engine instance
@@ -30,14 +30,14 @@ func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
 		return nil, fmt.Errorf("session store is required")
 	}
 
-	// Create LLM client
-	var llm api.LLMClient
+	// Create chat completion client
+	var llm api.ChatCompletionClient
 	if cfg.APIKey != "" && cfg.ModelEndpoint != "" {
-		// Use real OpenAI client
+		// Use real OpenAI-compatible client
 		llm = api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
 	} else {
 		// Use mock client for testing
-		llm = api.NewMockLLMClient()
+		llm = api.NewMockChatCompletionClient()
 	}
 
 	return &Engine{
@@ -45,6 +45,16 @@ func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
 		sessions: store,
 		llm:      llm,
 	}, nil
+}
+
+// LLMClient returns the chat completion client
+func (e *Engine) LLMClient() api.ChatCompletionClient {
+	return e.llm
+}
+
+// Store returns the session store
+func (e *Engine) Store() state.SessionStore {
+	return e.sessions
 }
 
 // ProcessRequest processes a Responses API request (non-streaming)

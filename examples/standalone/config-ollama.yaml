@@ -1,0 +1,17 @@
+# Configuration for Ollama local inference
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeout: 60s
+
+engine:
+  # Ollama OpenAI-compatible endpoint
+  model_endpoint: http://localhost:11434/v1
+
+  # API key not needed for Ollama, but must be non-empty
+  # This will be overridden by OPENAI_API_KEY env var
+  api_key: unused
+
+  max_tokens: 4096
+  timeout: 120s  # Ollama can be slower on first run

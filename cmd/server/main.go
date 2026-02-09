@@ -16,6 +16,7 @@ import (
 	httpAdapter "github.com/leseb/openai-responses-gateway/pkg/adapters/http"
 	"github.com/leseb/openai-responses-gateway/pkg/core/config"
 	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
+	"github.com/leseb/openai-responses-gateway/pkg/core/services"
 	"github.com/leseb/openai-responses-gateway/pkg/observability/logging"
 	"github.com/leseb/openai-responses-gateway/pkg/storage/memory"
 )
@@ -73,8 +74,24 @@ func main() {
 	}
 	logger.Info("Initialized engine")
 
+	// Initialize services
+	modelsService := services.NewModelsService(eng.LLMClient())
+	logger.Info("Initialized models service")
+
+	// Initialize prompts store
+	promptsStore := memory.NewPromptsStore()
+	logger.Info("Initialized prompts store")
+
+	// Initialize files store
+	filesStore := memory.NewFilesStore()
+	logger.Info("Initialized files store")
+
+	// Initialize vector stores store
+	vectorStoresStore := memory.NewVectorStoresStore()
+	logger.Info("Initialized vector stores store")
+
 	// Initialize HTTP adapter
-	handler := httpAdapter.New(eng, logger)
+	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore)
 	logger.Info("Initialized HTTP adapter")
 
 	// Create HTTP server

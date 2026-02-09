@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - extproc_network
+
+  envoy-extproc:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.envoy-extproc
+    container_name: envoy-extproc
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["-config", "/app/config.yaml", "-port", "10000", "-log-level", "debug"]
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:10000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - extproc_network
+
+  envoy:
+    image: envoyproxy/envoy:v1.28-latest
+    container_name: envoy
+    ports:
+      - "8080:8080"
+      - "9901:9901"
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    command: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
+    depends_on:
+      envoy-extproc:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    networks:
+      - extproc_network
+
+volumes:
+  ollama_data:
+
+networks:
+  extproc_network:
+    driver: bridge

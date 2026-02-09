@@ -4,33 +4,89 @@
 package http
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
 	"github.com/leseb/openai-responses-gateway/pkg/core/schema"
+	"github.com/leseb/openai-responses-gateway/pkg/core/services"
 	"github.com/leseb/openai-responses-gateway/pkg/observability/logging"
+	"github.com/leseb/openai-responses-gateway/pkg/storage/memory"
 )
 
 // Handler implements the HTTP adapter
 type Handler struct {
-	engine *engine.Engine
-	logger *logging.Logger
-	mux    *http.ServeMux
+	engine            *engine.Engine
+	logger            *logging.Logger
+	mux               *http.ServeMux
+	modelsService     *services.ModelsService
+	promptsStore      *memory.PromptsStore
+	filesStore        *memory.FilesStore
+	vectorStoresStore *memory.VectorStoresStore
 }
 
 // New creates a new HTTP handler
-func New(eng *engine.Engine, logger *logging.Logger) *Handler {
+func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore) *Handler {
 	h := &Handler{
-		engine: eng,
-		logger: logger,
-		mux:    http.NewServeMux(),
+		engine:            eng,
+		logger:            logger,
+		mux:               http.NewServeMux(),
+		modelsService:     modelsService,
+		promptsStore:      promptsStore,
+		filesStore:        filesStore,
+		vectorStoresStore: vectorStoresStore,
 	}
 
 	// Register routes
 	h.mux.HandleFunc("GET /health", h.handleHealth)
+
+	// Responses API
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
+	h.mux.HandleFunc("GET /v1/responses", h.handleListResponses)
+	h.mux.HandleFunc("GET /v1/responses/{id}", h.handleGetResponse)
+	h.mux.HandleFunc("DELETE /v1/responses/{id}", h.handleDeleteResponse)
+	h.mux.HandleFunc("GET /v1/responses/{id}/input_items", h.handleListResponseInputItems)
+
+	// Chat Completions API (direct backend access)
+	h.mux.HandleFunc("POST /v1/chat/completions", h.handleChatCompletions)
+
+	// Conversations API
+	h.mux.HandleFunc("POST /v1/conversations", h.handleCreateConversation)
+	h.mux.HandleFunc("GET /v1/conversations", h.handleListConversations)
+	h.mux.HandleFunc("GET /v1/conversations/{id}", h.handleGetConversation)
+	h.mux.HandleFunc("DELETE /v1/conversations/{id}", h.handleDeleteConversation)
+	h.mux.HandleFunc("POST /v1/conversations/{id}/items", h.handleAddConversationItems)
+	h.mux.HandleFunc("GET /v1/conversations/{id}/items", h.handleListConversationItems)
+
+	// Models API
+	h.mux.HandleFunc("GET /v1/models", h.handleListModels)
+	h.mux.HandleFunc("GET /v1/models/{id}", h.handleGetModel)
+
+	// Prompts API
+	h.mux.HandleFunc("POST /v1/prompts", h.handleCreatePrompt)
+	h.mux.HandleFunc("GET /v1/prompts", h.handleListPrompts)
+	h.mux.HandleFunc("GET /v1/prompts/{id}", h.handleGetPrompt)
+	h.mux.HandleFunc("PUT /v1/prompts/{id}", h.handleUpdatePrompt)
+	h.mux.HandleFunc("DELETE /v1/prompts/{id}", h.handleDeletePrompt)
+
+	// Files API
+	h.mux.HandleFunc("POST /v1/files", h.handleUploadFile)
+	h.mux.HandleFunc("GET /v1/files", h.handleListFiles)
+	h.mux.HandleFunc("GET /v1/files/{id}", h.handleGetFile)
+	h.mux.HandleFunc("GET /v1/files/{id}/content", h.handleGetFileContent)
+	h.mux.HandleFunc("DELETE /v1/files/{id}", h.handleDeleteFile)
+
+	// Vector Stores API
+	h.mux.HandleFunc("POST /v1/vector_stores", h.handleCreateVectorStore)
+	h.mux.HandleFunc("GET /v1/vector_stores", h.handleListVectorStores)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}", h.handleGetVectorStore)
+	h.mux.HandleFunc("PUT /v1/vector_stores/{id}", h.handleUpdateVectorStore)
+	h.mux.HandleFunc("DELETE /v1/vector_stores/{id}", h.handleDeleteVectorStore)
+	h.mux.HandleFunc("POST /v1/vector_stores/{id}/files", h.handleAddVectorStoreFile)
+	h.mux.HandleFunc("GET /v1/vector_stores/{id}/files", h.handleListVectorStoreFiles)
 
 	return h
 }
@@ -146,4 +202,11 @@ func (h *Handler) writeError(w http.ResponseWriter, status int, errType, message
 			"message": message,
 		},
 	})
+}
+
+// generateID generates a unique ID with a prefix
+func generateID(prefix string) string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return prefix + hex.EncodeToString(b)
 }

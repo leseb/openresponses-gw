@@ -21,11 +21,23 @@ type SessionStore interface {
 	SaveConversation(ctx context.Context, conv *Conversation) error
 	ListConversations(ctx context.Context, sessionID string) ([]*Conversation, error)
 
+	// Conversation API endpoints
+	CreateConversation(ctx context.Context, conv *Conversation) error
+	ListConversationsPaginated(ctx context.Context, after, before string, limit int, order string) ([]*Conversation, bool, error)
+	DeleteConversation(ctx context.Context, conversationID string) error
+	AddConversationItems(ctx context.Context, conversationID string, items []Message) error
+	ListConversationItems(ctx context.Context, conversationID string, after, before string, limit int, order string) ([]Message, bool, error)
+
 	// Response history
 	GetResponse(ctx context.Context, responseID string) (*Response, error)
 	SaveResponse(ctx context.Context, resp *Response) error
 	ListResponses(ctx context.Context, conversationID string) ([]*Response, error)
 	LinkResponses(ctx context.Context, currentID, previousID string) error
+
+	// Response management (paginated)
+	ListResponsesPaginated(ctx context.Context, after, before string, limit int, order, model string) ([]*Response, bool, error)
+	DeleteResponse(ctx context.Context, responseID string) error
+	GetResponseInputItems(ctx context.Context, responseID string) (interface{}, error)
 }
 
 // Session represents a user session
