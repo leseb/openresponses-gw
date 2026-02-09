@@ -44,15 +44,8 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("GET /health", h.handleHealth)
 	h.mux.HandleFunc("GET /openapi.json", h.handleOpenAPI)
 
-	// Responses API
+	// Responses API (Open Responses compliant - single endpoint)
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
-	h.mux.HandleFunc("GET /v1/responses", h.handleListResponses)
-	h.mux.HandleFunc("GET /v1/responses/{id}", h.handleGetResponse)
-	h.mux.HandleFunc("DELETE /v1/responses/{id}", h.handleDeleteResponse)
-	h.mux.HandleFunc("GET /v1/responses/{id}/input_items", h.handleListResponseInputItems)
-
-	// Chat Completions API (direct backend access)
-	h.mux.HandleFunc("POST /v1/chat/completions", h.handleChatCompletions)
 
 	// Conversations API
 	h.mux.HandleFunc("POST /v1/conversations", h.handleCreateConversation)
@@ -184,13 +177,73 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, r *http.Request
 			continue
 		}
 
+		// Extract event type for SSE event field
+		eventType := extractEventType(event)
+
 		// Write SSE event
-		fmt.Fprintf(w, "event: %s\n", event.Type)
+		fmt.Fprintf(w, "event: %s\n", eventType)
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
 
 	h.logger.Info("Streaming completed")
+}
+
+// extractEventType extracts the type field from an event using reflection
+func extractEventType(event interface{}) string {
+	// Use type assertion to get the type field
+	switch e := event.(type) {
+	case *schema.ResponseCreatedStreamingEvent:
+		return e.Type
+	case *schema.ResponseQueuedStreamingEvent:
+		return e.Type
+	case *schema.ResponseInProgressStreamingEvent:
+		return e.Type
+	case *schema.ResponseCompletedStreamingEvent:
+		return e.Type
+	case *schema.ResponseFailedStreamingEvent:
+		return e.Type
+	case *schema.ResponseIncompleteStreamingEvent:
+		return e.Type
+	case *schema.ResponseOutputItemAddedStreamingEvent:
+		return e.Type
+	case *schema.ResponseOutputItemDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseContentPartAddedStreamingEvent:
+		return e.Type
+	case *schema.ResponseContentPartDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseOutputTextDeltaStreamingEvent:
+		return e.Type
+	case *schema.ResponseOutputTextDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseRefusalDeltaStreamingEvent:
+		return e.Type
+	case *schema.ResponseRefusalDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningDeltaStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningSummaryDeltaStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningSummaryDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningSummaryPartAddedStreamingEvent:
+		return e.Type
+	case *schema.ResponseReasoningSummaryPartDoneStreamingEvent:
+		return e.Type
+	case *schema.ResponseOutputTextAnnotationAddedStreamingEvent:
+		return e.Type
+	case *schema.ResponseFunctionCallArgumentsDeltaStreamingEvent:
+		return e.Type
+	case *schema.ResponseFunctionCallArgumentsDoneStreamingEvent:
+		return e.Type
+	case *schema.ErrorStreamingEvent:
+		return e.Type
+	default:
+		return "message"
+	}
 }
 
 // writeError writes an error response

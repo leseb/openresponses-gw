@@ -5,6 +5,8 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -68,23 +70,45 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	respID := generateID("resp_")
 
 	// 3. Create response object
-	resp := schema.NewResponse(respID, req.Model)
+	model := ""
+	if req.Model != nil {
+		model = *req.Model
+	}
+	resp := schema.NewResponse(respID, model)
+
+	// Echo request parameters
+	resp.PreviousResponseID = req.PreviousResponseID
+	resp.Instructions = req.Instructions
+	resp.Temperature = req.Temperature
+	resp.TopP = req.TopP
+	resp.MaxOutputTokens = req.MaxOutputTokens
+	resp.MaxToolCalls = req.MaxToolCalls
+	resp.ParallelToolCalls = req.ParallelToolCalls
+	resp.Store = req.Store
+	resp.FrequencyPenalty = req.FrequencyPenalty
+	resp.PresencePenalty = req.PresencePenalty
+	resp.TopLogprobs = req.TopLogprobs
+	resp.ServiceTier = req.ServiceTier
+	resp.Background = req.Background
+	resp.PromptCacheKey = req.PromptCacheKey
+	resp.SafetyIdentifier = req.SafetyIdentifier
+	resp.Metadata = req.Metadata
 
 	// 4. Load conversation history if this is a follow-up
 	var conversationHistory []string
-	if req.PreviousResponseID != "" {
+	if req.PreviousResponseID != nil && *req.PreviousResponseID != "" {
 		// TODO: Load from state store
 		// For now, just note it in metadata
 		if resp.Metadata == nil {
 			resp.Metadata = make(map[string]string)
 		}
-		resp.Metadata["previous_response_id"] = req.PreviousResponseID
+		resp.Metadata["previous_response_id"] = *req.PreviousResponseID
 	}
 
 	// 5. Prepare LLM request
 	inputText := extractInputText(req.Input)
 	llmReq := &api.ChatCompletionRequest{
-		Model: req.Model,
+		Model: model,
 		Messages: []api.Message{
 			{Role: "user", Content: inputText},
 		},
@@ -94,16 +118,17 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 
 	// Add instructions as system message if provided
-	if req.Instructions != "" {
+	if req.Instructions != nil && *req.Instructions != "" {
 		llmReq.Messages = append([]api.Message{
-			{Role: "system", Content: req.Instructions},
+			{Role: "system", Content: *req.Instructions},
 		}, llmReq.Messages...)
 	}
 
 	// 6. Call LLM
 	llmResp, err := e.llm.CreateChatCompletion(ctx, llmReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call LLM: %w", err)
+		resp.MarkFailed("api_error", "llm_error", fmt.Sprintf("failed to call LLM: %v", err))
+		return resp, nil
 	}
 
 	// 7. Build output from LLM response
@@ -112,32 +137,45 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		outputText = llmResp.Choices[0].Message.Content
 	}
 
-	resp.Output = []schema.OutputItem{
+	assistantRole := "assistant"
+	completedStatus := "completed"
+	resp.Output = []schema.ItemField{
 		{
-			Type: "message",
-			ID:   generateID("msg_"),
-			Role: "assistant",
-			Content: map[string]interface{}{
-				"type": "text",
-				"text": outputText,
+			Type:   "message",
+			ID:     generateID("msg_"),
+			Role:   &assistantRole,
+			Status: &completedStatus,
+			Content: []schema.ContentPart{
+				{
+					Type: "text",
+					Text: &outputText,
+				},
 			},
 		},
 	}
 
 	// 8. Set usage from LLM response
-	resp.Usage = &schema.Usage{
+	resp.Usage = &schema.UsageField{
 		InputTokens:  llmResp.Usage.PromptTokens,
 		OutputTokens: llmResp.Usage.CompletionTokens,
 		TotalTokens:  llmResp.Usage.TotalTokens,
 	}
 
-	// 9. Mark as completed
+	// 9. Set convenience text field
+	resp.Text = &outputText
+
+	// 10. Mark as completed
 	resp.MarkCompleted()
 
-	// 10. Save response to state store
+	// 11. Save response to state store
+	prevRespID := ""
+	if req.PreviousResponseID != nil {
+		prevRespID = *req.PreviousResponseID
+	}
+
 	if err := e.sessions.SaveResponse(ctx, &state.Response{
 		ID:                 resp.ID,
-		PreviousResponseID: req.PreviousResponseID,
+		PreviousResponseID: prevRespID,
 		Request:            req,
 		Output:             resp.Output,
 		Status:             resp.Status,
@@ -154,31 +192,42 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 }
 
 // ProcessRequestStream processes a streaming Responses API request
-func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseRequest) (<-chan *schema.ResponseStreamEvent, error) {
+func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseRequest) (<-chan interface{}, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	events := make(chan *schema.ResponseStreamEvent, 10)
+	events := make(chan interface{}, 10)
 
 	go func() {
 		defer close(events)
 
 		respID := generateID("resp_")
-		resp := schema.NewResponse(respID, req.Model)
+		model := ""
+		if req.Model != nil {
+			model = *req.Model
+		}
+		resp := schema.NewResponse(respID, model)
+
+		// Echo request parameters
+		resp.PreviousResponseID = req.PreviousResponseID
+		resp.Instructions = req.Instructions
+		resp.Temperature = req.Temperature
+		resp.TopP = req.TopP
+		resp.MaxOutputTokens = req.MaxOutputTokens
+		resp.Metadata = req.Metadata
 
 		// Send response.created event
-		events <- &schema.ResponseStreamEvent{
-			Type:        "response.created",
-			SequenceNum: 0,
-			Response:    resp,
+		events <- &schema.ResponseCreatedStreamingEvent{
+			Type:     "response.created",
+			Response: *resp,
 		}
 
 		// Prepare LLM request
 		inputText := extractInputText(req.Input)
 		llmReq := &api.ChatCompletionRequest{
-			Model: req.Model,
+			Model: model,
 			Messages: []api.Message{
 				{Role: "user", Content: inputText},
 			},
@@ -188,74 +237,114 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 
 		// Add instructions as system message if provided
-		if req.Instructions != "" {
+		if req.Instructions != nil && *req.Instructions != "" {
 			llmReq.Messages = append([]api.Message{
-				{Role: "system", Content: req.Instructions},
+				{Role: "system", Content: *req.Instructions},
 			}, llmReq.Messages...)
 		}
 
-		// Send output_item.added event
-		events <- &schema.ResponseStreamEvent{
-			Type:        "response.output_item.added",
-			SequenceNum: 1,
-			OutputIndex: 0,
+		// Send response.in_progress event
+		resp.Status = "in_progress"
+		events <- &schema.ResponseInProgressStreamingEvent{
+			Type:     "response.in_progress",
+			Response: *resp,
 		}
 
-		// Call LLM streaming
-		chunks, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
+		// Initialize output item
+		assistantRole := "assistant"
+		inProgressStatus := "in_progress"
+		messageItem := schema.ItemField{
+			Type:    "message",
+			ID:      generateID("msg_"),
+			Role:    &assistantRole,
+			Status:  &inProgressStatus,
+			Content: []schema.ContentPart{},
+		}
+
+		// Send output_item.added event
+		events <- &schema.ResponseOutputItemAddedStreamingEvent{
+			Type:        "response.output_item.added",
+			ResponseID:  respID,
+			OutputIndex: 0,
+			Item:        messageItem,
+		}
+
+		// Get streaming response from LLM
+		streamChan, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
 		if err != nil {
-			resp.MarkFailed("llm_error", "stream_error", err.Error())
-			events <- &schema.ResponseStreamEvent{
-				Type:     "response.failed",
-				Response: resp,
+			errorField := schema.ErrorField{
+				Type:    "api_error",
+				Message: fmt.Sprintf("failed to start streaming: %v", err),
+			}
+			events <- &schema.ErrorStreamingEvent{
+				Type:  "error",
+				Error: errorField,
 			}
 			return
 		}
 
-		// Stream chunks
-		seqNum := 2
-		totalOutput := ""
-		for chunk := range chunks {
-			if len(chunk.Choices) > 0 {
-				delta := chunk.Choices[0].Delta.Content
-				if delta != "" {
-					totalOutput += delta
-					events <- &schema.ResponseStreamEvent{
-						Type:         "response.output_text.delta",
-						SequenceNum:  seqNum,
-						Delta:        delta,
-						OutputIndex:  0,
-						ContentIndex: 0,
-					}
-					seqNum++
-				}
+		fullText := ""
+		contentIndex := 0
+
+		// Stream deltas
+		for chunk := range streamChan {
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+
+			delta := chunk.Choices[0].Delta.Content
+			if delta == "" {
+				continue
+			}
+
+			fullText += delta
+
+			// Send text delta event
+			events <- &schema.ResponseOutputTextDeltaStreamingEvent{
+				Type:         "response.output_text.delta",
+				ResponseID:   respID,
+				OutputIndex:  0,
+				ContentIndex: contentIndex,
+				Delta:        delta,
 			}
 		}
 
-		// Mark completed
-		resp.MarkCompleted()
-		resp.Output = []schema.OutputItem{
-			{
-				Type: "message",
-				ID:   generateID("msg_"),
-				Role: "assistant",
-				Content: map[string]interface{}{
-					"type": "text",
-					"text": totalOutput,
-				},
-			},
-		}
-		resp.Usage = &schema.Usage{
-			InputTokens:  countTokens(inputText),
-			OutputTokens: countTokens(totalOutput),
-			TotalTokens:  countTokens(inputText) + countTokens(totalOutput),
+		// Send text done event
+		events <- &schema.ResponseOutputTextDoneStreamingEvent{
+			Type:         "response.output_text.done",
+			ResponseID:   respID,
+			OutputIndex:  0,
+			ContentIndex: contentIndex,
+			Text:         fullText,
 		}
 
+		// Complete the message item
+		completedStatus := "completed"
+		messageItem.Status = &completedStatus
+		messageItem.Content = []schema.ContentPart{
+			{
+				Type: "text",
+				Text: &fullText,
+			},
+		}
+
+		// Send output_item.done event
+		events <- &schema.ResponseOutputItemDoneStreamingEvent{
+			Type:        "response.output_item.done",
+			ResponseID:  respID,
+			OutputIndex: 0,
+			Item:        messageItem,
+		}
+
+		// Update response
+		resp.Output = []schema.ItemField{messageItem}
+		resp.MarkCompleted()
+		resp.Text = &fullText
+
 		// Send response.completed event
-		events <- &schema.ResponseStreamEvent{
-			Type:        "response.completed",
-			SequenceNum: seqNum,
-			Response:    resp,
+		events <- &schema.ResponseCompletedStreamingEvent{
+			Type:     "response.completed",
+			Response: *resp,
 		}
 	}()
 
@@ -264,59 +353,36 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 // Helper functions
 
-func generateID(prefix string) string {
-	return fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
-}
-
 func extractInputText(input interface{}) string {
 	switch v := input.(type) {
 	case string:
 		return v
-	case map[string]interface{}:
-		if text, ok := v["text"].(string); ok {
-			return text
-		}
 	case []interface{}:
-		// Handle array of messages
+		// For now, just extract the first text item
+		// TODO: Handle complex item types properly
 		if len(v) > 0 {
-			if msg, ok := v[0].(map[string]interface{}); ok {
-				if content, ok := msg["content"].(string); ok {
+			if item, ok := v[0].(map[string]interface{}); ok {
+				if content, ok := item["content"].(string); ok {
 					return content
 				}
 			}
 		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
 	}
-	return "Hello"
 }
 
-func countTokens(text string) int {
-	// Rough approximation: ~4 chars per token
-	return len(text) / 4
+func generateID(prefix string) string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return prefix + hex.EncodeToString(b)
 }
 
-func splitWords(text string) []string {
-	var words []string
-	current := ""
-	for _, char := range text {
-		if char == ' ' {
-			if current != "" {
-				words = append(words, current)
-				current = ""
-			}
-		} else {
-			current += string(char)
-		}
-	}
-	if current != "" {
-		words = append(words, current)
-	}
-	return words
-}
-
-func timePtr(unixPtr *int64) *time.Time {
-	if unixPtr == nil {
+func timePtr(t *int64) *time.Time {
+	if t == nil {
 		return nil
 	}
-	t := time.Unix(*unixPtr, 0)
-	return &t
+	tm := time.Unix(*t, 0)
+	return &tm
 }

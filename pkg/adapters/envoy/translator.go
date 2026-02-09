@@ -51,11 +51,11 @@ func ExtractResponseRequest(req *extproc.ProcessingRequest) (*schema.ResponseReq
 	}
 
 	// Basic validation
-	if respReq.Model == "" {
+	if respReq.Model == nil || *respReq.Model == "" {
 		return nil, fmt.Errorf("model field is required")
 	}
 
-	if respReq.Input == "" {
+	if respReq.Input == nil {
 		return nil, fmt.Errorf("input field is required")
 	}
 
