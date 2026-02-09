@@ -1,13 +1,16 @@
 # OpenAI Responses API Gateway
 
-A production-ready, gateway-agnostic implementation of the OpenAI Responses API with support for multiple deployment modes.
+![Open Responses Compliant](https://img.shields.io/badge/Open%20Responses-100%25%20Compliant-brightgreen)
+
+A production-ready, gateway-agnostic implementation of the [Open Responses API](https://github.com/openresponses/openresponses) with **100% specification compliance** and support for multiple deployment modes.
 
 ## Features
 
+- ✅ **100% Open Responses Compliant**: Passes all official conformance tests
 - 🌐 **Gateway-Agnostic**: Works with Envoy, Kong, standalone HTTP server, or any gateway
 - 🔄 **Stateful API**: Full support for conversations, sessions, and response history
 - 🛠️ **Tool Execution**: Built-in tools (file search, web search, code interpreter) + custom tools (MCP, functions)
-- 📡 **Streaming Support**: Server-Sent Events (SSE) for real-time responses
+- 📡 **Streaming Support**: All 24 SSE event types from Open Responses spec
 - 📊 **Production-Ready**: Observability, security, and performance optimization built-in
 
 ## Architecture
@@ -188,7 +191,30 @@ make test               # Run unit tests
 make test-integration   # Run integration tests
 make test-e2e           # Run end-to-end tests
 make test-coverage      # Generate coverage report
+make test-conformance   # Run Open Responses conformance tests
 ```
+
+### Conformance Testing
+
+This project maintains **100% compliance** with the [Open Responses Specification](https://github.com/openresponses/openresponses).
+
+```bash
+# Install pre-commit hooks (runs tests automatically)
+make pre-commit-install
+
+# Run conformance tests manually
+make test-conformance
+```
+
+The conformance test suite validates:
+- ✅ Basic text responses
+- ✅ Streaming with all 24 event types
+- ✅ System prompts and instructions
+- ✅ Tool/function calling
+- ✅ Multimodal input (images)
+- ✅ Multi-turn conversations
+
+See [CONFORMANCE.md](./CONFORMANCE.md) for detailed testing documentation.
 
 ### Lint
 
@@ -322,7 +348,9 @@ Apache 2.0 - See [LICENSE](./LICENSE)
 
 ## References
 
-- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses)
+- [Open Responses Specification](https://github.com/openresponses/openresponses) - The unified API spec we implement
+- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) - Original implementation
+- [Conformance Testing Guide](./CONFORMANCE.md) - How we validate compliance
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Envoy External Processing](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_proc_filter)
 

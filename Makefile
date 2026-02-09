@@ -164,4 +164,26 @@ tools: ## Install development tools
 	go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	@echo "$(GREEN)✓ Tools installed$(NC)"
 
+# Pre-commit and Conformance Testing
+
+pre-commit: ## Run all pre-commit checks
+	@echo "$(GREEN)Running pre-commit checks...$(NC)"
+	@which pre-commit > /dev/null || (echo "$(RED)pre-commit not installed. Run: pip install pre-commit$(NC)" && exit 1)
+	pre-commit run --all-files
+	@echo "$(GREEN)✓ Pre-commit checks passed$(NC)"
+
+pre-commit-install: ## Install pre-commit hooks
+	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"
+	@which pre-commit > /dev/null || (echo "$(RED)pre-commit not installed. Run: pip install pre-commit$(NC)" && exit 1)
+	pre-commit install
+	@echo "$(GREEN)✓ Pre-commit hooks installed$(NC)"
+
+test-conformance: build-server ## Run Open Responses conformance tests
+	@echo "$(GREEN)Running conformance tests...$(NC)"
+	./scripts/run-conformance-tests.sh
+
+validate-openapi: ## Validate OpenAPI spec consistency
+	@echo "$(GREEN)Validating OpenAPI spec...$(NC)"
+	./scripts/validate-openapi-sync.sh
+
 .DEFAULT_GOAL := help

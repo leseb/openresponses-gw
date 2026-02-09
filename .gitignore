@@ -59,3 +59,8 @@ temp/
 
 # Test artifacts
 testdata/output/
+
+# Conformance tests
+.conformance-tests/
+.server-test.log
+.server-test.pid
