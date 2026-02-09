@@ -5,10 +5,10 @@ package schema
 
 // Model represents an available model
 type Model struct {
-	ID      string `json:"id"`                // Model identifier (e.g., "gpt-4", "llama3.2:3b")
-	Object  string `json:"object"`            // Always "model"
-	Created int64  `json:"created"`           // Unix timestamp
-	OwnedBy string `json:"owned_by"`          // Organization/provider
+	ID      string `json:"id"`       // Model identifier (e.g., "gpt-4", "llama3.2:3b")
+	Object  string `json:"object"`   // Always "model"
+	Created int64  `json:"created"`  // Unix timestamp
+	OwnedBy string `json:"owned_by"` // Organization/provider
 
 	// Optional metadata
 	Description string                 `json:"description,omitempty"`

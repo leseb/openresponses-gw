@@ -5,20 +5,20 @@ package schema
 
 // Prompt represents a prompt template
 type Prompt struct {
-	ID          string                 `json:"id"`          // Format: "prompt_{uuid}"
-	Object      string                 `json:"object"`      // Always "prompt"
-	Name        string                 `json:"name"`        // Human-readable name
+	ID          string                 `json:"id"`     // Format: "prompt_{uuid}"
+	Object      string                 `json:"object"` // Always "prompt"
+	Name        string                 `json:"name"`   // Human-readable name
 	Description string                 `json:"description,omitempty"`
-	Template    string                 `json:"template"`              // Template with {{variables}}
-	Variables   []string               `json:"variables,omitempty"`   // List of variable names
-	CreatedAt   int64                  `json:"created_at"`            // Unix timestamp
-	UpdatedAt   int64                  `json:"updated_at,omitempty"`  // Unix timestamp
+	Template    string                 `json:"template"`             // Template with {{variables}}
+	Variables   []string               `json:"variables,omitempty"`  // List of variable names
+	CreatedAt   int64                  `json:"created_at"`           // Unix timestamp
+	UpdatedAt   int64                  `json:"updated_at,omitempty"` // Unix timestamp
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // CreatePromptRequest represents a request to create a prompt
 type CreatePromptRequest struct {
-	Name        string                 `json:"name"`                  // Required
+	Name        string                 `json:"name"` // Required
 	Description string                 `json:"description,omitempty"`
 	Template    string                 `json:"template"` // Required
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`

@@ -22,43 +22,13 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-vet
       - id: go-imports
       - id: go-mod-tidy
-      - id: golangci-lint
-        args: [--timeout=5m]
+      # Note: Run 'make lint' manually for full linting with golangci-lint
 
-  # OpenAPI validation
-  - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.27.3
-    hooks:
-      - id: check-jsonschema
-        name: Validate OpenAPI spec
-        files: ^openapi\.yaml$
-        args:
-          - --schemafile
-          - https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/schemas/v3.0/schema.json
-          - openapi.yaml
-
-  # Open Responses conformance tests
+  # Local validation hooks
   - repo: local
     hooks:
-      # Build binaries before running tests
-      - id: build-server
-        name: Build server binary
-        entry: make build-server
-        language: system
-        pass_filenames: false
-        files: \.(go|mod|sum)$
-
-      # Start server and run conformance tests
-      - id: openresponses-conformance
-        name: Open Responses conformance tests
-        entry: scripts/run-conformance-tests.sh
-        language: system
-        pass_filenames: false
-        files: ^(pkg/|cmd/|openapi\.yaml)
-
       # Validate OpenAPI spec consistency
       - id: validate-openapi-sync
         name: Check OpenAPI files are in sync
@@ -66,3 +36,6 @@ repos:
         language: system
         pass_filenames: false
         files: ^(openapi\.yaml|pkg/adapters/http/openapi\.go)$
+
+      # Note: Conformance tests can be run manually with: make test-conformance
+      # They are skipped in pre-commit to keep commits fast

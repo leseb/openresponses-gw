@@ -5,8 +5,8 @@ package schema
 
 // Conversation represents a conversation
 type Conversation struct {
-	ID        string                 `json:"id"`        // Format: "conv_{uuid}"
-	Object    string                 `json:"object"`    // Always "conversation"
+	ID        string                 `json:"id"`         // Format: "conv_{uuid}"
+	Object    string                 `json:"object"`     // Always "conversation"
 	CreatedAt int64                  `json:"created_at"` // Unix timestamp
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }

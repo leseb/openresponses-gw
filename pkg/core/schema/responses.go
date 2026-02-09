@@ -121,25 +121,25 @@ type Response struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 
 	// Echo request parameters
-	PreviousResponseID *string                  `json:"previous_response_id,omitempty"`
-	Instructions       *string                  `json:"instructions,omitempty"`
-	Tools              []ResponsesTool          `json:"tools,omitempty"`
-	ToolChoice         interface{}              `json:"tool_choice,omitempty"`
-	Reasoning          *ReasoningConfig         `json:"reasoning,omitempty"`
-	Temperature        *float64                 `json:"temperature,omitempty"`
-	TopP               *float64                 `json:"top_p,omitempty"`
-	MaxOutputTokens    *int                     `json:"max_output_tokens,omitempty"`
-	MaxToolCalls       *int                     `json:"max_tool_calls,omitempty"`
-	ParallelToolCalls  *bool                    `json:"parallel_tool_calls,omitempty"`
-	Store              *bool                    `json:"store,omitempty"`
-	FrequencyPenalty   *float64                 `json:"frequency_penalty,omitempty"`
-	PresencePenalty    *float64                 `json:"presence_penalty,omitempty"`
-	Truncation         *TruncationStrategy      `json:"truncation,omitempty"`
-	TopLogprobs        *int                     `json:"top_logprobs,omitempty"`
-	ServiceTier        *string                  `json:"service_tier,omitempty"`
-	Background         *bool                    `json:"background,omitempty"`
-	PromptCacheKey     *string                  `json:"prompt_cache_key,omitempty"`
-	SafetyIdentifier   *string                  `json:"safety_identifier,omitempty"`
+	PreviousResponseID *string             `json:"previous_response_id,omitempty"`
+	Instructions       *string             `json:"instructions,omitempty"`
+	Tools              []ResponsesTool     `json:"tools,omitempty"`
+	ToolChoice         interface{}         `json:"tool_choice,omitempty"`
+	Reasoning          *ReasoningConfig    `json:"reasoning,omitempty"`
+	Temperature        *float64            `json:"temperature,omitempty"`
+	TopP               *float64            `json:"top_p,omitempty"`
+	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
+	MaxToolCalls       *int                `json:"max_tool_calls,omitempty"`
+	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
+	Store              *bool               `json:"store,omitempty"`
+	FrequencyPenalty   *float64            `json:"frequency_penalty,omitempty"`
+	PresencePenalty    *float64            `json:"presence_penalty,omitempty"`
+	Truncation         *TruncationStrategy `json:"truncation,omitempty"`
+	TopLogprobs        *int                `json:"top_logprobs,omitempty"`
+	ServiceTier        *string             `json:"service_tier,omitempty"`
+	Background         *bool               `json:"background,omitempty"`
+	PromptCacheKey     *string             `json:"prompt_cache_key,omitempty"`
+	SafetyIdentifier   *string             `json:"safety_identifier,omitempty"`
 
 	// Convenience field: concatenated text from all output items
 	Text *string `json:"text,omitempty"`
@@ -202,11 +202,11 @@ type VideoURL struct {
 
 // UsageField represents token usage
 type UsageField struct {
-	InputTokens          int                   `json:"input_tokens"`
-	OutputTokens         int                   `json:"output_tokens"`
-	TotalTokens          int                   `json:"total_tokens"`
-	InputTokensDetails   *InputTokensDetails   `json:"input_tokens_details,omitempty"`
-	OutputTokensDetails  *OutputTokensDetails  `json:"output_tokens_details,omitempty"`
+	InputTokens         int                  `json:"input_tokens"`
+	OutputTokens        int                  `json:"output_tokens"`
+	TotalTokens         int                  `json:"total_tokens"`
+	InputTokensDetails  *InputTokensDetails  `json:"input_tokens_details,omitempty"`
+	OutputTokensDetails *OutputTokensDetails `json:"output_tokens_details,omitempty"`
 }
 
 // InputTokensDetails provides breakdown of input tokens
@@ -239,8 +239,8 @@ type IncompleteDetailsField struct {
 
 // ResponsesToolParam represents a tool definition (request)
 type ResponsesToolParam struct {
-	Type     string                 `json:"type"` // "function", "file_search", "web_search"
-	Function *FunctionDefinition    `json:"function,omitempty"`
+	Type     string              `json:"type"` // "function", "file_search", "web_search"
+	Function *FunctionDefinition `json:"function,omitempty"`
 	// Additional tool-specific fields can be added
 }
 
@@ -260,7 +260,7 @@ type FunctionDefinition struct {
 
 // ReasoningParam represents reasoning configuration (request)
 type ReasoningParam struct {
-	Type   string           `json:"type"`   // "default", "extended"
+	Type   string           `json:"type"`             // "default", "extended"
 	Effort *string          `json:"effort,omitempty"` // "low", "medium", "high"
 	Budget *ReasoningBudget `json:"budget,omitempty"`
 }
@@ -279,7 +279,7 @@ type ReasoningBudget struct {
 
 // TruncationStrategyParam represents truncation configuration (request)
 type TruncationStrategyParam struct {
-	Type         string `json:"type"`          // "auto", "last_messages"
+	Type         string `json:"type"` // "auto", "last_messages"
 	LastMessages *int   `json:"last_messages,omitempty"`
 }
 

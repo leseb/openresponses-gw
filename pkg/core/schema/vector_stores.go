@@ -5,17 +5,17 @@ package schema
 
 // VectorStore represents a vector store
 type VectorStore struct {
-	ID            string                 `json:"id"`                       // Format: "vs_{uuid}"
-	Object        string                 `json:"object"`                   // Always "vector_store"
-	Name          string                 `json:"name"`                     // Human-readable name
-	Status        string                 `json:"status"`                   // "in_progress", "completed", "failed"
-	UsageBytes    int64                  `json:"usage_bytes"`              // Total bytes used
-	FileCounts    VectorStoreFileCounts  `json:"file_counts"`              // File count statistics
-	CreatedAt     int64                  `json:"created_at"`               // Unix timestamp
-	ExpiresAt     *int64                 `json:"expires_at,omitempty"`     // Unix timestamp
-	ExpiresAfter  *VectorStoreExpiration `json:"expires_after,omitempty"`  // Expiration policy
-	LastActiveAt  *int64                 `json:"last_active_at,omitempty"` // Unix timestamp
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	ID           string                 `json:"id"`                       // Format: "vs_{uuid}"
+	Object       string                 `json:"object"`                   // Always "vector_store"
+	Name         string                 `json:"name"`                     // Human-readable name
+	Status       string                 `json:"status"`                   // "in_progress", "completed", "failed"
+	UsageBytes   int64                  `json:"usage_bytes"`              // Total bytes used
+	FileCounts   VectorStoreFileCounts  `json:"file_counts"`              // File count statistics
+	CreatedAt    int64                  `json:"created_at"`               // Unix timestamp
+	ExpiresAt    *int64                 `json:"expires_at,omitempty"`     // Unix timestamp
+	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`  // Expiration policy
+	LastActiveAt *int64                 `json:"last_active_at,omitempty"` // Unix timestamp
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // VectorStoreFileCounts represents file count statistics
@@ -36,16 +36,16 @@ type VectorStoreExpiration struct {
 // CreateVectorStoreRequest represents a request to create a vector store
 type CreateVectorStoreRequest struct {
 	Name         string                 `json:"name,omitempty"`
-	FileIDs      []string               `json:"file_ids,omitempty"`      // Up to 500 files
+	FileIDs      []string               `json:"file_ids,omitempty"` // Up to 500 files
 	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`
 	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // UpdateVectorStoreRequest represents a request to update a vector store
 type UpdateVectorStoreRequest struct {
-	Name         *string                 `json:"name,omitempty"`
-	ExpiresAfter *VectorStoreExpiration  `json:"expires_after,omitempty"`
-	Metadata     map[string]interface{}  `json:"metadata,omitempty"`
+	Name         *string                `json:"name,omitempty"`
+	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ListVectorStoresRequest represents a request to list vector stores
@@ -74,14 +74,14 @@ type DeleteVectorStoreResponse struct {
 
 // VectorStoreFile represents a file in a vector store
 type VectorStoreFile struct {
-	ID            string                 `json:"id"`                       // Format: "file_{uuid}"
-	Object        string                 `json:"object"`                   // Always "vector_store.file"
-	VectorStoreID string                 `json:"vector_store_id"`          // Associated vector store
-	Status        string                 `json:"status"`                   // "in_progress", "completed", "failed", "cancelled"
-	UsageBytes    int64                  `json:"usage_bytes,omitempty"`    // Bytes used
-	CreatedAt     int64                  `json:"created_at"`               // Unix timestamp
-	LastError     *VectorStoreFileError  `json:"last_error,omitempty"`     // Last error if failed
-	ChunkingStrategy *ChunkingStrategy   `json:"chunking_strategy,omitempty"`
+	ID               string                `json:"id"`                    // Format: "file_{uuid}"
+	Object           string                `json:"object"`                // Always "vector_store.file"
+	VectorStoreID    string                `json:"vector_store_id"`       // Associated vector store
+	Status           string                `json:"status"`                // "in_progress", "completed", "failed", "cancelled"
+	UsageBytes       int64                 `json:"usage_bytes,omitempty"` // Bytes used
+	CreatedAt        int64                 `json:"created_at"`            // Unix timestamp
+	LastError        *VectorStoreFileError `json:"last_error,omitempty"`  // Last error if failed
+	ChunkingStrategy *ChunkingStrategy     `json:"chunking_strategy,omitempty"`
 }
 
 // VectorStoreFileError represents an error processing a file
@@ -92,8 +92,8 @@ type VectorStoreFileError struct {
 
 // ChunkingStrategy represents the chunking strategy
 type ChunkingStrategy struct {
-	Type   string                   `json:"type"`   // "auto" or "static"
-	Static *StaticChunkingStrategy  `json:"static,omitempty"`
+	Type   string                  `json:"type"` // "auto" or "static"
+	Static *StaticChunkingStrategy `json:"static,omitempty"`
 }
 
 // StaticChunkingStrategy represents static chunking parameters
@@ -104,7 +104,7 @@ type StaticChunkingStrategy struct {
 
 // AddVectorStoreFileRequest represents a request to add a file to a vector store
 type AddVectorStoreFileRequest struct {
-	FileID           string            `json:"file_id"`                      // Required
+	FileID           string            `json:"file_id"` // Required
 	ChunkingStrategy *ChunkingStrategy `json:"chunking_strategy,omitempty"`
 }
 

@@ -5,30 +5,30 @@ package schema
 
 // File represents an uploaded file
 type File struct {
-	ID        string `json:"id"`           // Format: "file_{uuid}"
-	Object    string `json:"object"`       // Always "file"
-	Bytes     int64  `json:"bytes"`        // File size in bytes
-	CreatedAt int64  `json:"created_at"`   // Unix timestamp
-	Filename  string `json:"filename"`     // Original filename
-	Purpose   string `json:"purpose"`      // Purpose: "assistants", "vision", "batch", "fine-tune"
-	Status    string `json:"status"`       // Status: "uploaded", "processed", "error"
-	MimeType  string `json:"mime_type"`    // MIME type
+	ID        string `json:"id"`         // Format: "file_{uuid}"
+	Object    string `json:"object"`     // Always "file"
+	Bytes     int64  `json:"bytes"`      // File size in bytes
+	CreatedAt int64  `json:"created_at"` // Unix timestamp
+	Filename  string `json:"filename"`   // Original filename
+	Purpose   string `json:"purpose"`    // Purpose: "assistants", "vision", "batch", "fine-tune"
+	Status    string `json:"status"`     // Status: "uploaded", "processed", "error"
+	MimeType  string `json:"mime_type"`  // MIME type
 }
 
 // UploadFileRequest represents a multipart file upload request
 type UploadFileRequest struct {
-	File    []byte `json:"-"`               // File content
-	Purpose string `json:"purpose"`         // Required: purpose of the file
-	Filename string `json:"-"`              // Original filename
-	MimeType string `json:"-"`              // MIME type
+	File     []byte `json:"-"`       // File content
+	Purpose  string `json:"purpose"` // Required: purpose of the file
+	Filename string `json:"-"`       // Original filename
+	MimeType string `json:"-"`       // MIME type
 }
 
 // ListFilesRequest represents a request to list files
 type ListFilesRequest struct {
 	After   string `json:"after,omitempty"`
 	Before  string `json:"before,omitempty"`
-	Limit   int    `json:"limit,omitempty"`  // 1-100, default 50
-	Order   string `json:"order,omitempty"`  // "asc" or "desc", default "desc"
+	Limit   int    `json:"limit,omitempty"`   // 1-100, default 50
+	Order   string `json:"order,omitempty"`   // "asc" or "desc", default "desc"
 	Purpose string `json:"purpose,omitempty"` // Filter by purpose
 }
 

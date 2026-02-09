@@ -395,10 +395,10 @@ func convertToSchemaVectorStore(vs *memory.VectorStore) schema.VectorStore {
 	}
 
 	return schema.VectorStore{
-		ID:     vs.ID,
-		Object: "vector_store",
-		Name:   vs.Name,
-		Status: vs.Status,
+		ID:         vs.ID,
+		Object:     "vector_store",
+		Name:       vs.Name,
+		Status:     vs.Status,
 		UsageBytes: vs.UsageBytes,
 		FileCounts: schema.VectorStoreFileCounts{
 			InProgress: vs.FileCounts.InProgress,
@@ -407,11 +407,11 @@ func convertToSchemaVectorStore(vs *memory.VectorStore) schema.VectorStore {
 			Cancelled:  vs.FileCounts.Cancelled,
 			Total:      vs.FileCounts.Total,
 		},
-		CreatedAt:     vs.CreatedAt.Unix(),
-		ExpiresAt:     expiresAt,
-		ExpiresAfter:  expiresAfter,
-		LastActiveAt:  lastActiveAt,
-		Metadata:      convertMetadataToInterface(vs.Metadata),
+		CreatedAt:    vs.CreatedAt.Unix(),
+		ExpiresAt:    expiresAt,
+		ExpiresAfter: expiresAfter,
+		LastActiveAt: lastActiveAt,
+		Metadata:     convertMetadataToInterface(vs.Metadata),
 	}
 }
 

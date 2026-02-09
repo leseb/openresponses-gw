@@ -25,7 +25,7 @@ func getOpenAPISpec() map[string]interface{} {
 		"info": map[string]interface{}{
 			"title":       "OpenAI Responses Gateway API",
 			"description": "100% Open Responses Specification Compliant Gateway\n\nBased on: https://github.com/openresponses/openresponses\n\nThis gateway provides:\n- **Core API**: Full Open Responses spec compliance (POST /v1/responses)\n- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Models\n- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration\n\nStreaming: All 24 event types from Open Responses spec\nRequest Echo: All request parameters returned in response\nMultimodal: Support for text, images, files, video",
-			"version": "1.0.0",
+			"version":     "1.0.0",
 			"contact": map[string]string{
 				"name": "OpenAI Responses Gateway",
 				"url":  "https://github.com/leseb/openai-responses-gateway",
@@ -196,7 +196,7 @@ func getOpenAPISpec() map[string]interface{} {
 						"content": map[string]interface{}{
 							"multipart/form-data": map[string]interface{}{
 								"schema": map[string]interface{}{
-									"type": "object",
+									"type":     "object",
 									"required": []string{"file", "purpose"},
 									"properties": map[string]interface{}{
 										"file": map[string]interface{}{

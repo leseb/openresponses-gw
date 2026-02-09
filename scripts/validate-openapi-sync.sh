@@ -39,7 +39,7 @@ YAML_HAS_RESPONSES=$(yq eval '.paths."/v1/responses".post' "$PROJECT_ROOT/openap
 YAML_HAS_CHAT=$(yq eval '.paths."/v1/chat/completions"' "$PROJECT_ROOT/openapi.yaml" | grep -q "null" && echo "false" || echo "true")
 
 # Check openapi.go for matching content
-GO_HAS_RESPONSES=$(grep -q '"POST /v1/responses"' "$PROJECT_ROOT/pkg/adapters/http/openapi.go" && echo "true" || echo "false")
+GO_HAS_RESPONSES=$(grep -q '"/v1/responses"' "$PROJECT_ROOT/pkg/adapters/http/openapi.go" && echo "true" || echo "false")
 GO_HAS_CHAT=$(grep -q '"/v1/chat/completions"' "$PROJECT_ROOT/pkg/adapters/http/openapi.go" && echo "true" || echo "false")
 
 echo "Validation checks:"
@@ -64,16 +64,32 @@ if [ "$YAML_HAS_CHAT" != "$GO_HAS_CHAT" ]; then
 fi
 
 # Check that both files were modified recently together (within 1 hour)
-YAML_MTIME=$(stat -f %m "$PROJECT_ROOT/openapi.yaml" 2>/dev/null || stat -c %Y "$PROJECT_ROOT/openapi.yaml")
-GO_MTIME=$(stat -f %m "$PROJECT_ROOT/pkg/adapters/http/openapi.go" 2>/dev/null || stat -c %Y "$PROJECT_ROOT/pkg/adapters/http/openapi.go")
+# macOS uses -f, Linux uses -c
+if stat -f %m "$PROJECT_ROOT/openapi.yaml" >/dev/null 2>&1; then
+    # macOS
+    YAML_MTIME=$(stat -f %m "$PROJECT_ROOT/openapi.yaml")
+    GO_MTIME=$(stat -f %m "$PROJECT_ROOT/pkg/adapters/http/openapi.go")
+else
+    # Linux
+    YAML_MTIME=$(stat -c %Y "$PROJECT_ROOT/openapi.yaml")
+    GO_MTIME=$(stat -c %Y "$PROJECT_ROOT/pkg/adapters/http/openapi.go")
+fi
+
 TIME_DIFF=$((YAML_MTIME - GO_MTIME))
 TIME_DIFF=${TIME_DIFF#-}  # Absolute value
 
-if [ $TIME_DIFF -gt 3600 ]; then
+if [ "$TIME_DIFF" -gt 3600 ]; then
     echo -e "${YELLOW}Warning: openapi.yaml and openapi.go have different modification times${NC}"
     echo "  Consider updating both files together to keep them in sync"
-    echo "  YAML mtime: $(date -r $YAML_MTIME 2>/dev/null || date -d @$YAML_MTIME)"
-    echo "  Go mtime:   $(date -r $GO_MTIME 2>/dev/null || date -d @$GO_MTIME)"
+    if date -r "$YAML_MTIME" >/dev/null 2>&1; then
+        # macOS date
+        echo "  YAML mtime: $(date -r $YAML_MTIME)"
+        echo "  Go mtime:   $(date -r $GO_MTIME)"
+    else
+        # Linux date
+        echo "  YAML mtime: $(date -d @$YAML_MTIME)"
+        echo "  Go mtime:   $(date -d @$GO_MTIME)"
+    fi
 fi
 
 if [ $ERRORS -gt 0 ]; then
