@@ -42,6 +42,7 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 
 	// Register routes
 	h.mux.HandleFunc("GET /health", h.handleHealth)
+	h.mux.HandleFunc("GET /openapi.json", h.handleOpenAPI)
 
 	// Responses API
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
