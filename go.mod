@@ -1,4 +1,4 @@
-module github.com/leseb/openai-responses-gateway
+module github.com/leseb/openresponses-gw
 
 go 1.24.0
 

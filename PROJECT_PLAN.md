@@ -1,4 +1,4 @@
-# OpenAI Responses API Gateway - Project Plan
+# Open Responses Gateway - Project Plan
 
 **Version:** 1.0
 **Date:** February 6, 2026
@@ -143,7 +143,7 @@ Client Request (HTTP)
 ## Project Structure
 
 ```
-openai-responses-gateway/
+openai-openresponses-gw/
 ├── README.md
 ├── PROJECT_PLAN.md          # This file
 ├── ARCHITECTURE.md          # Detailed architecture docs
@@ -337,7 +337,7 @@ openai-responses-gateway/
 │   │   └── .dockerignore
 │   │
 │   └── helm/                      # Helm chart
-│       └── responses-gateway/
+│       └── openresponses-gw/
 │           ├── Chart.yaml
 │           ├── values.yaml
 │           ├── templates/
@@ -374,10 +374,10 @@ package engine
 
 import (
     "context"
-    "github.com/yourorg/responses-gateway/pkg/core/schema"
-    "github.com/yourorg/responses-gateway/pkg/core/state"
-    "github.com/yourorg/responses-gateway/pkg/core/api"
-    "github.com/yourorg/responses-gateway/pkg/core/tools"
+    "github.com/yourorg/openresponses-gw/pkg/core/schema"
+    "github.com/yourorg/openresponses-gw/pkg/core/state"
+    "github.com/yourorg/openresponses-gw/pkg/core/api"
+    "github.com/yourorg/openresponses-gw/pkg/core/tools"
 )
 
 type ResponsesEngine struct {
@@ -455,8 +455,8 @@ import (
     "encoding/json"
     "net/http"
 
-    "github.com/yourorg/responses-gateway/pkg/core/engine"
-    "github.com/yourorg/responses-gateway/pkg/core/schema"
+    "github.com/yourorg/openresponses-gw/pkg/core/engine"
+    "github.com/yourorg/openresponses-gw/pkg/core/schema"
 )
 
 type Handler struct {
@@ -528,7 +528,7 @@ package envoy
 import (
     extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
-    "github.com/yourorg/responses-gateway/pkg/core/engine"
+    "github.com/yourorg/openresponses-gw/pkg/core/engine"
 )
 
 type Processor struct {
@@ -723,8 +723,8 @@ package builtin
 import (
     "context"
 
-    "github.com/yourorg/responses-gateway/pkg/core/api"
-    "github.com/yourorg/responses-gateway/pkg/core/tools"
+    "github.com/yourorg/openresponses-gw/pkg/core/api"
+    "github.com/yourorg/openresponses-gw/pkg/core/tools"
 )
 
 type FileSearchTool struct {
@@ -935,9 +935,9 @@ import (
     "log"
     "net/http"
 
-    httpAdapter "github.com/yourorg/responses-gateway/pkg/adapters/http"
-    "github.com/yourorg/responses-gateway/pkg/core/engine"
-    "github.com/yourorg/responses-gateway/pkg/storage/memory"
+    httpAdapter "github.com/yourorg/openresponses-gw/pkg/adapters/http"
+    "github.com/yourorg/openresponses-gw/pkg/core/engine"
+    "github.com/yourorg/openresponses-gw/pkg/storage/memory"
 )
 
 func main() {
@@ -1616,8 +1616,8 @@ k6 (load testing)
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourorg/openai-responses-gateway
-cd openai-responses-gateway
+git clone https://github.com/yourorg/openai-openresponses-gw
+cd openai-openresponses-gw
 
 # 2. Install dependencies
 go mod download
@@ -1669,7 +1669,7 @@ storage:
   postgres:
     host: localhost
     port: 5432
-    database: responses_gateway
+    database: openresponses_gw
     user: postgres
     password: postgres
     max_connections: 100
@@ -1682,7 +1682,7 @@ storage:
 
   s3:
     endpoint: s3.amazonaws.com
-    bucket: responses-gateway-files
+    bucket: openresponses-gw-files
     region: us-east-1
 
 llm:

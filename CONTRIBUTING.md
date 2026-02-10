@@ -1,4 +1,4 @@
-# Contributing to OpenAI Responses Gateway
+# Contributing to Open Responses Gateway
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to the project.
 
@@ -16,8 +16,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/leseb/openai-responses-gateway
-cd openai-responses-gateway
+git clone https://github.com/leseb/openresponses-gw
+cd openai-openresponses-gw
 
 # 2. Install dependencies
 make deps

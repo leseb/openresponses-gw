@@ -75,7 +75,7 @@ export OPENAI_API_KEY="sk-..."
 
 ```bash
 # Start your server with custom backend configuration
-./bin/responses-gateway-server -config config/my-backend.yaml &
+./bin/openresponses-gw-server -config config/my-backend.yaml &
 
 # Run tests against it
 ./scripts/test-conformance.sh "my-custom-model" "http://localhost:8080" "my-key"
@@ -250,7 +250,7 @@ make run
 
 # Or build and run
 make build-server
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 ### "Port already in use"

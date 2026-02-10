@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: OpenAI Responses Gateway API
+  title: Open Responses Gateway API
   description: |
     **100% Open Responses Specification Compliant Gateway**
 
@@ -17,8 +17,8 @@ info:
 
   version: 1.0.0
   contact:
-    name: OpenAI Responses Gateway
-    url: https://github.com/leseb/openai-responses-gateway
+    name: Open Responses Gateway
+    url: https://github.com/leseb/openresponses-gw
 
 servers:
   - url: http://localhost:8080

@@ -28,7 +28,7 @@ echo "  API Key:     ${API_KEY:0:10}..."
 echo ""
 
 # Check if server binary exists
-if [ ! -f "$PROJECT_ROOT/bin/responses-gateway-server" ]; then
+if [ ! -f "$PROJECT_ROOT/bin/openresponses-gw-server" ]; then
     echo -e "${RED}Error: Server binary not found${NC}"
     echo "Building server..."
     make -C "$PROJECT_ROOT" build-server
@@ -68,7 +68,7 @@ fi
 
 # Start server
 echo -e "${YELLOW}Starting server on port $SERVER_PORT...${NC}"
-"$PROJECT_ROOT/bin/responses-gateway-server" \
+"$PROJECT_ROOT/bin/openresponses-gw-server" \
     -port "$SERVER_PORT" \
     > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!

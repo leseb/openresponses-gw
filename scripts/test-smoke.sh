@@ -68,7 +68,7 @@ if ! curl -sf "$HOST/health" > /dev/null 2>&1; then
     echo ""
     echo "Please start the server first:"
     echo "  make run"
-    echo "  or: ./bin/responses-gateway-server"
+    echo "  or: ./bin/openresponses-gw-server"
     exit 1
 fi
 echo -e "${GREEN}✓ Server is accessible${NC}"

@@ -123,12 +123,12 @@ type ChatCompletionClient interface {
 
 ```go
 // Before
-import "github.com/leseb/openai-responses-gateway/pkg/core/api"
+import "github.com/leseb/openresponses-gw/pkg/core/api"
 
 var client api.LLMClient = api.NewMockLLMClient()
 
 // After
-import "github.com/leseb/openai-responses-gateway/pkg/core/api"
+import "github.com/leseb/openresponses-gw/pkg/core/api"
 
 var client api.ChatCompletionClient = api.NewMockChatCompletionClient()
 ```

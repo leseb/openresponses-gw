@@ -16,10 +16,10 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/leseb/openai-responses-gateway/pkg/adapters/envoy"
-	"github.com/leseb/openai-responses-gateway/pkg/core/config"
-	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
-	"github.com/leseb/openai-responses-gateway/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/adapters/envoy"
+	"github.com/leseb/openresponses-gw/pkg/core/config"
+	"github.com/leseb/openresponses-gw/pkg/core/engine"
+	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
 func main() {

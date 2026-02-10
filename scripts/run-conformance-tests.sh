@@ -46,7 +46,7 @@ fi
 cd "$PROJECT_ROOT"
 
 # Check if server binary exists
-if [ ! -f "$PROJECT_ROOT/bin/responses-gateway-server" ]; then
+if [ ! -f "$PROJECT_ROOT/bin/openresponses-gw-server" ]; then
     echo -e "${RED}Error: Server binary not found. Run 'make build-server' first.${NC}"
     exit 1
 fi
@@ -68,7 +68,7 @@ if [ -f "$SERVER_PID_FILE" ]; then
 fi
 
 # Start new server
-"$PROJECT_ROOT/bin/responses-gateway-server" \
+"$PROJECT_ROOT/bin/openresponses-gw-server" \
     -config "$PROJECT_ROOT/config/config.yaml" \
     -port "$SERVER_PORT" \
     > "$SERVER_LOG" 2>&1 &

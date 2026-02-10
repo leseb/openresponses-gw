@@ -1,4 +1,4 @@
-# OpenAI Responses API Gateway
+# Open Responses Gateway
 
 ![Open Responses Compliant](https://img.shields.io/badge/Open%20Responses-100%25%20Compliant-brightgreen)
 ![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20API-99.5%25%20Schema%20Compatible-blue)
@@ -66,8 +66,8 @@ make
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/leseb/openai-responses-gateway
-cd openai-responses-gateway
+git clone https://github.com/leseb/openresponses-gw
+cd openresponses-gw
 
 # 2. Start dependencies
 docker-compose up -d
@@ -129,7 +129,7 @@ export MODEL_ENDPOINT="http://localhost:11434/v1"  # Ollama, OpenAI, vLLM, etc.
 export API_KEY="your-api-key"                       # Optional for local backends
 
 # Start server
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 **Current Storage:** In-memory only (session data not persisted)
@@ -326,7 +326,7 @@ See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation 
 Simple Go binary, no external dependencies (except storage).
 
 ```bash
-./responses-gateway-server --config config.yaml
+./openresponses-gw-server --config config.yaml
 ```
 
 ### 2. Envoy External Processor
@@ -339,7 +339,7 @@ http_filters:
   typed_config:
     grpc_service:
       envoy_grpc:
-        cluster_name: responses_gateway
+        cluster_name: openresponses_gw
 ```
 
 ### 3. Kong Plugin
@@ -349,7 +349,7 @@ http_filters:
 Helm chart available in `deployments/helm/`.
 
 ```bash
-helm install responses-gateway ./deployments/helm/responses-gateway
+helm install openresponses-gw ./deployments/helm/openresponses-gw
 ```
 
 ## Observability

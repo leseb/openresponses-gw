@@ -1,4 +1,4 @@
-// Copyright OpenAI Responses Gateway Authors
+// Copyright Open Responses Gateway Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package http
@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
-	"github.com/leseb/openai-responses-gateway/pkg/core/schema"
-	"github.com/leseb/openai-responses-gateway/pkg/core/services"
-	"github.com/leseb/openai-responses-gateway/pkg/observability/logging"
-	"github.com/leseb/openai-responses-gateway/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/core/engine"
+	"github.com/leseb/openresponses-gw/pkg/core/schema"
+	"github.com/leseb/openresponses-gw/pkg/core/services"
+	"github.com/leseb/openresponses-gw/pkg/observability/logging"
+	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
 // Handler implements the HTTP adapter

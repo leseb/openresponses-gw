@@ -68,7 +68,7 @@ if ! curl -s "$BASE_URL/health" > /dev/null 2>&1; then
     echo "Please start the server first:"
     echo "  make run"
     echo "  or in another terminal:"
-    echo "  ./bin/responses-gateway-server -config config/config.yaml"
+    echo "  ./bin/openresponses-gw-server -config config/config.yaml"
     echo ""
     exit 1
 fi

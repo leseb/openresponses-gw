@@ -1,4 +1,4 @@
-// Copyright OpenAI Responses Gateway Authors
+// Copyright Open Responses Gateway Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package schema

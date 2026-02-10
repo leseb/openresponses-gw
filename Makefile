@@ -1,8 +1,8 @@
 .PHONY: help build test lint clean run docker-build docker-run migrate-up migrate-down
 
 # Variables
-BINARY_NAME=responses-gateway-server
-EXTPROC_BINARY_NAME=responses-gateway-extproc
+BINARY_NAME=openresponses-gw-server
+EXTPROC_BINARY_NAME=openresponses-gw-extproc
 VERSION?=$(shell git describe --tags --always --dirty)
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
@@ -28,7 +28,7 @@ RED=\033[0;31m
 NC=\033[0m # No Color
 
 help: ## Show this help message
-	@echo "$(GREEN)OpenAI Responses API Gateway - Makefile Commands$(NC)"
+	@echo "$(GREEN)Open Responses Gateway - Makefile Commands$(NC)"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
 
@@ -108,13 +108,13 @@ run-dev: ## Run server in development mode with live reload
 
 docker-build: ## Build Docker image
 	@echo "$(GREEN)Building Docker image...$(NC)"
-	docker build -t responses-gateway:$(VERSION) -f deployments/docker/Dockerfile .
-	docker tag responses-gateway:$(VERSION) responses-gateway:latest
+	docker build -t openresponses-gw:$(VERSION) -f deployments/docker/Dockerfile .
+	docker tag openresponses-gw:$(VERSION) openresponses-gw:latest
 	@echo "$(GREEN)✓ Docker image built$(NC)"
 
 docker-run: ## Run Docker container
 	@echo "$(GREEN)Running Docker container...$(NC)"
-	docker run -p 8080:8080 --env-file .env responses-gateway:latest
+	docker run -p 8080:8080 --env-file .env openresponses-gw:latest
 
 docker-compose-up: ## Start docker-compose stack
 	@echo "$(GREEN)Starting docker-compose stack...$(NC)"
@@ -143,12 +143,12 @@ migrate-create: ## Create a new migration (usage: make migrate-create NAME=add_u
 migrate-up: ## Run database migrations up
 	@echo "$(GREEN)Running migrations up...$(NC)"
 	@which migrate > /dev/null || (echo "$(RED)golang-migrate not installed. Run: brew install golang-migrate$(NC)" && exit 1)
-	migrate -path pkg/storage/postgres/migrations -database "postgresql://postgres:postgres@localhost:5432/responses_gateway?sslmode=disable" up
+	migrate -path pkg/storage/postgres/migrations -database "postgresql://postgres:postgres@localhost:5432/openresponses_gw?sslmode=disable" up
 	@echo "$(GREEN)✓ Migrations applied$(NC)"
 
 migrate-down: ## Run database migrations down
 	@echo "$(YELLOW)Rolling back migrations...$(NC)"
-	migrate -path pkg/storage/postgres/migrations -database "postgresql://postgres:postgres@localhost:5432/responses_gateway?sslmode=disable" down 1
+	migrate -path pkg/storage/postgres/migrations -database "postgresql://postgres:postgres@localhost:5432/openresponses_gw?sslmode=disable" down 1
 	@echo "$(GREEN)✓ Migration rolled back$(NC)"
 
 deps: ## Download dependencies

@@ -1,4 +1,4 @@
-// Copyright OpenAI Responses Gateway Authors
+// Copyright Open Responses Gateway Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package memory
@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/leseb/openai-responses-gateway/pkg/core/state"
+	"github.com/leseb/openresponses-gw/pkg/core/state"
 )
 
 // Store is an in-memory implementation of SessionStore

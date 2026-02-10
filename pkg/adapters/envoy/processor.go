@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
+	"github.com/leseb/openresponses-gw/pkg/core/engine"
 )
 
 // Processor implements the ExternalProcessorServer interface

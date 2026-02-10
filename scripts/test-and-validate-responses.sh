@@ -16,14 +16,14 @@ echo "   ✓ Build complete"
 # Step 2: Stop old server
 echo ""
 echo "2. Stopping old server..."
-pkill -f "responses-gateway-server" 2>/dev/null || true
+pkill -f "openresponses-gw-server" 2>/dev/null || true
 sleep 2
 echo "   ✓ Old server stopped"
 
 # Step 3: Start new server
 echo ""
 echo "3. Starting server..."
-nohup ./bin/responses-gateway-server > /tmp/gateway.log 2>&1 &
+nohup ./bin/openresponses-gw-server > /tmp/gateway.log 2>&1 &
 SERVER_PID=$!
 sleep 3
 

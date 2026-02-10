@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide explains how to configure the OpenAI Responses Gateway to connect to real inference backends.
+This guide explains how to configure the Open Responses Gateway to connect to real inference backends.
 
 ## Quick Start: Testing with OpenAI
 
@@ -21,7 +21,7 @@ export OPENAI_API_KEY=sk-your-api-key-here
 make run
 
 # Or with explicit config
-./bin/responses-gateway-server --config examples/standalone/config-openai.yaml
+./bin/openresponses-gw-server --config examples/standalone/config-openai.yaml
 ```
 
 ### 4. Test It!
@@ -53,7 +53,7 @@ export OPENAI_API_KEY=sk-your-key-here
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1
 
 # Run
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 **Pros:**
@@ -83,7 +83,7 @@ engine:
 Run:
 
 ```bash
-./bin/responses-gateway-server --config config.yaml
+./bin/openresponses-gw-server --config config.yaml
 ```
 
 **Pros:**
@@ -95,7 +95,7 @@ Run:
 ### Method 3: Command-Line Flags
 
 ```bash
-./bin/responses-gateway-server --port 9090
+./bin/openresponses-gw-server --port 9090
 ```
 
 **Available flags:**
@@ -125,7 +125,7 @@ The gateway automatically selects the backend mode based on configuration:
 ```bash
 export OPENAI_API_KEY=sk-proj-...
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 ---
@@ -145,7 +145,7 @@ export OPENAI_API_ENDPOINT=https://api.openai.com/v1
 **Example:**
 ```bash
 # No API key set
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 Mock response format:
@@ -170,7 +170,7 @@ The gateway works with **any OpenAI-compatible API**:
 ```bash
 export OPENAI_API_KEY=gsk_your_groq_key
 export OPENAI_API_ENDPOINT=https://api.groq.com/openai/v1
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 Models: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc.
@@ -182,7 +182,7 @@ Models: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc.
 ```bash
 export OPENAI_API_KEY=your_together_key
 export OPENAI_API_ENDPOINT=https://api.together.xyz/v1
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 ---
@@ -199,7 +199,7 @@ ollama pull llama3.2
 # Configure gateway
 export OPENAI_API_KEY=unused
 export OPENAI_API_ENDPOINT=http://localhost:11434/v1
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 **Note:** Ollama doesn't require an API key, but you must set it to any non-empty value.
@@ -211,7 +211,7 @@ export OPENAI_API_ENDPOINT=http://localhost:11434/v1
 ```bash
 export OPENAI_API_KEY=your_azure_key
 export OPENAI_API_ENDPOINT=https://your-resource.openai.azure.com/openai/deployments/your-deployment
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 ---
@@ -222,7 +222,7 @@ export OPENAI_API_ENDPOINT=https://your-resource.openai.azure.com/openai/deploym
 # Start LM Studio server on port 1234
 export OPENAI_API_KEY=unused
 export OPENAI_API_ENDPOINT=http://localhost:1234/v1
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 ---
@@ -247,7 +247,7 @@ engine:
 
 ```bash
 export OPENAI_API_KEY=sk-proj-...
-./bin/responses-gateway-server --config config-production.yaml
+./bin/openresponses-gw-server --config config-production.yaml
 ```
 
 ---
@@ -271,7 +271,7 @@ engine:
 ```bash
 export OPENAI_API_KEY=unused
 ollama serve
-./bin/responses-gateway-server --config config-dev.yaml
+./bin/openresponses-gw-server --config config-dev.yaml
 ```
 
 ---
@@ -293,7 +293,7 @@ engine:
 
 ```bash
 export OPENAI_API_KEY=gsk_...
-./bin/responses-gateway-server --config config-groq.yaml
+./bin/openresponses-gw-server --config config-groq.yaml
 ```
 
 ---
@@ -337,7 +337,7 @@ curl -X POST http://localhost:8080/v1/responses \
 
 1. **Check server logs:**
 ```bash
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 
 # Look for:
 # INFO Initialized engine mode=openai  (real backend)
@@ -458,7 +458,7 @@ curl -X POST http://localhost:8080/v1/responses \
 docker run -p 8080:8080 \
   -e OPENAI_API_KEY=sk-... \
   -e OPENAI_API_ENDPOINT=https://api.openai.com/v1 \
-  responses-gateway:latest
+  openresponses-gw:latest
 ```
 
 ### Using Config File
@@ -466,7 +466,7 @@ docker run -p 8080:8080 \
 ```bash
 docker run -p 8080:8080 \
   -v $(pwd)/config.yaml:/config.yaml \
-  responses-gateway:latest --config /config.yaml
+  openresponses-gw:latest --config /config.yaml
 ```
 
 ### Docker Compose
@@ -475,7 +475,7 @@ docker run -p 8080:8080 \
 version: '3.8'
 services:
   gateway:
-    image: responses-gateway:latest
+    image: openresponses-gw:latest
     ports:
       - "8080:8080"
     environment:

@@ -3,11 +3,11 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: responses-gateway-postgres
+    container_name: openresponses-gw-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: responses_gateway
+      POSTGRES_DB: openresponses_gw
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: responses-gateway-redis
+    container_name: openresponses-gw-redis
     ports:
       - "6379:6379"
     volumes:
@@ -36,7 +36,7 @@ services:
   #   build:
   #     context: .
   #     dockerfile: deployments/docker/Dockerfile
-  #   container_name: responses-gateway-server
+  #   container_name: openresponses-gw-server
   #   ports:
   #     - "8080:8080"
   #   environment:

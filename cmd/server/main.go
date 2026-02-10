@@ -1,4 +1,4 @@
-// Copyright OpenAI Responses Gateway Authors
+// Copyright Open Responses Gateway Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package main
@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	httpAdapter "github.com/leseb/openai-responses-gateway/pkg/adapters/http"
-	"github.com/leseb/openai-responses-gateway/pkg/core/config"
-	"github.com/leseb/openai-responses-gateway/pkg/core/engine"
-	"github.com/leseb/openai-responses-gateway/pkg/core/services"
-	"github.com/leseb/openai-responses-gateway/pkg/observability/logging"
-	"github.com/leseb/openai-responses-gateway/pkg/storage/memory"
+	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
+	"github.com/leseb/openresponses-gw/pkg/core/config"
+	"github.com/leseb/openresponses-gw/pkg/core/engine"
+	"github.com/leseb/openresponses-gw/pkg/core/services"
+	"github.com/leseb/openresponses-gw/pkg/observability/logging"
+	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
 var (
@@ -36,7 +36,7 @@ func main() {
 
 	// Print version
 	if *version {
-		fmt.Printf("OpenAI Responses Gateway Server\nVersion: %s\nBuild Time: %s\n", Version, BuildTime)
+		fmt.Printf("Open Responses Gateway Server\nVersion: %s\nBuild Time: %s\n", Version, BuildTime)
 		os.Exit(0)
 	}
 
@@ -45,7 +45,7 @@ func main() {
 		Level:  "info",
 		Format: "json",
 	})
-	logger.Info("Starting OpenAI Responses Gateway Server",
+	logger.Info("Starting Open Responses Gateway Server",
 		"version", Version,
 		"build_time", BuildTime)
 

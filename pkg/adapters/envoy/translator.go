@@ -10,7 +10,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"github.com/leseb/openai-responses-gateway/pkg/core/schema"
+	"github.com/leseb/openresponses-gw/pkg/core/schema"
 )
 
 // ErrorType represents different error categories

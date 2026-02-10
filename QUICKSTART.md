@@ -1,11 +1,11 @@
 # Quick Start Guide
 
-Welcome to the OpenAI Responses API Gateway! This guide will get you up and running in 5 minutes.
+Welcome to the Open Responses Gateway! This guide will get you up and running in 5 minutes.
 
 ## Project Location
 
 ```
-/Users/leseb/go/src/github.com/leseb/openai-responses-gateway
+/Users/leseb/go/src/github.com/leseb/openresponses-gw
 ```
 
 ## What's Been Implemented (Phase 1)
@@ -34,13 +34,13 @@ Welcome to the OpenAI Responses API Gateway! This guide will get you up and runn
 
 ```bash
 # Navigate to project
-cd /Users/leseb/go/src/github.com/leseb/openai-responses-gateway
+cd /Users/leseb/go/src/github.com/leseb/openresponses-gw
 
 # Build the server
 make build
 
 # Run the server
-./bin/responses-gateway-server
+./bin/openresponses-gw-server
 ```
 
 You should see:
@@ -108,7 +108,7 @@ cp examples/standalone/config.yaml my-config.yaml
 vim my-config.yaml
 
 # Run with custom config
-./bin/responses-gateway-server --config my-config.yaml
+./bin/openresponses-gw-server --config my-config.yaml
 ```
 
 ### Environment Variables
@@ -119,7 +119,7 @@ export OPENAI_API_KEY="sk-..."
 export OPENAI_API_ENDPOINT="https://api.openai.com/v1"
 
 # Custom port
-./bin/responses-gateway-server --port 9090
+./bin/openresponses-gw-server --port 9090
 ```
 
 ## Example Requests
@@ -322,7 +322,7 @@ These will be implemented in upcoming phases. See [PROJECT_PLAN.md](./PROJECT_PL
 lsof -i :8080
 
 # Use a different port
-./bin/responses-gateway-server --port 9090
+./bin/openresponses-gw-server --port 9090
 ```
 
 ### Build errors

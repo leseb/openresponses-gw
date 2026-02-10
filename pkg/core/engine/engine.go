@@ -1,4 +1,4 @@
-// Copyright OpenAI Responses Gateway Authors
+// Copyright Open Responses Gateway Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package engine
@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/leseb/openai-responses-gateway/pkg/core/api"
-	"github.com/leseb/openai-responses-gateway/pkg/core/config"
-	"github.com/leseb/openai-responses-gateway/pkg/core/schema"
-	"github.com/leseb/openai-responses-gateway/pkg/core/state"
+	"github.com/leseb/openresponses-gw/pkg/core/api"
+	"github.com/leseb/openresponses-gw/pkg/core/config"
+	"github.com/leseb/openresponses-gw/pkg/core/schema"
+	"github.com/leseb/openresponses-gw/pkg/core/state"
 )
 
 // Engine is the core orchestration engine for the Responses API

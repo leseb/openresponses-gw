@@ -2,7 +2,7 @@
 
 ## Overview
 
-Transform the OpenAI Responses Gateway into a complete implementation supporting all major Llama Stack / OpenAI APIs.
+Transform the Open Responses Gateway into a complete implementation supporting all major Llama Stack / OpenAI APIs.
 
 ## Architecture Diagram
 

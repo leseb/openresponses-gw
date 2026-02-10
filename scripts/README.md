@@ -227,7 +227,7 @@ jobs:
 ### Conformance tests fail to start
 
 Check that:
-1. Server binary exists: `ls -l bin/responses-gateway-server`
+1. Server binary exists: `ls -l bin/openresponses-gw-server`
 2. Config file exists: `ls -l config/config.yaml`
 3. Port 8080 is available: `lsof -i :8080`
 
