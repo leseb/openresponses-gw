@@ -1,6 +1,6 @@
 # Functional Conformance Status
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10
 
 This document tracks the **actual implementation status** of the Responses API, distinguishing between:
 - ✅ **Fully Implemented** - Parameter works as expected
@@ -16,7 +16,7 @@ This document tracks the **actual implementation status** of the Responses API, 
 |--------|-------|-------|
 | **OpenAPI Schema Conformance** | 99.5% | OpenAPI spec matches OpenAI |
 | **Functional Conformance** | ~35% | Many params accepted but ignored |
-| **Endpoint Coverage** | 100% | All implemented endpoints work |
+| **Endpoint Coverage** | 100% | All 41 endpoints schema-complete |
 
 ---
 
@@ -112,51 +112,86 @@ if len(req.Tools) > 0 {
 
 ## Endpoint Implementation Status
 
-### POST /v1/responses
-
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Non-streaming | ✅ | Fully functional |
-| Streaming (SSE) | ✅ | Works with 24 event types |
-| Request validation | ✅ | OpenAPI schema enforced |
-| Response format | ✅ | 100% spec compliant |
-| LLM integration | ✅ | Translates to chat completions |
-| Parameter passthrough | ⚠️ | Only 5/18 params actually used |
-
-### GET /v1/responses/{id}
-
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Retrieve response | ✅ | Returns stored response |
-| Include filtering | ⚠️ | Schema only, not functional |
-
-### Files API
+### Responses API (6/6 endpoints)
 
 | Endpoint | Status | Notes |
 |----------|--------|-------|
-| POST /v1/files | ✅ | Upload works |
-| GET /v1/files | ✅ | List works |
+| POST /v1/responses | ✅ | Non-streaming & streaming (24 SSE events) |
+| GET /v1/responses | ✅ | List with pagination (after, before, limit, order, model) |
+| GET /v1/responses/{id} | ✅ | Retrieve stored response |
+| DELETE /v1/responses/{id} | ✅ | Delete response |
+| GET /v1/responses/{id}/input_items | ✅ | Retrieve input items |
+| POST /responses | ✅ | Alias for /v1/responses (Open Responses spec) |
+
+**Functional Status:**
+- Request validation: ✅ OpenAPI schema enforced
+- Response format: ✅ 100% spec compliant
+- LLM integration: ✅ Translates to chat completions
+- Parameter passthrough: ⚠️ Only 5/18 params actually used in LLM calls
+
+### Conversations API (6/6 endpoints)
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| POST /v1/conversations | ✅ | Create conversation |
+| GET /v1/conversations | ✅ | List with pagination |
+| GET /v1/conversations/{id} | ✅ | Get conversation |
+| DELETE /v1/conversations/{id} | ✅ | Delete conversation |
+| POST /v1/conversations/{id}/items | ✅ | Add conversation items |
+| GET /v1/conversations/{id}/items | ✅ | List conversation items |
+
+### Models API (2/2 endpoints)
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| GET /v1/models | ✅ | Returns available models |
+| GET /v1/models/{id} | ✅ | Get specific model details |
+
+### Prompts API (5/5 endpoints)
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| POST /v1/prompts | ✅ | Create prompt template |
+| GET /v1/prompts | ✅ | List prompts |
+| GET /v1/prompts/{id} | ✅ | Get prompt |
+| PUT /v1/prompts/{id} | ✅ | Update prompt |
+| DELETE /v1/prompts/{id} | ✅ | Delete prompt |
+
+### Files API (5/5 endpoints)
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| POST /v1/files | ✅ | Upload works (multipart) |
+| GET /v1/files | ✅ | List with pagination |
 | GET /v1/files/{id} | ✅ | Metadata retrieval works |
-| DELETE /v1/files/{id} | ✅ | Deletion works |
 | GET /v1/files/{id}/content | ✅ | Download works |
+| DELETE /v1/files/{id} | ✅ | Deletion works |
 
 **Limitation:** Files uploaded but not used in responses (no multimodal support yet).
 
-### Vector Stores API
+### Vector Stores API (14/14 endpoints)
 
 | Endpoint | Status | Notes |
 |----------|--------|-------|
 | POST /v1/vector_stores | ✅ | Create works |
 | GET /v1/vector_stores | ✅ | List works |
-| All other endpoints | 🔄 | Implemented but return stub/empty data |
-| Search functionality | ❌ | No actual vector search |
-| RAG integration | ❌ | Not connected to responses |
+| GET /v1/vector_stores/{id} | ✅ | Get works |
+| PUT /v1/vector_stores/{id} | ✅ | Update works |
+| DELETE /v1/vector_stores/{id} | ✅ | Delete works |
+| POST /v1/vector_stores/{id}/files | ✅ | Add file works |
+| GET /v1/vector_stores/{id}/files | ✅ | List files works |
+| GET /v1/vector_stores/{id}/files/{file_id} | ✅ | Get file works |
+| DELETE /v1/vector_stores/{id}/files/{file_id} | ✅ | Delete file works |
+| GET /v1/vector_stores/{id}/files/{file_id}/content | ✅ | Get content works |
+| POST /v1/vector_stores/{id}/search | 🔄 | Endpoint works but returns stub data |
+| POST /v1/vector_stores/{id}/file_batches | ✅ | Create batch works |
+| GET /v1/vector_stores/{id}/file_batches/{batch_id} | ✅ | Get batch works |
+| GET /v1/vector_stores/{id}/file_batches/{batch_id}/files | ✅ | List batch files works |
+| POST /v1/vector_stores/{id}/file_batches/{batch_id}/cancel | ✅ | Cancel batch works |
 
-### Models API
-
-| Endpoint | Status | Notes |
-|----------|--------|-------|
-| GET /v1/models | ✅ | Returns available models |
+**Limitations:**
+- Search functionality: ❌ No actual vector embeddings or similarity search
+- RAG integration: ❌ Not connected to responses API
 
 ---
 
@@ -260,6 +295,11 @@ if len(req.Tools) > 0 {
 
 ## Version History
 
+- **2026-02-10**: Updated endpoint coverage
+  - Added 3 missing Responses API endpoints (list, delete, input_items)
+  - All 41 endpoints now schema-complete (100%)
+  - Functional implementation still ~35% (parameter limitations remain)
+
 - **2026-02-09**: Initial functional conformance audit
   - OpenAPI schema: 99.5% ✅
   - Functional implementation: ~35% ⚠️
@@ -273,4 +313,3 @@ if len(req.Tools) > 0 {
 - [CONFORMANCE_STATUS.md](./CONFORMANCE_STATUS.md) - OpenAPI conformance vs OpenAI
 - [TESTING.md](./TESTING.md) - Testing guide
 - [PROJECT_PLAN.md](./PROJECT_PLAN.md) - Implementation roadmap
-

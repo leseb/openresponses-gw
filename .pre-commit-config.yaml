@@ -40,7 +40,7 @@ repos:
       # Check OpenAPI conformance against OpenAI spec
       - id: openapi-conformance
         name: Check OpenAPI conformance with OpenAI spec
-        entry: bash -c 'echo "Checking OpenAPI conformance..." && uv run --with pyyaml scripts/openapi_conformance.py --cache openai-spec.yaml 2>&1 | tail -20 || echo "⚠️  Conformance check failed - run '\''make test-openapi-conformance'\'' for details"'
+        entry: bash -c 'echo "Checking OpenAPI conformance..." && uv run --with pyyaml scripts/openapi_conformance.py --openai-spec openai-spec.yaml 2>&1 | tail -20 || echo "⚠️  Conformance check failed - run '\''make test-openapi-conformance'\'' for details"'
         language: system
         pass_filenames: false
         files: ^openapi\.yaml$
