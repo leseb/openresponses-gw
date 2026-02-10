@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: go.sum
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test -race ./...
+
+  conformance:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama
+        run: ollama serve &
+
+      - name: Wait for Ollama
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama is ready"
+              exit 0
+            fi
+            echo "Waiting for Ollama... ($i/30)"
+            sleep 2
+          done
+          echo "Ollama failed to start"
+          exit 1
+
+      - name: Pull model
+        run: ollama pull llama3.2:3b
+
+      - name: Build server
+        run: make build-server
+
+      - name: Start server
+        env:
+          OPENAI_API_ENDPOINT: http://localhost:11434/v1
+          OPENAI_API_KEY: unused
+        run: |
+          ./bin/openresponses-gw-server > /tmp/server.log 2>&1 &
+          echo $! > /tmp/server.pid
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server failed to start"
+          cat /tmp/server.log
+          exit 1
+
+      - name: Run conformance tests
+        run: ./scripts/test-conformance.sh llama3.2:3b
+
+      - name: Upload server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: /tmp/server.log
