@@ -60,6 +60,9 @@ temp/
 # Test artifacts
 testdata/output/
 
+# Claude Code
+.claude/
+
 # Conformance tests
 .conformance-tests/
 .server-test.log
