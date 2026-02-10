@@ -632,3 +632,57 @@ func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Re
 
 	return schemaResp, nil
 }
+
+// ListResponses retrieves a paginated list of responses
+func (e *Engine) ListResponses(ctx context.Context, after, before string, limit int, order, model string) ([]*schema.Response, bool, error) {
+	stateResponses, hasMore, err := e.sessions.ListResponsesPaginated(ctx, after, before, limit, order, model)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to list responses: %w", err)
+	}
+
+	// Convert state.Response to schema.Response
+	responses := make([]*schema.Response, 0, len(stateResponses))
+	for _, stateResp := range stateResponses {
+		var modelName string
+		if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil && req.Model != nil {
+			modelName = *req.Model
+		}
+
+		schemaResp := schema.NewResponse(stateResp.ID, modelName)
+		schemaResp.Status = stateResp.Status
+
+		if output, ok := stateResp.Output.([]schema.ItemField); ok {
+			schemaResp.Output = output
+		}
+		if usage, ok := stateResp.Usage.(*schema.UsageField); ok {
+			schemaResp.Usage = usage
+		}
+
+		schemaResp.CreatedAt = stateResp.CreatedAt.Unix()
+		if stateResp.CompletedAt != nil {
+			completedAt := stateResp.CompletedAt.Unix()
+			schemaResp.CompletedAt = &completedAt
+		}
+
+		responses = append(responses, schemaResp)
+	}
+
+	return responses, hasMore, nil
+}
+
+// DeleteResponse deletes a response by ID
+func (e *Engine) DeleteResponse(ctx context.Context, responseID string) error {
+	if err := e.sessions.DeleteResponse(ctx, responseID); err != nil {
+		return fmt.Errorf("failed to delete response: %w", err)
+	}
+	return nil
+}
+
+// GetResponseInputItems retrieves input items for a specific response
+func (e *Engine) GetResponseInputItems(ctx context.Context, responseID string) (interface{}, error) {
+	items, err := e.sessions.GetResponseInputItems(ctx, responseID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response input items: %w", err)
+	}
+	return items, nil
+}

@@ -136,6 +136,62 @@ paths:
                   - $ref: '#/components/schemas/ResponseCompletedEvent'
                   - $ref: '#/components/schemas/ResponseOutputTextDeltaEvent'
                   - $ref: '#/components/schemas/ErrorEvent'
+    get:
+      tags: [Responses]
+      summary: List responses
+      operationId: listResponses
+      parameters:
+        - name: after
+          in: query
+          description: Cursor for pagination (response ID)
+          schema:
+            type: string
+        - name: before
+          in: query
+          description: Cursor for reverse pagination (response ID)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Number of responses to return (1-100, default 20)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: order
+          in: query
+          description: Sort order by created_at timestamp
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: model
+          in: query
+          description: Filter by model name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of responses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    enum: [list]
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Response'
+                  has_more:
+                    type: boolean
+                  first_id:
+                    type: string
+                  last_id:
+                    type: string
 
   /v1/responses/{response_id}:
     get:
@@ -162,6 +218,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Response'
+    delete:
+      tags: [Responses]
+      summary: Delete response
+      operationId: deleteResponse
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Response deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  object:
+                    type: string
+                    enum: [response]
+                  deleted:
+                    type: boolean
+
+  /v1/responses/{response_id}/input_items:
+    get:
+      tags: [Responses]
+      summary: Get response input items
+      description: Retrieve the input items that were sent with the original response request
+      operationId: getResponseInputItems
+      parameters:
+        - name: response_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Input items retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    enum: [list]
+                  data:
+                    type: array
+                    items:
+                      type: object
 
   # Extended APIs (not in Open Responses spec)
 

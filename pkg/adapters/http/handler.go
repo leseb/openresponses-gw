@@ -48,7 +48,10 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	// Support both /responses (Open Responses spec) and /v1/responses (OpenAI compatibility)
 	h.mux.HandleFunc("POST /responses", h.handleResponses)
 	h.mux.HandleFunc("POST /v1/responses", h.handleResponses)
+	h.mux.HandleFunc("GET /v1/responses", h.handleListResponses)
 	h.mux.HandleFunc("GET /v1/responses/{id}", h.handleGetResponse)
+	h.mux.HandleFunc("DELETE /v1/responses/{id}", h.handleDeleteResponse)
+	h.mux.HandleFunc("GET /v1/responses/{id}/input_items", h.handleGetResponseInputItems)
 
 	// Conversations API
 	h.mux.HandleFunc("POST /v1/conversations", h.handleCreateConversation)
@@ -183,6 +186,129 @@ func (h *Handler) handleGetResponse(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("Response retrieved",
 		"response_id", resp.ID,
 		"status", resp.Status)
+}
+
+// handleListResponses handles GET /v1/responses
+func (h *Handler) handleListResponses(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	after := r.URL.Query().Get("after")
+	before := r.URL.Query().Get("before")
+	limitStr := r.URL.Query().Get("limit")
+	order := r.URL.Query().Get("order")
+	model := r.URL.Query().Get("model")
+
+	// Default values
+	limit := 20
+	if limitStr != "" {
+		if parsedLimit, err := parseInt(limitStr); err == nil && parsedLimit > 0 && parsedLimit <= 100 {
+			limit = parsedLimit
+		}
+	}
+
+	if order == "" {
+		order = "desc"
+	}
+
+	h.logger.Info("Listing responses",
+		"after", after,
+		"before", before,
+		"limit", limit,
+		"order", order,
+		"model", model)
+
+	// Get responses from engine
+	responses, hasMore, err := h.engine.ListResponses(r.Context(), after, before, limit, order, model)
+	if err != nil {
+		h.logger.Error("Failed to list responses", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+
+	// Build response
+	result := map[string]interface{}{
+		"object":   "list",
+		"data":     responses,
+		"has_more": hasMore,
+	}
+
+	if len(responses) > 0 {
+		result["first_id"] = responses[0].ID
+		result["last_id"] = responses[len(responses)-1].ID
+	}
+
+	// Write response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+
+	h.logger.Info("Responses listed", "count", len(responses), "has_more", hasMore)
+}
+
+// handleDeleteResponse handles DELETE /v1/responses/{id}
+func (h *Handler) handleDeleteResponse(w http.ResponseWriter, r *http.Request) {
+	// Extract response ID from path
+	responseID := r.PathValue("id")
+	if responseID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Response ID is required")
+		return
+	}
+
+	h.logger.Info("Deleting response", "response_id", responseID)
+
+	// Delete response from engine
+	if err := h.engine.DeleteResponse(r.Context(), responseID); err != nil {
+		h.logger.Error("Failed to delete response", "error", err, "response_id", responseID)
+		h.writeError(w, http.StatusInternalServerError, "delete_failed", err.Error())
+		return
+	}
+
+	// Write response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":      responseID,
+		"object":  "response",
+		"deleted": true,
+	})
+
+	h.logger.Info("Response deleted", "response_id", responseID)
+}
+
+// handleGetResponseInputItems handles GET /v1/responses/{id}/input_items
+func (h *Handler) handleGetResponseInputItems(w http.ResponseWriter, r *http.Request) {
+	// Extract response ID from path
+	responseID := r.PathValue("id")
+	if responseID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Response ID is required")
+		return
+	}
+
+	h.logger.Info("Getting response input items", "response_id", responseID)
+
+	// Get input items from engine
+	items, err := h.engine.GetResponseInputItems(r.Context(), responseID)
+	if err != nil {
+		h.logger.Error("Failed to get response input items", "error", err, "response_id", responseID)
+		h.writeError(w, http.StatusNotFound, "not_found", err.Error())
+		return
+	}
+
+	// Write response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"data":   items,
+	})
+
+	h.logger.Info("Response input items retrieved", "response_id", responseID)
+}
+
+// parseInt parses a string to int, returning 0 if failed
+func parseInt(s string) (int, error) {
+	var result int
+	_, err := fmt.Sscanf(s, "%d", &result)
+	return result, err
 }
 
 // handleStreamingResponse handles SSE streaming
