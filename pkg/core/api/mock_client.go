@@ -30,6 +30,43 @@ func (m *MockChatCompletionClient) CreateChatCompletion(ctx context.Context, req
 		}
 	}
 
+	// If tools are present, return a tool call response
+	if len(req.Tools) > 0 {
+		tool := req.Tools[0]
+		mockArgs := `{"query":"mock"}`
+		return &ChatCompletionResponse{
+			ID:      fmt.Sprintf("chatcmpl-mock-%d", time.Now().Unix()),
+			Object:  "chat.completion",
+			Created: time.Now().Unix(),
+			Model:   req.Model,
+			Choices: []Choice{
+				{
+					Index: 0,
+					Message: Message{
+						Role:    "assistant",
+						Content: "",
+						ToolCalls: []ToolCall{
+							{
+								ID:   fmt.Sprintf("call_mock_%d", time.Now().UnixNano()),
+								Type: "function",
+								Function: ToolCallFunction{
+									Name:      tool.Function.Name,
+									Arguments: mockArgs,
+								},
+							},
+						},
+					},
+					FinishReason: "tool_calls",
+				},
+			},
+			Usage: Usage{
+				PromptTokens:     estimateTokens(userMessage),
+				CompletionTokens: estimateTokens(mockArgs),
+				TotalTokens:      estimateTokens(userMessage) + estimateTokens(mockArgs),
+			},
+		}, nil
+	}
+
 	// Generate mock response
 	mockContent := fmt.Sprintf("Mock response to: %s", userMessage)
 
@@ -70,6 +107,91 @@ func (m *MockChatCompletionClient) CreateChatCompletionStream(ctx context.Contex
 				userMessage = msg.Content
 				break
 			}
+		}
+
+		// If tools are present, stream a tool call response
+		if len(req.Tools) > 0 {
+			tool := req.Tools[0]
+			mockArgs := `{"query":"mock"}`
+			callID := fmt.Sprintf("call_mock_%d", time.Now().UnixNano())
+
+			// First chunk: tool call with ID and function name
+			select {
+			case chunks <- StreamChunk{
+				ID:      fmt.Sprintf("chatcmpl-mock-%d", time.Now().Unix()),
+				Object:  "chat.completion.chunk",
+				Created: time.Now().Unix(),
+				Model:   req.Model,
+				Choices: []StreamDelta{
+					{
+						Index: 0,
+						Delta: MessageDelta{
+							Role: "assistant",
+							ToolCalls: []ToolCallDelta{
+								{
+									Index: 0,
+									ID:    callID,
+									Type:  "function",
+									Function: ToolCallFunctionDelta{
+										Name: tool.Function.Name,
+									},
+								},
+							},
+						},
+					},
+				},
+			}:
+			case <-ctx.Done():
+				return
+			}
+
+			// Second chunk: arguments
+			select {
+			case chunks <- StreamChunk{
+				ID:      fmt.Sprintf("chatcmpl-mock-%d", time.Now().Unix()),
+				Object:  "chat.completion.chunk",
+				Created: time.Now().Unix(),
+				Model:   req.Model,
+				Choices: []StreamDelta{
+					{
+						Index: 0,
+						Delta: MessageDelta{
+							ToolCalls: []ToolCallDelta{
+								{
+									Index: 0,
+									Function: ToolCallFunctionDelta{
+										Arguments: mockArgs,
+									},
+								},
+							},
+						},
+					},
+				},
+			}:
+			case <-ctx.Done():
+				return
+			}
+
+			// Final chunk: finish reason
+			finishReason := "tool_calls"
+			select {
+			case chunks <- StreamChunk{
+				ID:      fmt.Sprintf("chatcmpl-mock-%d", time.Now().Unix()),
+				Object:  "chat.completion.chunk",
+				Created: time.Now().Unix(),
+				Model:   req.Model,
+				Choices: []StreamDelta{
+					{
+						Index:        0,
+						Delta:        MessageDelta{},
+						FinishReason: &finishReason,
+					},
+				},
+			}:
+			case <-ctx.Done():
+				return
+			}
+			return
 		}
 
 		// Generate mock streaming response

@@ -80,6 +80,23 @@ type Response struct {
 	Status             string
 	Error              interface{}
 	Usage              interface{}
+	Messages           []ConversationMessage
 	CreatedAt          time.Time
 	CompletedAt        *time.Time
+}
+
+// ConversationMessage stores a message from a conversation for multi-turn support
+type ConversationMessage struct {
+	Role       string
+	Content    string
+	ToolCalls  []ToolCallRecord
+	ToolCallID string
+}
+
+// ToolCallRecord stores tool call details for conversation history
+type ToolCallRecord struct {
+	ID        string
+	Type      string
+	Name      string
+	Arguments string
 }

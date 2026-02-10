@@ -17,10 +17,9 @@ A production-ready, gateway-agnostic implementation of the [Open Responses API](
 ### ⚠️ Known Limitations
 
 See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for complete details:
-- **Parameter Support**: 5/18 request parameters fully functional (model, input, instructions, temperature, max_output_tokens)
-- **Tool Calling**: Currently mocked (returns fake data, not connected to LLM)
-- **Multi-turn Conversations**: Not yet implemented (previous_response_id accepted but not used)
 - **RAG/Vector Search**: Endpoints exist but return stub data
+- **file_search/web_search tools**: Only `function` type tools are supported
+- **Vision/Multimodal**: Not yet implemented
 
 ## Architecture
 
@@ -99,25 +98,29 @@ curl -X POST http://localhost:8080/v1/responses \
 
 ## Project Status
 
-**Current State:** Schema-complete, functionally partial
+**Current State:** Functionally complete for core Responses API
 
 ### ✅ Completed
 - [x] HTTP server implementation
 - [x] Core engine with LLM integration
 - [x] Request/response handling (non-streaming + streaming)
 - [x] 99.5% OpenAI API schema conformance
+- [x] Full parameter passthrough (16/18 params functional)
+- [x] Real tool calling with agentic loop
+- [x] Multi-turn conversations via previous_response_id
+- [x] Streaming tool call support (delta/done SSE events)
+- [x] Input array parsing (message, function_call, function_call_output)
+- [x] Incremental persistence during streaming
 - [x] Files API (5 endpoints)
 - [x] Vector Stores API (13 endpoints)
-- [x] Responses API (2 endpoints)
-- [x] Models API (1 endpoint)
+- [x] Responses API (6 endpoints)
+- [x] Models API (2 endpoints)
 - [x] Comprehensive test infrastructure
 
 ### 🚧 In Progress
-- [ ] Full parameter support (currently 5/18 working)
-- [ ] Real tool calling (currently mocked)
-- [ ] Multi-turn conversation history
 - [ ] Vector search implementation
 - [ ] RAG integration
+- [ ] file_search / web_search tool types
 
 See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation details and [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the complete roadmap.
 
@@ -309,14 +312,12 @@ See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for implementation 
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| **Tool Calling** | 🔄 Mocked | Accepts tools, returns fake data |
-| **Multi-turn** | 🔄 Schema only | Accepts `previous_response_id`, doesn't use it |
 | **Vector Search** | 🔄 Stub | Endpoint exists, returns empty results |
 
 ### ❌ Not Implemented
 
-- ❌ Conversations API (planned)
 - ❌ RAG integration (planned)
+- ❌ file_search / web_search tool types (planned)
 - ❌ File attachments in responses (planned)
 - ❌ Vision/multimodal (planned)
 
@@ -401,5 +402,5 @@ See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the complete implementation roadmap
 
 **Current Status:**
 - ✅ Schema implementation complete (99.5%)
-- 🚧 Functional implementation partial (~35%)
-- 🎯 Next: Full parameter support, real tool calling
+- ✅ Functional implementation ~85% (full parameter passthrough, real tool calling, multi-turn)
+- 🎯 Next: RAG integration, file_search/web_search tools

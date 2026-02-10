@@ -16,6 +16,8 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/core/state"
 )
 
+const defaultMaxToolCalls = 10
+
 // Engine is the core orchestration engine for the Responses API
 type Engine struct {
 	config   *config.EngineConfig
@@ -59,6 +61,369 @@ func (e *Engine) Store() state.SessionStore {
 	return e.sessions
 }
 
+// echoRequestParams copies all request parameters to the response (Open Responses spec)
+func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
+	resp.PreviousResponseID = req.PreviousResponseID
+	resp.Instructions = req.Instructions
+	resp.Tools = convertToolsToResponse(req.Tools)
+	if req.ToolChoice != nil {
+		resp.ToolChoice = req.ToolChoice
+	}
+	resp.Reasoning = convertReasoningToResponse(req.Reasoning)
+	if req.Temperature != nil {
+		resp.Temperature = *req.Temperature
+	}
+	if req.TopP != nil {
+		resp.TopP = *req.TopP
+	}
+	resp.MaxOutputTokens = req.MaxOutputTokens
+	resp.MaxToolCalls = req.MaxToolCalls
+	if req.ParallelToolCalls != nil {
+		resp.ParallelToolCalls = *req.ParallelToolCalls
+	}
+	if req.Store != nil {
+		resp.Store = *req.Store
+	}
+	if req.FrequencyPenalty != nil {
+		resp.FrequencyPenalty = *req.FrequencyPenalty
+	}
+	if req.PresencePenalty != nil {
+		resp.PresencePenalty = *req.PresencePenalty
+	}
+	if req.Truncation != nil {
+		if req.Truncation.Type == "last_messages" {
+			resp.Truncation = "disabled"
+		} else {
+			resp.Truncation = "auto"
+		}
+	} else {
+		resp.Truncation = "auto"
+	}
+	if req.TopLogprobs != nil {
+		resp.TopLogprobs = *req.TopLogprobs
+	}
+	if req.ServiceTier != nil {
+		resp.ServiceTier = *req.ServiceTier
+	}
+	if req.Background != nil {
+		resp.Background = *req.Background
+	}
+	resp.PromptCacheKey = req.PromptCacheKey
+	resp.SafetyIdentifier = req.SafetyIdentifier
+	resp.Metadata = req.Metadata
+}
+
+// extractInputMessages parses the Responses API input field into chat messages
+func extractInputMessages(input interface{}) []api.Message {
+	switch v := input.(type) {
+	case string:
+		return []api.Message{{Role: "user", Content: v}}
+	case []interface{}:
+		var messages []api.Message
+		for _, item := range v {
+			itemMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			itemType, _ := itemMap["type"].(string)
+			switch itemType {
+			case "message":
+				role, _ := itemMap["role"].(string)
+				content := extractContentFromItem(itemMap)
+				if role != "" && content != "" {
+					messages = append(messages, api.Message{Role: role, Content: content})
+				}
+			case "function_call_output":
+				callID, _ := itemMap["call_id"].(string)
+				output, _ := itemMap["output"].(string)
+				if callID != "" {
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    output,
+						ToolCallID: callID,
+					})
+				}
+			case "function_call":
+				callID, _ := itemMap["call_id"].(string)
+				name, _ := itemMap["name"].(string)
+				arguments, _ := itemMap["arguments"].(string)
+				if name != "" {
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{
+							{
+								ID:   callID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      name,
+									Arguments: arguments,
+								},
+							},
+						},
+					})
+				}
+			default:
+				// Try to extract content for unknown types
+				if content, ok := itemMap["content"].(string); ok && content != "" {
+					role, _ := itemMap["role"].(string)
+					if role == "" {
+						role = "user"
+					}
+					messages = append(messages, api.Message{Role: role, Content: content})
+				}
+			}
+		}
+		if len(messages) == 0 {
+			return []api.Message{{Role: "user", Content: fmt.Sprintf("%v", input)}}
+		}
+		return messages
+	default:
+		return []api.Message{{Role: "user", Content: fmt.Sprintf("%v", v)}}
+	}
+}
+
+// extractContentFromItem extracts text content from a message input item
+func extractContentFromItem(item map[string]interface{}) string {
+	// Direct content string
+	if content, ok := item["content"].(string); ok {
+		return content
+	}
+	// Content as array of parts
+	if contentArr, ok := item["content"].([]interface{}); ok {
+		text := ""
+		for _, part := range contentArr {
+			if partMap, ok := part.(map[string]interface{}); ok {
+				if partText, ok := partMap["text"].(string); ok {
+					if text != "" {
+						text += " "
+					}
+					text += partText
+				}
+			}
+		}
+		return text
+	}
+	return ""
+}
+
+// convertToolsForLLM converts Responses API tools to chat completion tools
+func convertToolsForLLM(tools []schema.ResponsesToolParam) []api.Tool {
+	var result []api.Tool
+	for _, t := range tools {
+		if t.Type != "function" {
+			continue
+		}
+		tool := api.Tool{
+			Type: "function",
+			Function: api.ToolFunction{
+				Name:       t.Name,
+				Parameters: t.Parameters,
+			},
+		}
+		if t.Description != nil {
+			tool.Function.Description = *t.Description
+		}
+		if t.Strict != nil {
+			tool.Function.Strict = t.Strict
+		}
+		result = append(result, tool)
+	}
+	return result
+}
+
+// buildLLMRequest constructs a ChatCompletionRequest from a ResponseRequest
+func buildLLMRequest(model string, messages []api.Message, req *schema.ResponseRequest, stream bool) *api.ChatCompletionRequest {
+	llmReq := &api.ChatCompletionRequest{
+		Model:    model,
+		Messages: messages,
+		Stream:   stream,
+	}
+
+	// Sampling parameters
+	llmReq.Temperature = req.Temperature
+	llmReq.TopP = req.TopP
+	if req.FrequencyPenalty != nil {
+		llmReq.FrequencyPenalty = req.FrequencyPenalty
+	}
+	if req.PresencePenalty != nil {
+		llmReq.PresencePenalty = req.PresencePenalty
+	}
+
+	// Token limits
+	if req.MaxOutputTokens != nil {
+		llmReq.MaxCompletionTokens = req.MaxOutputTokens
+	}
+
+	// Tools
+	tools := convertToolsForLLM(req.Tools)
+	if len(tools) > 0 {
+		llmReq.Tools = tools
+	}
+
+	// ToolChoice
+	if req.ToolChoice != nil {
+		llmReq.ToolChoice = req.ToolChoice
+	}
+
+	// ParallelToolCalls
+	llmReq.ParallelToolCalls = req.ParallelToolCalls
+
+	// Reasoning effort
+	if req.Reasoning != nil && req.Reasoning.Effort != nil {
+		llmReq.ReasoningEffort = req.Reasoning.Effort
+	}
+
+	// PromptCacheKey
+	llmReq.PromptCacheKey = req.PromptCacheKey
+
+	// SafetyIdentifier
+	llmReq.SafetyIdentifier = req.SafetyIdentifier
+
+	return llmReq
+}
+
+// buildConversationMessages reconstructs conversation history for multi-turn
+func (e *Engine) buildConversationMessages(ctx context.Context, req *schema.ResponseRequest) ([]api.Message, error) {
+	var messages []api.Message
+
+	// Load previous conversation if this is a follow-up
+	if req.PreviousResponseID != nil && *req.PreviousResponseID != "" {
+		prevResp, err := e.sessions.GetResponse(ctx, *req.PreviousResponseID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load previous response %s: %w", *req.PreviousResponseID, err)
+		}
+
+		// Load stored messages from previous response
+		for _, m := range prevResp.Messages {
+			msg := api.Message{
+				Role:       m.Role,
+				Content:    m.Content,
+				ToolCallID: m.ToolCallID,
+			}
+			if len(m.ToolCalls) > 0 {
+				for _, tc := range m.ToolCalls {
+					msg.ToolCalls = append(msg.ToolCalls, api.ToolCall{
+						ID:   tc.ID,
+						Type: tc.Type,
+						Function: api.ToolCallFunction{
+							Name:      tc.Name,
+							Arguments: tc.Arguments,
+						},
+					})
+				}
+			}
+			messages = append(messages, msg)
+		}
+
+		// Append previous response output as context
+		if output, ok := prevResp.Output.([]schema.ItemField); ok {
+			for _, item := range output {
+				switch item.Type {
+				case "message":
+					role := "assistant"
+					if item.Role != nil {
+						role = *item.Role
+					}
+					content := ""
+					for _, part := range item.Content {
+						if part.Text != nil {
+							content += *part.Text
+						}
+					}
+					if content != "" {
+						messages = append(messages, api.Message{Role: role, Content: content})
+					}
+				case "function_call":
+					name := ""
+					if item.Name != nil {
+						name = *item.Name
+					}
+					args := ""
+					if item.Arguments != nil {
+						args = *item.Arguments
+					}
+					callID := ""
+					if item.CallID != nil {
+						callID = *item.CallID
+					}
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{
+							{
+								ID:   callID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      name,
+									Arguments: args,
+								},
+							},
+						},
+					})
+				case "function_call_output":
+					callID := ""
+					if item.CallID != nil {
+						callID = *item.CallID
+					}
+					output := ""
+					if item.Output != nil {
+						output = *item.Output
+					}
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    output,
+						ToolCallID: callID,
+					})
+				}
+			}
+		}
+	}
+
+	// Add instructions as system message
+	if req.Instructions != nil && *req.Instructions != "" {
+		// Prepend system message if not already present
+		hasSystem := false
+		for _, m := range messages {
+			if m.Role == "system" {
+				hasSystem = true
+				break
+			}
+		}
+		if !hasSystem {
+			messages = append([]api.Message{
+				{Role: "system", Content: *req.Instructions},
+			}, messages...)
+		}
+	}
+
+	// Append current input
+	inputMessages := extractInputMessages(req.Input)
+	messages = append(messages, inputMessages...)
+
+	return messages, nil
+}
+
+// messagesToConversationMessages converts api.Messages to state.ConversationMessages for storage
+func messagesToConversationMessages(messages []api.Message) []state.ConversationMessage {
+	result := make([]state.ConversationMessage, 0, len(messages))
+	for _, m := range messages {
+		cm := state.ConversationMessage{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+		}
+		for _, tc := range m.ToolCalls {
+			cm.ToolCalls = append(cm.ToolCalls, state.ToolCallRecord{
+				ID:        tc.ID,
+				Type:      tc.Type,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			})
+		}
+		result = append(result, cm)
+	}
+	return result
+}
+
 // ProcessRequest processes a Responses API request (non-streaming)
 func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest) (*schema.Response, error) {
 	// 1. Validate request
@@ -76,161 +441,141 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 	resp := schema.NewResponse(respID, model)
 
-	// Echo ALL request parameters (Open Responses spec requires echoing all fields)
-	resp.PreviousResponseID = req.PreviousResponseID
-	resp.Instructions = req.Instructions
-	resp.Tools = convertToolsToResponse(req.Tools)
-	// ToolChoice defaults to "none" if not specified, or echo the request value
-	if req.ToolChoice != nil {
-		resp.ToolChoice = req.ToolChoice
-	} else {
-		// Keep the default "none" from NewResponse
-	}
-	resp.Reasoning = convertReasoningToResponse(req.Reasoning)
-	// Required number fields - use pointer value or default to 0
-	if req.Temperature != nil {
-		resp.Temperature = *req.Temperature
-	}
-	if req.TopP != nil {
-		resp.TopP = *req.TopP
-	}
-	resp.MaxOutputTokens = req.MaxOutputTokens
-	resp.MaxToolCalls = req.MaxToolCalls
-	// Required boolean fields - use pointer value or default to false
-	if req.ParallelToolCalls != nil {
-		resp.ParallelToolCalls = *req.ParallelToolCalls
-	}
-	if req.Store != nil {
-		resp.Store = *req.Store
-	}
-	if req.FrequencyPenalty != nil {
-		resp.FrequencyPenalty = *req.FrequencyPenalty
-	}
-	if req.PresencePenalty != nil {
-		resp.PresencePenalty = *req.PresencePenalty
-	}
-	// Truncation must be "auto" or "disabled"
-	if req.Truncation != nil {
-		if req.Truncation.Type == "last_messages" {
-			resp.Truncation = "disabled"
-		} else {
-			resp.Truncation = "auto"
-		}
-	} else {
-		resp.Truncation = "auto" // Default
-	}
-	if req.TopLogprobs != nil {
-		resp.TopLogprobs = *req.TopLogprobs
-	}
-	if req.ServiceTier != nil {
-		resp.ServiceTier = *req.ServiceTier
-	}
-	if req.Background != nil {
-		resp.Background = *req.Background
-	}
-	resp.PromptCacheKey = req.PromptCacheKey
-	resp.SafetyIdentifier = req.SafetyIdentifier
-	resp.Metadata = req.Metadata
+	// 4. Echo ALL request parameters
+	echoRequestParams(resp, req)
 
-	// 4. Load conversation history if this is a follow-up
-	var conversationHistory []string
-	if req.PreviousResponseID != nil && *req.PreviousResponseID != "" {
-		// TODO: Load from state store
-		// For now, just note it in metadata
-		if resp.Metadata == nil {
-			resp.Metadata = make(map[string]string)
-		}
-		resp.Metadata["previous_response_id"] = *req.PreviousResponseID
-	}
-
-	// 5. Prepare LLM request
-	inputText := extractInputText(req.Input)
-	llmReq := &api.ChatCompletionRequest{
-		Model: model,
-		Messages: []api.Message{
-			{Role: "user", Content: inputText},
-		},
-		Temperature: req.Temperature,
-		MaxTokens:   req.MaxOutputTokens,
-		Stream:      false,
-	}
-
-	// Add instructions as system message if provided
-	if req.Instructions != nil && *req.Instructions != "" {
-		llmReq.Messages = append([]api.Message{
-			{Role: "system", Content: *req.Instructions},
-		}, llmReq.Messages...)
-	}
-
-	// 6. Call LLM
-	llmResp, err := e.llm.CreateChatCompletion(ctx, llmReq)
+	// 5. Build conversation messages (including multi-turn history)
+	messages, err := e.buildConversationMessages(ctx, req)
 	if err != nil {
-		resp.MarkFailed("api_error", "llm_error", fmt.Sprintf("failed to call LLM: %v", err))
+		resp.MarkFailed("api_error", "conversation_error", fmt.Sprintf("failed to build conversation: %v", err))
 		return resp, nil
 	}
 
-	// 7. Build output from LLM response
-	// If tools are provided, simulate a function call (for testing)
-	if len(req.Tools) > 0 {
-		// Generate a function call output for the first tool
-		tool := req.Tools[0]
-		completedStatus := "completed"
-		funcArgs := `{"location":"San Francisco, CA"}`
-		callID := generateID("call_")
-		resp.Output = []schema.ItemField{
-			{
-				Type:      "function_call",
-				ID:        generateID("item_"),
-				CallID:    &callID,
-				Name:      &tool.Name,
-				Arguments: &funcArgs,
-				Status:    &completedStatus,
-			},
-		}
-	} else {
-		// Normal text message response
-		outputText := ""
-		if len(llmResp.Choices) > 0 {
-			outputText = llmResp.Choices[0].Message.Content
+	// 6. Agentic loop
+	maxIters := defaultMaxToolCalls
+	if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
+		maxIters = *req.MaxToolCalls
+	}
+
+	accumulatedOutputTokens := 0
+	var allOutput []schema.ItemField
+
+	for iter := 0; iter < maxIters; iter++ {
+		// Build LLM request
+		llmReq := buildLLMRequest(model, messages, req, false)
+
+		// Adjust token budget if max_output_tokens is set
+		if req.MaxOutputTokens != nil {
+			remaining := *req.MaxOutputTokens - accumulatedOutputTokens
+			if remaining <= 0 {
+				resp.MarkIncomplete("max_output_tokens")
+				break
+			}
+			llmReq.MaxCompletionTokens = &remaining
 		}
 
+		// Call LLM
+		llmResp, err := e.llm.CreateChatCompletion(ctx, llmReq)
+		if err != nil {
+			resp.MarkFailed("api_error", "llm_error", fmt.Sprintf("failed to call LLM: %v", err))
+			return resp, nil
+		}
+
+		accumulatedOutputTokens += llmResp.Usage.CompletionTokens
+
+		if len(llmResp.Choices) == 0 {
+			resp.MarkFailed("api_error", "no_choices", "LLM returned no choices")
+			return resp, nil
+		}
+
+		choice := llmResp.Choices[0]
+
+		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
+			// Emit function_call output items
+			for _, tc := range choice.Message.ToolCalls {
+				completedStatus := "completed"
+				callID := tc.ID
+				funcName := tc.Function.Name
+				funcArgs := tc.Function.Arguments
+				allOutput = append(allOutput, schema.ItemField{
+					Type:      "function_call",
+					ID:        generateID("fc_"),
+					CallID:    &callID,
+					Name:      &funcName,
+					Arguments: &funcArgs,
+					Status:    &completedStatus,
+				})
+			}
+
+			// Append assistant message with tool calls to messages for storage
+			messages = append(messages, api.Message{
+				Role:      "assistant",
+				ToolCalls: choice.Message.ToolCalls,
+			})
+
+			// Function tools are client-side - break to let client execute
+			break
+		}
+
+		// Normal text response
+		outputText := choice.Message.Content
 		assistantRole := "assistant"
 		completedStatus := "completed"
-		resp.Output = []schema.ItemField{
-			{
-				Type:   "message",
-				ID:     generateID("msg_"),
-				Role:   &assistantRole,
-				Status: &completedStatus,
-				Content: []schema.ContentPart{
-					{
-						Type: "text",
-						Text: &outputText,
-					},
+		allOutput = append(allOutput, schema.ItemField{
+			Type:   "message",
+			ID:     generateID("msg_"),
+			Role:   &assistantRole,
+			Status: &completedStatus,
+			Content: []schema.ContentPart{
+				{
+					Type: "text",
+					Text: &outputText,
 				},
 			},
+		})
+
+		// Append assistant message for storage
+		messages = append(messages, api.Message{
+			Role:    "assistant",
+			Content: outputText,
+		})
+
+		// Set usage from LLM response
+		resp.Usage = &schema.UsageField{
+			InputTokens:  llmResp.Usage.PromptTokens,
+			OutputTokens: accumulatedOutputTokens,
+			TotalTokens:  llmResp.Usage.PromptTokens + accumulatedOutputTokens,
+			InputTokensDetails: schema.InputTokensDetails{
+				CachedTokens: 0,
+			},
+			OutputTokensDetails: schema.OutputTokensDetails{
+				ReasoningTokens: 0,
+			},
+		}
+
+		break
+	}
+
+	// 7. Set output
+	resp.Output = allOutput
+	if resp.Output == nil {
+		resp.Output = make([]schema.ItemField, 0)
+	}
+
+	// 8. Set usage if not already set
+	if resp.Usage == nil {
+		resp.Usage = &schema.UsageField{
+			InputTokensDetails:  schema.InputTokensDetails{},
+			OutputTokensDetails: schema.OutputTokensDetails{},
 		}
 	}
 
-	// 8. Set usage from LLM response
-	resp.Usage = &schema.UsageField{
-		InputTokens:  llmResp.Usage.PromptTokens,
-		OutputTokens: llmResp.Usage.CompletionTokens,
-		TotalTokens:  llmResp.Usage.TotalTokens,
-		InputTokensDetails: schema.InputTokensDetails{
-			CachedTokens: 0, // No caching in mock client
-		},
-		OutputTokensDetails: schema.OutputTokensDetails{
-			ReasoningTokens: 0, // No reasoning tokens in basic responses
-		},
+	// 9. Mark as completed if not already marked
+	if resp.Status == "in_progress" {
+		resp.MarkCompleted()
 	}
 
-	// 9. Text field is already initialized in NewResponse with default format
-
-	// 10. Mark as completed
-	resp.MarkCompleted()
-
-	// 11. Save response to state store
+	// 10. Save response to state store
 	prevRespID := ""
 	if req.PreviousResponseID != nil {
 		prevRespID = *req.PreviousResponseID
@@ -243,13 +588,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		Output:             resp.Output,
 		Status:             resp.Status,
 		Usage:              resp.Usage,
+		Messages:           messagesToConversationMessages(messages),
 		CreatedAt:          time.Unix(resp.CreatedAt, 0),
 		CompletedAt:        timePtr(resp.CompletedAt),
 	}); err != nil {
 		return nil, fmt.Errorf("failed to save response: %w", err)
 	}
-
-	_ = conversationHistory // Will be used in Phase 2
 
 	return resp, nil
 }
@@ -276,61 +620,8 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Track sequence number for events
 		seqNum := 0
 
-		// Echo ALL request parameters (Open Responses spec requires echoing all fields)
-		resp.PreviousResponseID = req.PreviousResponseID
-		resp.Instructions = req.Instructions
-		resp.Tools = convertToolsToResponse(req.Tools)
-		// ToolChoice defaults to "none" if not specified, or echo the request value
-		if req.ToolChoice != nil {
-			resp.ToolChoice = req.ToolChoice
-		} else {
-			// Keep the default "none" from NewResponse
-		}
-		resp.Reasoning = convertReasoningToResponse(req.Reasoning)
-		// Required number fields - use pointer value or default to 0
-		if req.Temperature != nil {
-			resp.Temperature = *req.Temperature
-		}
-		if req.TopP != nil {
-			resp.TopP = *req.TopP
-		}
-		resp.MaxOutputTokens = req.MaxOutputTokens
-		resp.MaxToolCalls = req.MaxToolCalls
-		// Required boolean fields - use pointer value or default to false
-		if req.ParallelToolCalls != nil {
-			resp.ParallelToolCalls = *req.ParallelToolCalls
-		}
-		if req.Store != nil {
-			resp.Store = *req.Store
-		}
-		if req.FrequencyPenalty != nil {
-			resp.FrequencyPenalty = *req.FrequencyPenalty
-		}
-		if req.PresencePenalty != nil {
-			resp.PresencePenalty = *req.PresencePenalty
-		}
-		// Truncation must be "auto" or "disabled"
-		if req.Truncation != nil {
-			if req.Truncation.Type == "last_messages" {
-				resp.Truncation = "disabled"
-			} else {
-				resp.Truncation = "auto"
-			}
-		} else {
-			resp.Truncation = "auto" // Default
-		}
-		if req.TopLogprobs != nil {
-			resp.TopLogprobs = *req.TopLogprobs
-		}
-		if req.ServiceTier != nil {
-			resp.ServiceTier = *req.ServiceTier
-		}
-		if req.Background != nil {
-			resp.Background = *req.Background
-		}
-		resp.PromptCacheKey = req.PromptCacheKey
-		resp.SafetyIdentifier = req.SafetyIdentifier
-		resp.Metadata = req.Metadata
+		// Echo ALL request parameters
+		echoRequestParams(resp, req)
 
 		// Send response.created event
 		events <- &schema.ResponseCreatedStreamingEvent{
@@ -340,23 +631,32 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		seqNum++
 
-		// Prepare LLM request
-		inputText := extractInputText(req.Input)
-		llmReq := &api.ChatCompletionRequest{
-			Model: model,
-			Messages: []api.Message{
-				{Role: "user", Content: inputText},
-			},
-			Temperature: req.Temperature,
-			MaxTokens:   req.MaxOutputTokens,
-			Stream:      true,
+		// Save response on creation (in_progress)
+		prevRespID := ""
+		if req.PreviousResponseID != nil {
+			prevRespID = *req.PreviousResponseID
 		}
+		_ = e.sessions.SaveResponse(ctx, &state.Response{
+			ID:                 resp.ID,
+			PreviousResponseID: prevRespID,
+			Request:            req,
+			Output:             resp.Output,
+			Status:             "in_progress",
+			CreatedAt:          time.Unix(resp.CreatedAt, 0),
+		})
 
-		// Add instructions as system message if provided
-		if req.Instructions != nil && *req.Instructions != "" {
-			llmReq.Messages = append([]api.Message{
-				{Role: "system", Content: *req.Instructions},
-			}, llmReq.Messages...)
+		// Build conversation messages (including multi-turn history)
+		messages, err := e.buildConversationMessages(ctx, req)
+		if err != nil {
+			errorField := schema.ErrorField{
+				Type:    "api_error",
+				Message: fmt.Sprintf("failed to build conversation: %v", err),
+			}
+			events <- &schema.ErrorStreamingEvent{
+				Type:  "error",
+				Error: errorField,
+			}
+			return
 		}
 
 		// Send response.in_progress event
@@ -368,25 +668,8 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		seqNum++
 
-		// Initialize output item
-		assistantRole := "assistant"
-		inProgressStatus := "in_progress"
-		messageItem := schema.ItemField{
-			Type:    "message",
-			ID:      generateID("msg_"),
-			Role:    &assistantRole,
-			Status:  &inProgressStatus,
-			Content: []schema.ContentPart{},
-		}
-
-		// Send output_item.added event
-		events <- &schema.ResponseOutputItemAddedStreamingEvent{
-			Type:           "response.output_item.added",
-			SequenceNumber: seqNum,
-			OutputIndex:    0,
-			Item:           messageItem,
-		}
-		seqNum++
+		// Build LLM request
+		llmReq := buildLLMRequest(model, messages, req, true)
 
 		// Get streaming response from LLM
 		streamChan, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
@@ -402,8 +685,20 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			return
 		}
 
+		// Track accumulated tool calls from the stream
+		type accumulatedToolCall struct {
+			ID        string
+			Name      string
+			Arguments string
+		}
+		var toolCallAccum []accumulatedToolCall
+		var finishReason string
+
 		fullText := ""
 		contentIndex := 0
+		outputIndex := 0
+		messageItemID := ""
+		messageItemEmitted := false
 
 		// Stream deltas
 		for chunk := range streamChan {
@@ -411,67 +706,223 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				continue
 			}
 
-			delta := chunk.Choices[0].Delta.Content
-			if delta == "" {
+			delta := chunk.Choices[0]
+
+			// Capture finish reason
+			if delta.FinishReason != nil {
+				finishReason = *delta.FinishReason
+			}
+
+			// Handle tool call deltas
+			if len(delta.Delta.ToolCalls) > 0 {
+				for _, tcDelta := range delta.Delta.ToolCalls {
+					idx := tcDelta.Index
+					// Extend accumulator as needed
+					for len(toolCallAccum) <= idx {
+						toolCallAccum = append(toolCallAccum, accumulatedToolCall{})
+					}
+					if tcDelta.ID != "" {
+						toolCallAccum[idx].ID = tcDelta.ID
+					}
+					if tcDelta.Function.Name != "" {
+						toolCallAccum[idx].Name = tcDelta.Function.Name
+					}
+					if tcDelta.Function.Arguments != "" {
+						toolCallAccum[idx].Arguments += tcDelta.Function.Arguments
+
+						// Emit function_call_arguments.delta event
+						events <- &schema.ResponseFunctionCallArgumentsDeltaStreamingEvent{
+							Type:        "response.function_call_arguments.delta",
+							ResponseID:  respID,
+							OutputIndex: idx,
+							Delta:       tcDelta.Function.Arguments,
+						}
+						seqNum++
+					}
+				}
 				continue
 			}
 
-			fullText += delta
+			// Handle text content
+			textDelta := delta.Delta.Content
+			if textDelta == "" {
+				continue
+			}
+
+			// Emit output_item.added on first text
+			if !messageItemEmitted {
+				messageItemID = generateID("msg_")
+				assistantRole := "assistant"
+				inProgressStatus := "in_progress"
+				messageItem := schema.ItemField{
+					Type:    "message",
+					ID:      messageItemID,
+					Role:    &assistantRole,
+					Status:  &inProgressStatus,
+					Content: []schema.ContentPart{},
+				}
+
+				events <- &schema.ResponseOutputItemAddedStreamingEvent{
+					Type:           "response.output_item.added",
+					SequenceNumber: seqNum,
+					OutputIndex:    outputIndex,
+					Item:           messageItem,
+				}
+				seqNum++
+				messageItemEmitted = true
+			}
+
+			fullText += textDelta
 
 			// Send text delta event
 			events <- &schema.ResponseOutputTextDeltaStreamingEvent{
 				Type:           "response.output_text.delta",
 				SequenceNumber: seqNum,
-				ItemID:         messageItem.ID,
-				OutputIndex:    0,
+				ItemID:         messageItemID,
+				OutputIndex:    outputIndex,
 				ContentIndex:   contentIndex,
-				Delta:          delta,
-				Logprobs:       make([]interface{}, 0), // empty array
+				Delta:          textDelta,
+				Logprobs:       make([]interface{}, 0),
 			}
 			seqNum++
 		}
 
-		// Send text done event
-		events <- &schema.ResponseOutputTextDoneStreamingEvent{
-			Type:           "response.output_text.done",
-			SequenceNumber: seqNum,
-			ItemID:         messageItem.ID,
-			OutputIndex:    0,
-			ContentIndex:   contentIndex,
-			Text:           fullText,
-			Logprobs:       make([]interface{}, 0), // empty array
-		}
-		seqNum++
+		// Determine output based on finish reason
+		var allOutput []schema.ItemField
 
-		// Complete the message item
-		completedStatus := "completed"
-		messageItem.Status = &completedStatus
-		messageItem.Content = []schema.ContentPart{
-			{
-				Type: "text",
-				Text: &fullText,
-			},
-		}
+		if finishReason == "tool_calls" && len(toolCallAccum) > 0 {
+			// Emit tool call output items
+			for i, tc := range toolCallAccum {
+				completedStatus := "completed"
+				callID := tc.ID
+				funcName := tc.Name
+				funcArgs := tc.Arguments
+				toolItem := schema.ItemField{
+					Type:      "function_call",
+					ID:        generateID("fc_"),
+					CallID:    &callID,
+					Name:      &funcName,
+					Arguments: &funcArgs,
+					Status:    &completedStatus,
+				}
 
-		// Send output_item.done event
-		events <- &schema.ResponseOutputItemDoneStreamingEvent{
-			Type:           "response.output_item.done",
-			SequenceNumber: seqNum,
-			OutputIndex:    0,
-			Item:           messageItem,
+				events <- &schema.ResponseOutputItemAddedStreamingEvent{
+					Type:           "response.output_item.added",
+					SequenceNumber: seqNum,
+					OutputIndex:    i,
+					Item:           toolItem,
+				}
+				seqNum++
+
+				// Emit function_call_arguments.done
+				events <- &schema.ResponseFunctionCallArgumentsDoneStreamingEvent{
+					Type:        "response.function_call_arguments.done",
+					ResponseID:  respID,
+					OutputIndex: i,
+					Arguments:   funcArgs,
+				}
+				seqNum++
+
+				// Emit output_item.done
+				events <- &schema.ResponseOutputItemDoneStreamingEvent{
+					Type:           "response.output_item.done",
+					SequenceNumber: seqNum,
+					OutputIndex:    i,
+					Item:           toolItem,
+				}
+				seqNum++
+
+				allOutput = append(allOutput, toolItem)
+			}
+
+			// Append assistant message with tool calls to messages for storage
+			var tcForMsg []api.ToolCall
+			for _, tc := range toolCallAccum {
+				tcForMsg = append(tcForMsg, api.ToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: api.ToolCallFunction{
+						Name:      tc.Name,
+						Arguments: tc.Arguments,
+					},
+				})
+			}
+			messages = append(messages, api.Message{
+				Role:      "assistant",
+				ToolCalls: tcForMsg,
+			})
+
+		} else {
+			// Normal text response
+			if messageItemEmitted {
+				// Send text done event
+				events <- &schema.ResponseOutputTextDoneStreamingEvent{
+					Type:           "response.output_text.done",
+					SequenceNumber: seqNum,
+					ItemID:         messageItemID,
+					OutputIndex:    outputIndex,
+					ContentIndex:   contentIndex,
+					Text:           fullText,
+					Logprobs:       make([]interface{}, 0),
+				}
+				seqNum++
+
+				// Complete the message item
+				completedStatus := "completed"
+				assistantRole := "assistant"
+				messageItem := schema.ItemField{
+					Type:   "message",
+					ID:     messageItemID,
+					Role:   &assistantRole,
+					Status: &completedStatus,
+					Content: []schema.ContentPart{
+						{
+							Type: "text",
+							Text: &fullText,
+						},
+					},
+				}
+
+				// Send output_item.done event
+				events <- &schema.ResponseOutputItemDoneStreamingEvent{
+					Type:           "response.output_item.done",
+					SequenceNumber: seqNum,
+					OutputIndex:    outputIndex,
+					Item:           messageItem,
+				}
+				seqNum++
+
+				allOutput = append(allOutput, messageItem)
+
+				// Append assistant message for storage
+				messages = append(messages, api.Message{
+					Role:    "assistant",
+					Content: fullText,
+				})
+			}
 		}
-		seqNum++
 
 		// Update response
-		resp.Output = []schema.ItemField{messageItem}
-		resp.MarkCompleted()
-		// Text field is already initialized in NewResponse with default format
+		resp.Output = allOutput
+		if resp.Output == nil {
+			resp.Output = make([]schema.ItemField, 0)
+		}
 
-		// Set usage stats (would be collected during streaming in real implementation)
+		resp.MarkCompleted()
+
+		// Set usage stats
+		inputLen := 0
+		for _, m := range messages {
+			inputLen += len(m.Content)
+		}
+		outputLen := len(fullText)
+		for _, tc := range toolCallAccum {
+			outputLen += len(tc.Arguments)
+		}
 		resp.Usage = &schema.UsageField{
-			InputTokens:  len(inputText) / 4, // rough approximation
-			OutputTokens: len(fullText) / 4,  // rough approximation
-			TotalTokens:  (len(inputText) + len(fullText)) / 4,
+			InputTokens:  inputLen / 4,
+			OutputTokens: outputLen / 4,
+			TotalTokens:  (inputLen + outputLen) / 4,
 			InputTokensDetails: schema.InputTokensDetails{
 				CachedTokens: 0,
 			},
@@ -487,32 +938,25 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			Response:       *resp,
 		}
 		seqNum++
+
+		// Final save with complete state
+		_ = e.sessions.SaveResponse(ctx, &state.Response{
+			ID:                 resp.ID,
+			PreviousResponseID: prevRespID,
+			Request:            req,
+			Output:             resp.Output,
+			Status:             resp.Status,
+			Usage:              resp.Usage,
+			Messages:           messagesToConversationMessages(messages),
+			CreatedAt:          time.Unix(resp.CreatedAt, 0),
+			CompletedAt:        timePtr(resp.CompletedAt),
+		})
 	}()
 
 	return events, nil
 }
 
 // Helper functions
-
-func extractInputText(input interface{}) string {
-	switch v := input.(type) {
-	case string:
-		return v
-	case []interface{}:
-		// For now, just extract the first text item
-		// TODO: Handle complex item types properly
-		if len(v) > 0 {
-			if item, ok := v[0].(map[string]interface{}); ok {
-				if content, ok := item["content"].(string); ok {
-					return content
-				}
-			}
-		}
-		return ""
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
 
 func generateID(prefix string) string {
 	b := make([]byte, 16)
@@ -530,8 +974,8 @@ func timePtr(t *int64) *time.Time {
 
 // convertToolsToResponse converts request tools to response tools
 func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.ResponsesTool {
-	if reqTools == nil || len(reqTools) == 0 {
-		return make([]schema.ResponsesTool, 0) // Return empty array, not nil
+	if len(reqTools) == 0 {
+		return make([]schema.ResponsesTool, 0)
 	}
 	respTools := make([]schema.ResponsesTool, len(reqTools))
 	for i, t := range reqTools {

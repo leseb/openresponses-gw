@@ -16,17 +16,74 @@ type ChatCompletionClient interface {
 
 // ChatCompletionRequest represents a chat completion request
 type ChatCompletionRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	MaxTokens   *int      `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model               string          `json:"model"`
+	Messages            []Message       `json:"messages"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	TopP                *float64        `json:"top_p,omitempty"`
+	FrequencyPenalty    *float64        `json:"frequency_penalty,omitempty"`
+	PresencePenalty     *float64        `json:"presence_penalty,omitempty"`
+	MaxTokens           *int            `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int            `json:"max_completion_tokens,omitempty"`
+	Tools               []Tool          `json:"tools,omitempty"`
+	ToolChoice          interface{}     `json:"tool_choice,omitempty"`
+	ParallelToolCalls   *bool           `json:"parallel_tool_calls,omitempty"`
+	ResponseFormat      *ResponseFormat `json:"response_format,omitempty"`
+	Seed                *int64          `json:"seed,omitempty"`
+	TopLogprobs         *int            `json:"top_logprobs,omitempty"`
+	Logprobs            *bool           `json:"logprobs,omitempty"`
+	ReasoningEffort     *string         `json:"reasoning_effort,omitempty"`
+	PromptCacheKey      *string         `json:"prompt_cache_key,omitempty"`
+	SafetyIdentifier    *string         `json:"safety_identifier,omitempty"`
+	Stream              bool            `json:"stream,omitempty"`
+}
+
+// Tool represents a tool available to the model
+type Tool struct {
+	Type     string       `json:"type"` // "function"
+	Function ToolFunction `json:"function"`
+}
+
+// ToolFunction describes a function tool
+type ToolFunction struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+	Strict      *bool                  `json:"strict,omitempty"`
+}
+
+// ResponseFormat specifies the output format for the model
+type ResponseFormat struct {
+	Type       string      `json:"type"` // "text", "json_object", "json_schema"
+	JSONSchema *JSONSchema `json:"json_schema,omitempty"`
+}
+
+// JSONSchema defines a JSON schema for structured output
+type JSONSchema struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Schema      map[string]interface{} `json:"schema,omitempty"`
+	Strict      *bool                  `json:"strict,omitempty"`
 }
 
 // Message represents a chat message
 type Message struct {
-	Role    string `json:"role"`    // "system", "user", "assistant"
-	Content string `json:"content"` // Message text content
+	Role       string     `json:"role"`                   // "system", "user", "assistant", "tool", "developer"
+	Content    string     `json:"content"`                // Message text content
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // Tool calls (assistant messages)
+	ToolCallID string     `json:"tool_call_id,omitempty"` // Tool call ID (tool messages)
+}
+
+// ToolCall represents a tool call made by the assistant
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"` // "function"
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction contains the function name and arguments for a tool call
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // ChatCompletionResponse represents a chat completion response
@@ -43,7 +100,7 @@ type ChatCompletionResponse struct {
 type Choice struct {
 	Index        int     `json:"index"`         // Choice index (usually 0)
 	Message      Message `json:"message"`       // Generated message
-	FinishReason string  `json:"finish_reason"` // "stop", "length", "content_filter", etc.
+	FinishReason string  `json:"finish_reason"` // "stop", "length", "tool_calls", "content_filter", etc.
 }
 
 // Usage represents token usage statistics
@@ -71,6 +128,21 @@ type StreamDelta struct {
 
 // MessageDelta represents an incremental message update
 type MessageDelta struct {
-	Role    string `json:"role,omitempty"`    // Role (only in first chunk)
-	Content string `json:"content,omitempty"` // Incremental content
+	Role      string          `json:"role,omitempty"`       // Role (only in first chunk)
+	Content   string          `json:"content,omitempty"`    // Incremental content
+	ToolCalls []ToolCallDelta `json:"tool_calls,omitempty"` // Incremental tool call updates
+}
+
+// ToolCallDelta represents an incremental tool call update in streaming
+type ToolCallDelta struct {
+	Index    int                   `json:"index"`
+	ID       string                `json:"id,omitempty"`
+	Type     string                `json:"type,omitempty"` // "function"
+	Function ToolCallFunctionDelta `json:"function,omitempty"`
+}
+
+// ToolCallFunctionDelta represents incremental function call data in streaming
+type ToolCallFunctionDelta struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
