@@ -1,24 +1,10 @@
 """Integration tests for the Open Responses Gateway using the OpenAI Python client."""
 
-import os
-
-import openai
-import pytest
-
-BASE_URL = os.environ.get("OPENRESPONSES_BASE_URL", "http://localhost:8080/v1")
-API_KEY = os.environ.get("OPENRESPONSES_API_KEY", "unused")
-MODEL = os.environ.get("OPENRESPONSES_MODEL", "llama3.2:3b")
-
-
-@pytest.fixture
-def client():
-    return openai.OpenAI(base_url=BASE_URL, api_key=API_KEY)
-
 
 class TestNonStreamingResponse:
-    def test_basic_response(self, client):
+    def test_basic_response(self, client, model):
         response = client.responses.create(
-            model=MODEL,
+            model=model,
             input="What is 2+2? Answer with just the number.",
         )
         assert response.id.startswith("resp_")
@@ -29,9 +15,9 @@ class TestNonStreamingResponse:
         assert response.output[0].content[0].type == "output_text"
         assert len(response.output[0].content[0].text) > 0
 
-    def test_usage_is_populated(self, client):
+    def test_usage_is_populated(self, client, model):
         response = client.responses.create(
-            model=MODEL,
+            model=model,
             input="Say hello.",
         )
         assert response.usage is not None
@@ -43,9 +29,9 @@ class TestNonStreamingResponse:
             == response.usage.input_tokens + response.usage.output_tokens
         )
 
-    def test_instructions(self, client):
+    def test_instructions(self, client, model):
         response = client.responses.create(
-            model=MODEL,
+            model=model,
             input="What are you?",
             instructions="You are a helpful pirate. Always say 'Arrr' in your response.",
         )
@@ -55,12 +41,12 @@ class TestNonStreamingResponse:
 
 
 class TestStreamingResponse:
-    def test_streaming_events(self, client):
+    def test_streaming_events(self, client, model):
         seen_events = set()
         final_text = ""
 
         with client.responses.stream(
-            model=MODEL,
+            model=model,
             input="Say hello.",
         ) as stream:
             for event in stream:
@@ -73,9 +59,9 @@ class TestStreamingResponse:
         assert "response.completed" in seen_events
         assert len(final_text) > 0
 
-    def test_stream_get_final_response(self, client):
+    def test_stream_get_final_response(self, client, model):
         with client.responses.stream(
-            model=MODEL,
+            model=model,
             input="Say hello.",
         ) as stream:
             response = stream.get_final_response()
@@ -86,16 +72,16 @@ class TestStreamingResponse:
 
 
 class TestMultiTurnConversation:
-    def test_previous_response_id(self, client):
+    def test_previous_response_id(self, client, model):
         first = client.responses.create(
-            model=MODEL,
+            model=model,
             input="My name is Alice. Remember this.",
         )
         assert first.id.startswith("resp_")
         assert first.status == "completed"
 
         second = client.responses.create(
-            model=MODEL,
+            model=model,
             input="What is my name?",
             previous_response_id=first.id,
         )
@@ -105,9 +91,9 @@ class TestMultiTurnConversation:
 
 
 class TestToolCalling:
-    def test_function_tool(self, client):
+    def test_function_tool(self, client, model):
         response = client.responses.create(
-            model=MODEL,
+            model=model,
             input="What is the weather in Paris?",
             tools=[
                 {
