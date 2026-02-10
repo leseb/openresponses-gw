@@ -8,20 +8,25 @@ A gateway-agnostic implementation of the [Open Responses API](https://github.com
 
 ## Quick Start
 
-**Prerequisites:** Go 1.24+, Make
+**Prerequisites:** Go 1.24+, Make, and an OpenAI-compatible backend (e.g. [Ollama](https://ollama.com))
 
 ```bash
+# Install and start Ollama, then pull a model
+ollama pull llama3.2:3b
+
+# Clone and run the gateway
 git clone https://github.com/leseb/openresponses-gw && cd openresponses-gw
-
-export OPENAI_API_ENDPOINT="http://localhost:11434/v1"  # or any OpenAI-compatible backend
-export OPENAI_API_KEY="your-api-key"                     # optional for local backends
-
+export OPENAI_API_ENDPOINT="http://localhost:11434/v1"
+export OPENAI_API_KEY="unused"
 make run
 
+# In another terminal
 curl -X POST http://localhost:8080/v1/responses \
   -H "Content-Type: application/json" \
-  -d '{"model": "gpt-4", "input": "Hello, world!"}'
+  -d '{"model": "llama3.2:3b", "input": "Hello, world!"}'
 ```
+
+To use OpenAI instead, set `OPENAI_API_ENDPOINT="https://api.openai.com/v1"` and `OPENAI_API_KEY` to your API key.
 
 For Envoy deployment, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
