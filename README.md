@@ -53,6 +53,7 @@ make test                        # Unit tests
 make lint                        # golangci-lint
 make fmt                         # Format code
 make test-conformance            # Open Responses spec conformance
+make test-integration-python     # Python integration tests (requires uv)
 make test-openapi-conformance    # OpenAI API schema comparison
 make pre-commit-install          # Install pre-commit hooks
 ```
@@ -70,7 +71,10 @@ pkg/
     envoy/             # Envoy ExtProc adapter
   storage/
     memory/            # In-memory store (sessions, files, vectors)
-scripts/               # Testing & conformance scripts
+scripts/               # Utility & validation scripts
+tests/
+  scripts/             # Shell-based test scripts
+  integration/         # Python integration tests
 examples/
   envoy/               # Envoy docker-compose deployment
 ```

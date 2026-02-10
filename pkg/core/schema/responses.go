@@ -363,20 +363,22 @@ type ResponseOutputItemDoneStreamingEvent struct {
 
 // ResponseContentPartAddedStreamingEvent - response.content_part.added
 type ResponseContentPartAddedStreamingEvent struct {
-	Type         string      `json:"type"` // "response.content_part.added"
-	ResponseID   string      `json:"response_id"`
-	OutputIndex  int         `json:"output_index"`
-	ContentIndex int         `json:"content_index"`
-	Part         ContentPart `json:"part"`
+	Type           string      `json:"type"` // "response.content_part.added"
+	SequenceNumber int         `json:"sequence_number"`
+	ItemID         string      `json:"item_id"`
+	OutputIndex    int         `json:"output_index"`
+	ContentIndex   int         `json:"content_index"`
+	Part           ContentPart `json:"part"`
 }
 
 // ResponseContentPartDoneStreamingEvent - response.content_part.done
 type ResponseContentPartDoneStreamingEvent struct {
-	Type         string      `json:"type"` // "response.content_part.done"
-	ResponseID   string      `json:"response_id"`
-	OutputIndex  int         `json:"output_index"`
-	ContentIndex int         `json:"content_index"`
-	Part         ContentPart `json:"part"`
+	Type           string      `json:"type"` // "response.content_part.done"
+	SequenceNumber int         `json:"sequence_number"`
+	ItemID         string      `json:"item_id"`
+	OutputIndex    int         `json:"output_index"`
+	ContentIndex   int         `json:"content_index"`
+	Part           ContentPart `json:"part"`
 }
 
 // ResponseOutputTextDeltaStreamingEvent - response.output_text.delta

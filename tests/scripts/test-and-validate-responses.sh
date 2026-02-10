@@ -46,7 +46,7 @@ echo ""
 echo "4. Running validation tests..."
 echo ""
 
-./scripts/test-responses-minimal.sh
+./tests/scripts/test-responses-minimal.sh
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

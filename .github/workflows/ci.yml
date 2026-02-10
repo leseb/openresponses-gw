@@ -132,7 +132,7 @@ jobs:
           exit 1
 
       - name: Run conformance tests
-        run: ./scripts/test-conformance.sh llama3.2:3b
+        run: ./tests/scripts/test-conformance.sh llama3.2:3b
 
       - name: Upload server log
         if: failure()

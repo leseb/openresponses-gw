@@ -180,7 +180,7 @@ The `oasdiff` tool found differences in:
 
 2. ✅ **Run smoke tests**
    ```bash
-   ./scripts/test-smoke.sh
+   ./tests/scripts/test-smoke.sh
    ```
 
 3. ✅ **Verify compilation and basic functionality**
@@ -255,7 +255,7 @@ curl -X POST http://localhost:8080/v1/vector_stores/vs_test/search \
 # Run full test suite
 make test                      # Go unit tests
 make test-conformance         # Open Responses conformance (6/6 passing)
-./scripts/test-smoke.sh       # Smoke tests
+./tests/scripts/test-smoke.sh       # Smoke tests
 make test-openapi-conformance # OpenAI conformance (schema refinement needed)
 ```
 

@@ -8,13 +8,13 @@ If your server is already running (e.g., you started it with `make run`):
 
 ```bash
 # Test with default model (ollama/gpt-oss:20b)
-./scripts/test-conformance.sh
+./tests/scripts/test-conformance.sh
 
 # Test with specific model
-./scripts/test-conformance.sh "gpt-4"
+./tests/scripts/test-conformance.sh "gpt-4"
 
 # Test with custom URL and model
-./scripts/test-conformance.sh "claude-3-opus" "http://localhost:9000" "sk-key"
+./tests/scripts/test-conformance.sh "claude-3-opus" "http://localhost:9000" "sk-key"
 ```
 
 ### Option 2: Auto-Start Server
@@ -23,16 +23,16 @@ Let the script start and stop the server automatically:
 
 ```bash
 # Start server and run tests with default model
-./scripts/test-conformance-with-server.sh
+./tests/scripts/test-conformance-with-server.sh
 
 # Custom model
-./scripts/test-conformance-with-server.sh "ollama/gpt-oss:20b"
+./tests/scripts/test-conformance-with-server.sh "ollama/gpt-oss:20b"
 
 # Custom model and port
-./scripts/test-conformance-with-server.sh "gpt-4" "9000"
+./tests/scripts/test-conformance-with-server.sh "gpt-4" "9000"
 
 # Full control
-./scripts/test-conformance-with-server.sh "gpt-4" "8080" "sk-test-key"
+./tests/scripts/test-conformance-with-server.sh "gpt-4" "8080" "sk-test-key"
 ```
 
 ## Using Make Targets
@@ -58,7 +58,7 @@ ollama serve
 ollama pull gpt-oss:20b
 
 # Run conformance tests
-./scripts/test-conformance-with-server.sh "ollama/gpt-oss:20b"
+./tests/scripts/test-conformance-with-server.sh "ollama/gpt-oss:20b"
 ```
 
 ## Example: Testing with OpenAI
@@ -68,7 +68,7 @@ ollama pull gpt-oss:20b
 export OPENAI_API_KEY="sk-..."
 
 # Run with OpenAI model
-./scripts/test-conformance-with-server.sh "gpt-4" "8080" "$OPENAI_API_KEY"
+./tests/scripts/test-conformance-with-server.sh "gpt-4" "8080" "$OPENAI_API_KEY"
 ```
 
 ## Example: Testing with Custom Backend
@@ -78,7 +78,7 @@ export OPENAI_API_KEY="sk-..."
 ./bin/openresponses-gw-server -config config/my-backend.yaml &
 
 # Run tests against it
-./scripts/test-conformance.sh "my-custom-model" "http://localhost:8080" "my-key"
+./tests/scripts/test-conformance.sh "my-custom-model" "http://localhost:8080" "my-key"
 ```
 
 ## What Gets Tested
@@ -262,7 +262,7 @@ lsof -i :8080
 lsof -ti:8080 | xargs kill -9
 
 # Or use a different port
-./scripts/test-conformance-with-server.sh "gpt-4" "9000"
+./tests/scripts/test-conformance-with-server.sh "gpt-4" "9000"
 ```
 
 ### "bun not found"
@@ -323,7 +323,7 @@ conformance:
     - export PATH="$HOME/.bun/bin:$PATH"
   script:
     - make build-server
-    - ./scripts/test-conformance-with-server.sh
+    - ./tests/scripts/test-conformance-with-server.sh
   variables:
     MODEL: "gpt-4"
     API_KEY: $OPENAI_API_KEY
@@ -374,7 +374,7 @@ cat results.json | jq '.summary'
 ```bash
 # Tests run with --verbose by default in our scripts
 # To see full request/response details:
-./scripts/test-conformance.sh "gpt-4" 2>&1 | tee test-output.log
+./tests/scripts/test-conformance.sh "gpt-4" 2>&1 | tee test-output.log
 ```
 
 ## Next Steps
@@ -508,10 +508,10 @@ Test the full stack: Client → Envoy → ExtProc → Core Engine:
 
 ```bash
 # Run integration tests
-./scripts/test-envoy-extproc.sh
+./tests/scripts/test-envoy-extproc.sh
 
 # Run with custom model
-MODEL=gpt-4 ./scripts/test-envoy-extproc.sh
+MODEL=gpt-4 ./tests/scripts/test-envoy-extproc.sh
 ```
 
 **What's tested:**
@@ -673,16 +673,16 @@ make test-openapi-conformance
 go test ./...
 
 # 2. Conformance tests (HTTP adapter)
-./scripts/test-conformance.sh llama3.2:3b
+./tests/scripts/test-conformance.sh llama3.2:3b
 
 # 3. Smoke tests (critical path validation)
-./scripts/test-smoke.sh
+./tests/scripts/test-smoke.sh
 
 # 4. OpenAPI conformance (spec compatibility)
 ./scripts/openapi_conformance.py
 
 # 5. Integration tests (Envoy adapter)
-./scripts/test-envoy-extproc.sh
+./tests/scripts/test-envoy-extproc.sh
 
 # 6. Pre-commit hooks
 pre-commit run --all-files

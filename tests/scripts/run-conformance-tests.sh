@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SERVER_PORT="${SERVER_PORT:-8080}"
 CONFORMANCE_REPO_URL="https://github.com/openresponses/openresponses.git"
 CONFORMANCE_DIR="$PROJECT_ROOT/.conformance-tests"

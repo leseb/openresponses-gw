@@ -1,10 +1,10 @@
 #!/bin/bash
 # Simple wrapper to run Open Responses conformance tests
-# Usage: ./scripts/test-conformance.sh [model] [base-url] [api-key]
+# Usage: ./tests/scripts/test-conformance.sh [model] [base-url] [api-key]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFORMANCE_DIR="$PROJECT_ROOT/.conformance-tests"
 CONFORMANCE_REPO_URL="https://github.com/openresponses/openresponses.git"
 

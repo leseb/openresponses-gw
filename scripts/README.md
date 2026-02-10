@@ -71,16 +71,16 @@ Runs conformance tests against an already-running server.
 **Usage:**
 ```bash
 # Default: model=ollama/gpt-oss:20b, url=http://localhost:8080, api-key=none
-./scripts/test-conformance.sh
+./tests/scripts/test-conformance.sh
 
 # Custom model
-./scripts/test-conformance.sh "gpt-4"
+./tests/scripts/test-conformance.sh "gpt-4"
 
 # Custom model and URL
-./scripts/test-conformance.sh "claude-3-opus" "http://localhost:9000"
+./tests/scripts/test-conformance.sh "claude-3-opus" "http://localhost:9000"
 
 # All custom parameters
-./scripts/test-conformance.sh "gpt-4" "http://localhost:8080" "sk-test-key"
+./tests/scripts/test-conformance.sh "gpt-4" "http://localhost:8080" "sk-test-key"
 ```
 
 **Arguments:**
@@ -99,16 +99,16 @@ Automatically starts the server and runs conformance tests.
 **Usage:**
 ```bash
 # Default: model=ollama/gpt-oss:20b, port=8080, api-key=none
-./scripts/test-conformance-with-server.sh
+./tests/scripts/test-conformance-with-server.sh
 
 # Custom model
-./scripts/test-conformance-with-server.sh "gpt-4"
+./tests/scripts/test-conformance-with-server.sh "gpt-4"
 
 # Custom model and port
-./scripts/test-conformance-with-server.sh "claude-3-opus" "9000"
+./tests/scripts/test-conformance-with-server.sh "claude-3-opus" "9000"
 
 # All custom parameters
-./scripts/test-conformance-with-server.sh "gpt-4" "8080" "sk-test-key"
+./tests/scripts/test-conformance-with-server.sh "gpt-4" "8080" "sk-test-key"
 ```
 
 **Arguments:**
@@ -131,10 +131,10 @@ Original comprehensive script (kept for backward compatibility).
 **Usage:**
 ```bash
 # Run with defaults
-./scripts/run-conformance-tests.sh
+./tests/scripts/run-conformance-tests.sh
 
 # Run with custom settings
-SERVER_PORT=9000 OPENRESPONSES_MODEL=gpt-4 ./scripts/run-conformance-tests.sh
+SERVER_PORT=9000 OPENRESPONSES_MODEL=gpt-4 ./tests/scripts/run-conformance-tests.sh
 ```
 
 ## Conformance Test Suite
@@ -217,7 +217,7 @@ jobs:
         run: make build-server
 
       - name: Run conformance tests
-        run: ./scripts/run-conformance-tests.sh
+        run: ./tests/scripts/run-conformance-tests.sh
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```

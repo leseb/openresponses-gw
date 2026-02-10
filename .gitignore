@@ -63,6 +63,13 @@ testdata/output/
 # Claude Code
 .claude/
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+uv.lock
+
 # Conformance tests
 .conformance-tests/
 .server-test.log

@@ -528,7 +528,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 			Status: &completedStatus,
 			Content: []schema.ContentPart{
 				{
-					Type: "text",
+					Type: "output_text",
 					Text: &outputText,
 				},
 			},
@@ -769,6 +769,22 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 					Item:           messageItem,
 				}
 				seqNum++
+
+				// Emit content_part.added so the SDK knows about the content slot
+				emptyText := ""
+				events <- &schema.ResponseContentPartAddedStreamingEvent{
+					Type:           "response.content_part.added",
+					SequenceNumber: seqNum,
+					ItemID:         messageItemID,
+					OutputIndex:    outputIndex,
+					ContentIndex:   contentIndex,
+					Part: schema.ContentPart{
+						Type: "output_text",
+						Text: &emptyText,
+					},
+				}
+				seqNum++
+
 				messageItemEmitted = true
 			}
 
@@ -867,6 +883,20 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				}
 				seqNum++
 
+				// Emit content_part.done
+				events <- &schema.ResponseContentPartDoneStreamingEvent{
+					Type:           "response.content_part.done",
+					SequenceNumber: seqNum,
+					ItemID:         messageItemID,
+					OutputIndex:    outputIndex,
+					ContentIndex:   contentIndex,
+					Part: schema.ContentPart{
+						Type: "output_text",
+						Text: &fullText,
+					},
+				}
+				seqNum++
+
 				// Complete the message item
 				completedStatus := "completed"
 				assistantRole := "assistant"
@@ -877,7 +907,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 					Status: &completedStatus,
 					Content: []schema.ContentPart{
 						{
-							Type: "text",
+							Type: "output_text",
 							Text: &fullText,
 						},
 					},

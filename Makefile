@@ -182,18 +182,23 @@ test-conformance: ## Run conformance tests (assumes server is already running)
 	@echo "$(GREEN)Running conformance tests...$(NC)"
 	@echo "$(YELLOW)Note: Server must be running on port 8080$(NC)"
 	@echo "$(YELLOW)Use 'make test-conformance-auto' to start server automatically$(NC)"
-	./scripts/test-conformance.sh
+	./tests/scripts/test-conformance.sh
 
 test-conformance-auto: build-server ## Run conformance tests (starts server automatically)
 	@echo "$(GREEN)Running conformance tests with auto-started server...$(NC)"
-	./scripts/test-conformance-with-server.sh
+	./tests/scripts/test-conformance-with-server.sh
 
 test-conformance-custom: build-server ## Run conformance tests with custom model (MODEL=... make test-conformance-custom)
 	@echo "$(GREEN)Running conformance tests with custom parameters...$(NC)"
 	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
 	PORT="${PORT:-8080}"; \
 	API_KEY="${API_KEY:-none}"; \
-	./scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
+	./tests/scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
+
+test-integration-python: ## Run Python integration tests
+	@echo "$(GREEN)Running Python integration tests...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	uv run pytest tests/integration/ -v
 
 test-openapi-conformance: ## Check OpenAPI conformance against OpenAI spec
 	@echo "$(GREEN)Checking OpenAPI conformance...$(NC)"

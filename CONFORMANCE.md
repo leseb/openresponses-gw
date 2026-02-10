@@ -160,7 +160,7 @@ make build-server
 make test-conformance
 
 # Or with custom settings
-SERVER_PORT=9000 OPENRESPONSES_MODEL=gpt-4 ./scripts/run-conformance-tests.sh
+SERVER_PORT=9000 OPENRESPONSES_MODEL=gpt-4 ./tests/scripts/run-conformance-tests.sh
 ```
 
 ### Automated Testing via Pre-commit
@@ -281,7 +281,7 @@ bun run bin/compliance-test.ts \
 See full request/response details:
 
 ```bash
-./scripts/run-conformance-tests.sh
+./tests/scripts/run-conformance-tests.sh
 # Tests run with --verbose flag by default
 ```
 
