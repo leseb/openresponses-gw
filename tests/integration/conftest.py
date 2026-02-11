@@ -2,6 +2,7 @@
 
 import os
 
+import httpx
 import openai
 import pytest
 
@@ -28,3 +29,11 @@ def model():
 @pytest.fixture(scope="session")
 def api_key():
     return API_KEY
+
+
+@pytest.fixture(scope="session")
+def httpx_client():
+    return httpx.Client(
+        base_url=BASE_URL,
+        headers={"Authorization": f"Bearer {API_KEY}"},
+    )

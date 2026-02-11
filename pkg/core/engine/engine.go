@@ -64,6 +64,7 @@ func (e *Engine) Store() state.SessionStore {
 // echoRequestParams copies all request parameters to the response (Open Responses spec)
 func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 	resp.PreviousResponseID = req.PreviousResponseID
+	resp.Conversation = req.Conversation
 	resp.Instructions = req.Instructions
 	resp.Tools = convertToolsToResponse(req.Tools)
 	if req.ToolChoice != nil {
@@ -424,6 +425,243 @@ func messagesToConversationMessages(messages []api.Message) []state.Conversation
 	return result
 }
 
+// resolveConversation returns a conversation ID for the request.
+// If req.Conversation is set, it validates the conversation exists.
+// Otherwise, it auto-creates a new conversation.
+func (e *Engine) resolveConversation(ctx context.Context, req *schema.ResponseRequest) (string, error) {
+	if req.Conversation != nil && *req.Conversation != "" {
+		// Validate existing conversation
+		_, err := e.sessions.GetConversation(ctx, *req.Conversation)
+		if err != nil {
+			return "", fmt.Errorf("conversation %s not found", *req.Conversation)
+		}
+		return *req.Conversation, nil
+	}
+
+	// Auto-create a new conversation
+	convID := generateID("conv_")
+	conv := &state.Conversation{
+		ID:        convID,
+		Messages:  []state.Message{},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := e.sessions.CreateConversation(ctx, conv); err != nil {
+		return "", fmt.Errorf("failed to create conversation: %w", err)
+	}
+	return convID, nil
+}
+
+// findLatestResponseInConversation finds the most recent response in a conversation.
+// Returns nil if no responses exist yet (first message in conversation).
+func (e *Engine) findLatestResponseInConversation(ctx context.Context, conversationID string) (*state.Response, error) {
+	responses, err := e.sessions.ListResponses(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list responses for conversation %s: %w", conversationID, err)
+	}
+	if len(responses) == 0 {
+		return nil, nil
+	}
+
+	// Find the response with the latest CreatedAt
+	latest := responses[0]
+	for _, r := range responses[1:] {
+		if r.CreatedAt.After(latest.CreatedAt) {
+			latest = r
+		}
+	}
+	return latest, nil
+}
+
+// appendItemsToConversation adds the current turn's input and output messages to the conversation.
+func (e *Engine) appendItemsToConversation(ctx context.Context, conversationID string, req *schema.ResponseRequest, output []schema.ItemField) error {
+	var items []state.Message
+
+	// Add user input messages
+	inputMessages := extractInputMessages(req.Input)
+	for _, m := range inputMessages {
+		if m.Role == "system" {
+			continue // skip system messages
+		}
+		item := state.Message{
+			ID:        generateID("msg_"),
+			Role:      m.Role,
+			Content:   m.Content,
+			CreatedAt: time.Now(),
+		}
+		if m.Role == "tool" {
+			item.Metadata = map[string]string{"type": "function_call_output"}
+		}
+		items = append(items, item)
+	}
+
+	// Add assistant output messages
+	for _, out := range output {
+		switch out.Type {
+		case "message":
+			role := "assistant"
+			if out.Role != nil {
+				role = *out.Role
+			}
+			content := ""
+			for _, part := range out.Content {
+				if part.Text != nil {
+					content += *part.Text
+				}
+			}
+			if content != "" {
+				items = append(items, state.Message{
+					ID:        generateID("msg_"),
+					Role:      role,
+					Content:   content,
+					CreatedAt: time.Now(),
+				})
+			}
+		case "function_call":
+			args := ""
+			if out.Arguments != nil {
+				args = *out.Arguments
+			}
+			name := ""
+			if out.Name != nil {
+				name = *out.Name
+			}
+			items = append(items, state.Message{
+				ID:        generateID("msg_"),
+				Role:      "assistant",
+				Content:   fmt.Sprintf(`{"name":%q,"arguments":%s}`, name, args),
+				Metadata:  map[string]string{"type": "function_call"},
+				CreatedAt: time.Now(),
+			})
+		}
+	}
+
+	if len(items) > 0 {
+		return e.sessions.AddConversationItems(ctx, conversationID, items)
+	}
+	return nil
+}
+
+// buildConversationMessagesFromConversation builds messages from the latest response in a conversation.
+// This reuses the same mechanism as previous_response_id: load stored Messages + Output from the latest response.
+func (e *Engine) buildConversationMessagesFromConversation(ctx context.Context, conversationID string, req *schema.ResponseRequest) ([]api.Message, error) {
+	var messages []api.Message
+
+	// Find the latest response in the conversation
+	latestResp, err := e.findLatestResponseInConversation(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if latestResp != nil {
+		// Load stored messages from the latest response (same as previous_response_id logic)
+		for _, m := range latestResp.Messages {
+			msg := api.Message{
+				Role:       m.Role,
+				Content:    m.Content,
+				ToolCallID: m.ToolCallID,
+			}
+			if len(m.ToolCalls) > 0 {
+				for _, tc := range m.ToolCalls {
+					msg.ToolCalls = append(msg.ToolCalls, api.ToolCall{
+						ID:   tc.ID,
+						Type: tc.Type,
+						Function: api.ToolCallFunction{
+							Name:      tc.Name,
+							Arguments: tc.Arguments,
+						},
+					})
+				}
+			}
+			messages = append(messages, msg)
+		}
+
+		// Append the latest response's output as context
+		if output, ok := latestResp.Output.([]schema.ItemField); ok {
+			for _, item := range output {
+				switch item.Type {
+				case "message":
+					role := "assistant"
+					if item.Role != nil {
+						role = *item.Role
+					}
+					content := ""
+					for _, part := range item.Content {
+						if part.Text != nil {
+							content += *part.Text
+						}
+					}
+					if content != "" {
+						messages = append(messages, api.Message{Role: role, Content: content})
+					}
+				case "function_call":
+					name := ""
+					if item.Name != nil {
+						name = *item.Name
+					}
+					args := ""
+					if item.Arguments != nil {
+						args = *item.Arguments
+					}
+					callID := ""
+					if item.CallID != nil {
+						callID = *item.CallID
+					}
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{
+							{
+								ID:   callID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      name,
+									Arguments: args,
+								},
+							},
+						},
+					})
+				case "function_call_output":
+					callID := ""
+					if item.CallID != nil {
+						callID = *item.CallID
+					}
+					output := ""
+					if item.Output != nil {
+						output = *item.Output
+					}
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    output,
+						ToolCallID: callID,
+					})
+				}
+			}
+		}
+	}
+
+	// Add instructions as system message
+	if req.Instructions != nil && *req.Instructions != "" {
+		hasSystem := false
+		for _, m := range messages {
+			if m.Role == "system" {
+				hasSystem = true
+				break
+			}
+		}
+		if !hasSystem {
+			messages = append([]api.Message{
+				{Role: "system", Content: *req.Instructions},
+			}, messages...)
+		}
+	}
+
+	// Append current input
+	inputMessages := extractInputMessages(req.Input)
+	messages = append(messages, inputMessages...)
+
+	return messages, nil
+}
+
 // ProcessRequest processes a Responses API request (non-streaming)
 func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest) (*schema.Response, error) {
 	// 1. Validate request
@@ -441,11 +679,26 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	}
 	resp := schema.NewResponse(respID, model)
 
-	// 4. Echo ALL request parameters
-	echoRequestParams(resp, req)
+	// 4. Resolve conversation (auto-create or validate existing)
+	conversationID, err := e.resolveConversation(ctx, req)
+	if err != nil {
+		resp.MarkFailed("api_error", "conversation_error", fmt.Sprintf("failed to resolve conversation: %v", err))
+		return resp, nil
+	}
 
-	// 5. Build conversation messages (including multi-turn history)
-	messages, err := e.buildConversationMessages(ctx, req)
+	// 5. Echo ALL request parameters and set conversation
+	echoRequestParams(resp, req)
+	resp.Conversation = &conversationID
+
+	// 6. Build conversation messages (including multi-turn history)
+	var messages []api.Message
+	if req.Conversation != nil && *req.Conversation != "" {
+		// Use conversation-based history
+		messages, err = e.buildConversationMessagesFromConversation(ctx, conversationID, req)
+	} else {
+		// Use previous_response_id-based history (existing behavior)
+		messages, err = e.buildConversationMessages(ctx, req)
+	}
 	if err != nil {
 		resp.MarkFailed("api_error", "conversation_error", fmt.Sprintf("failed to build conversation: %v", err))
 		return resp, nil
@@ -583,6 +836,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 
 	if err := e.sessions.SaveResponse(ctx, &state.Response{
 		ID:                 resp.ID,
+		ConversationID:     conversationID,
 		PreviousResponseID: prevRespID,
 		Request:            req,
 		Output:             resp.Output,
@@ -593,6 +847,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		CompletedAt:        timePtr(resp.CompletedAt),
 	}); err != nil {
 		return nil, fmt.Errorf("failed to save response: %w", err)
+	}
+
+	// 11. Append items to conversation for the Conversations API
+	if err := e.appendItemsToConversation(ctx, conversationID, req, allOutput); err != nil {
+		// Log but don't fail the response
+		_ = err
 	}
 
 	return resp, nil
@@ -620,8 +880,23 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Track sequence number for events
 		seqNum := 0
 
-		// Echo ALL request parameters
+		// Resolve conversation before emitting response.created
+		conversationID, err := e.resolveConversation(ctx, req)
+		if err != nil {
+			errorField := schema.ErrorField{
+				Type:    "api_error",
+				Message: fmt.Sprintf("failed to resolve conversation: %v", err),
+			}
+			events <- &schema.ErrorStreamingEvent{
+				Type:  "error",
+				Error: errorField,
+			}
+			return
+		}
+
+		// Echo ALL request parameters and set conversation
 		echoRequestParams(resp, req)
+		resp.Conversation = &conversationID
 
 		// Send response.created event
 		events <- &schema.ResponseCreatedStreamingEvent{
@@ -638,6 +913,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		_ = e.sessions.SaveResponse(ctx, &state.Response{
 			ID:                 resp.ID,
+			ConversationID:     conversationID,
 			PreviousResponseID: prevRespID,
 			Request:            req,
 			Output:             resp.Output,
@@ -646,7 +922,12 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		})
 
 		// Build conversation messages (including multi-turn history)
-		messages, err := e.buildConversationMessages(ctx, req)
+		var messages []api.Message
+		if req.Conversation != nil && *req.Conversation != "" {
+			messages, err = e.buildConversationMessagesFromConversation(ctx, conversationID, req)
+		} else {
+			messages, err = e.buildConversationMessages(ctx, req)
+		}
 		if err != nil {
 			errorField := schema.ErrorField{
 				Type:    "api_error",
@@ -972,6 +1253,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Final save with complete state
 		_ = e.sessions.SaveResponse(ctx, &state.Response{
 			ID:                 resp.ID,
+			ConversationID:     conversationID,
 			PreviousResponseID: prevRespID,
 			Request:            req,
 			Output:             resp.Output,
@@ -981,6 +1263,9 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			CreatedAt:          time.Unix(resp.CreatedAt, 0),
 			CompletedAt:        timePtr(resp.CompletedAt),
 		})
+
+		// Append items to conversation for the Conversations API
+		_ = e.appendItemsToConversation(ctx, conversationID, req, allOutput)
 	}()
 
 	return events, nil
@@ -1104,6 +1389,12 @@ func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Re
 		}
 	}
 
+	// Populate conversation from state
+	if stateResp.ConversationID != "" {
+		convID := stateResp.ConversationID
+		schemaResp.Conversation = &convID
+	}
+
 	return schemaResp, nil
 }
 
@@ -1136,6 +1427,12 @@ func (e *Engine) ListResponses(ctx context.Context, after, before string, limit 
 		if stateResp.CompletedAt != nil {
 			completedAt := stateResp.CompletedAt.Unix()
 			schemaResp.CompletedAt = &completedAt
+		}
+
+		// Populate conversation from state
+		if stateResp.ConversationID != "" {
+			convID := stateResp.ConversationID
+			schemaResp.Conversation = &convID
 		}
 
 		responses = append(responses, schemaResp)

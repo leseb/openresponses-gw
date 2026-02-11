@@ -20,6 +20,9 @@ type ResponseRequest struct {
 	// Previous response ID for multi-turn conversations
 	PreviousResponseID *string `json:"previous_response_id,omitempty"`
 
+	// Conversation ID for multi-turn conversations (mutually exclusive with previous_response_id)
+	Conversation *string `json:"conversation,omitempty"`
+
 	// Controls what to include in the response
 	Include []string `json:"include,omitempty"` // IncludeEnum
 
@@ -122,6 +125,7 @@ type Response struct {
 
 	// Echo request parameters (all fields must be present per Open Responses spec)
 	PreviousResponseID *string          `json:"previous_response_id"` // nullable
+	Conversation       *string          `json:"conversation"`         // nullable
 	Instructions       *string          `json:"instructions"`         // nullable
 	Tools              []ResponsesTool  `json:"tools"`                // required array (empty if no tools)
 	ToolChoice         interface{}      `json:"tool_choice"`          // string enum ("none", "auto", "required") or object
@@ -509,6 +513,10 @@ func (r *ResponseRequest) Validate() error {
 	}
 	if r.Input == nil {
 		return fmt.Errorf("input is required")
+	}
+	if r.Conversation != nil && *r.Conversation != "" &&
+		r.PreviousResponseID != nil && *r.PreviousResponseID != "" {
+		return fmt.Errorf("'conversation' and 'previous_response_id' are mutually exclusive")
 	}
 	return nil
 }
