@@ -138,6 +138,12 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate request
+	if err := req.Validate(); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+
 	// Log request
 	h.logger.Info("Processing response request",
 		"model", req.Model,
