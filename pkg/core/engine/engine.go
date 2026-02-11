@@ -130,9 +130,12 @@ func extractInputMessages(input interface{}) []api.Message {
 			switch itemType {
 			case "message":
 				role, _ := itemMap["role"].(string)
-				content := extractContentFromItem(itemMap)
-				if role != "" && content != "" {
-					messages = append(messages, api.Message{Role: role, Content: content})
+				if role == "" {
+					continue
+				}
+				msg := extractMessageFromItem(itemMap, role)
+				if msg != nil {
+					messages = append(messages, *msg)
 				}
 			case "function_call_output":
 				callID, _ := itemMap["call_id"].(string)
@@ -183,28 +186,99 @@ func extractInputMessages(input interface{}) []api.Message {
 	}
 }
 
-// extractContentFromItem extracts text content from a message input item
-func extractContentFromItem(item map[string]interface{}) string {
+// extractMessageFromItem extracts a Message from a message input item,
+// handling both text-only and multimodal (image/file) content parts.
+func extractMessageFromItem(item map[string]interface{}, role string) *api.Message {
 	// Direct content string
 	if content, ok := item["content"].(string); ok {
-		return content
+		if content == "" {
+			return nil
+		}
+		return &api.Message{Role: role, Content: content}
 	}
 	// Content as array of parts
 	if contentArr, ok := item["content"].([]interface{}); ok {
-		text := ""
+		var textParts []string
+		var contentParts []api.MessageContentPart
+		hasNonText := false
+
 		for _, part := range contentArr {
-			if partMap, ok := part.(map[string]interface{}); ok {
-				if partText, ok := partMap["text"].(string); ok {
-					if text != "" {
-						text += " "
-					}
-					text += partText
+			partMap, ok := part.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			partType, _ := partMap["type"].(string)
+			switch partType {
+			case "input_text", "text":
+				text, _ := partMap["text"].(string)
+				textParts = append(textParts, text)
+				contentParts = append(contentParts, api.MessageContentPart{
+					Type: "text",
+					Text: text,
+				})
+			case "input_image":
+				hasNonText = true
+				cp := api.MessageContentPart{Type: "image_url"}
+				// Responses API: image_url can be a string or an object
+				switch v := partMap["image_url"].(type) {
+				case string:
+					cp.ImageURL = &api.MessageImageURL{URL: v}
+				case map[string]interface{}:
+					url, _ := v["url"].(string)
+					detail, _ := v["detail"].(string)
+					cp.ImageURL = &api.MessageImageURL{URL: url, Detail: detail}
 				}
+				if cp.ImageURL == nil {
+					// Try direct "url" field
+					if url, ok := partMap["url"].(string); ok {
+						cp.ImageURL = &api.MessageImageURL{URL: url}
+					}
+				}
+				if detail, ok := partMap["detail"].(string); ok && cp.ImageURL != nil && cp.ImageURL.Detail == "" {
+					cp.ImageURL.Detail = detail
+				}
+				contentParts = append(contentParts, cp)
+			case "input_file":
+				hasNonText = true
+				cp := api.MessageContentPart{Type: "file"}
+				file := &api.MessageFile{}
+				// Responses API: file info can be nested under "file" or at top level
+				if fileMap, ok := partMap["file"].(map[string]interface{}); ok {
+					file.FileData, _ = fileMap["file_data"].(string)
+					file.FileID, _ = fileMap["file_id"].(string)
+					file.Filename, _ = fileMap["filename"].(string)
+				} else {
+					file.FileData, _ = partMap["file_data"].(string)
+					file.FileID, _ = partMap["file_id"].(string)
+					file.Filename, _ = partMap["filename"].(string)
+				}
+				cp.File = file
+				contentParts = append(contentParts, cp)
 			}
 		}
-		return text
+
+		if len(contentParts) == 0 {
+			return nil
+		}
+
+		// When all parts are text, use the simple Content string for backward compat
+		if !hasNonText {
+			text := ""
+			for i, t := range textParts {
+				if i > 0 {
+					text += " "
+				}
+				text += t
+			}
+			if text == "" {
+				return nil
+			}
+			return &api.Message{Role: role, Content: text}
+		}
+
+		return &api.Message{Role: role, ContentParts: contentParts}
 	}
-	return ""
+	return nil
 }
 
 // convertToolsForLLM converts Responses API tools to chat completion tools
@@ -1295,11 +1369,17 @@ func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.Respo
 	respTools := make([]schema.ResponsesTool, len(reqTools))
 	for i, t := range reqTools {
 		respTools[i] = schema.ResponsesTool{
-			Type:        t.Type,
-			Name:        t.Name,
-			Description: t.Description,
-			Parameters:  t.Parameters,
-			Strict:      t.Strict,
+			Type:              t.Type,
+			Name:              t.Name,
+			Description:       t.Description,
+			Parameters:        t.Parameters,
+			Strict:            t.Strict,
+			SearchContextSize: t.SearchContextSize,
+			UserLocation:      t.UserLocation,
+			VectorStoreIDs:    t.VectorStoreIDs,
+			MaxNumResults:     t.MaxNumResults,
+			RankingOptions:    t.RankingOptions,
+			Filters:           t.Filters,
 		}
 	}
 	return respTools

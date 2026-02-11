@@ -1,5 +1,6 @@
 """Integration tests for the Open Responses Gateway using the OpenAI Python client."""
 
+import base64
 import json
 
 
@@ -234,3 +235,185 @@ class TestConversationIntegration:
         assert get_resp.status_code == 200
         get_data = get_resp.json()
         assert get_data["conversation"] == conv_id
+
+
+class TestInputModes:
+    """Tests for multimodal input and non-function tool types."""
+
+    def test_text_input(self, httpx_client, model):
+        """Plain string input should produce a completed response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={"model": model, "input": "Say hello."},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert len(data["output"]) > 0
+
+    def test_structured_text_input(self, httpx_client, model):
+        """Structured input with a message item containing a text string."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": "Hello",
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+
+    def test_structured_text_content_parts(self, httpx_client, model):
+        """Structured input with content as array of input_text parts."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Say hello."},
+                        ],
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+
+    def test_image_input(self, httpx_client, model):
+        """Image input via input_image content part should be accepted (200).
+
+        The backend model may or may not support vision, but the gateway
+        must forward the request without dropping the image part.
+        """
+        # Minimal 1x1 red PNG
+        png_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+            "nGP4z8BQDwAEgAF/pooBPQAAAABJRU5ErkJggg=="
+        )
+        data_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
+
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "What is in this image?"},
+                            {"type": "input_image", "image_url": data_url},
+                        ],
+                    }
+                ],
+            },
+        )
+        # Gateway should accept; response may be completed or failed
+        # depending on whether the model supports vision
+        assert resp.status_code == 200
+
+    def test_file_input(self, httpx_client, model):
+        """File input via input_file content part should be accepted (200)."""
+        file_data = base64.b64encode(b"Hello, world!").decode()
+
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Summarize this file."},
+                            {
+                                "type": "input_file",
+                                "file": {
+                                    "file_data": file_data,
+                                    "filename": "hello.txt",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+    def test_web_search_tool_accepted(self, httpx_client, model):
+        """A web_search tool should be accepted and echoed in the response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "Hello",
+                "tools": [{"type": "web_search"}],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        tools = data.get("tools", [])
+        assert any(t["type"] == "web_search" for t in tools)
+
+    def test_web_search_tool_with_options(self, httpx_client, model):
+        """Web search tool with search_context_size and user_location echoed."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "Hello",
+                "tools": [
+                    {
+                        "type": "web_search",
+                        "search_context_size": "medium",
+                        "user_location": {
+                            "type": "approximate",
+                            "city": "San Francisco",
+                            "region": "California",
+                            "country": "US",
+                        },
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        tools = data.get("tools", [])
+        ws_tools = [t for t in tools if t["type"] == "web_search"]
+        assert len(ws_tools) == 1
+        assert ws_tools[0].get("search_context_size") == "medium"
+        assert ws_tools[0].get("user_location", {}).get("city") == "San Francisco"
+
+    def test_file_search_tool_accepted(self, httpx_client, model):
+        """A file_search tool should be accepted and echoed in the response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "Hello",
+                "tools": [
+                    {
+                        "type": "file_search",
+                        "vector_store_ids": ["vs_123"],
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        tools = data.get("tools", [])
+        fs_tools = [t for t in tools if t["type"] == "file_search"]
+        assert len(fs_tools) == 1
+        assert fs_tools[0].get("vector_store_ids") == ["vs_123"]

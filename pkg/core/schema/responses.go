@@ -258,6 +258,16 @@ type ResponsesToolParam struct {
 	Description *string                `json:"description,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema
 	Strict      *bool                  `json:"strict,omitempty"`
+
+	// Web search fields (type="web_search")
+	SearchContextSize *string                `json:"search_context_size,omitempty"`
+	UserLocation      map[string]interface{} `json:"user_location,omitempty"`
+
+	// File search fields (type="file_search")
+	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
+	MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
+	Filters        interface{}            `json:"filters,omitempty"`
 }
 
 // ResponsesTool represents a tool (response echo) - flat structure per Open Responses spec
@@ -267,6 +277,16 @@ type ResponsesTool struct {
 	Description *string                `json:"description"` // nullable
 	Parameters  map[string]interface{} `json:"parameters"`  // nullable
 	Strict      *bool                  `json:"strict"`      // nullable
+
+	// Web search fields
+	SearchContextSize *string                `json:"search_context_size,omitempty"`
+	UserLocation      map[string]interface{} `json:"user_location,omitempty"`
+
+	// File search fields
+	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
+	MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
+	Filters        interface{}            `json:"filters,omitempty"`
 }
 
 // ReasoningParam represents reasoning configuration (request)

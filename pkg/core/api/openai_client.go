@@ -50,7 +50,42 @@ func convertMessages(messages []Message) ([]openai.ChatCompletionMessageParamUni
 		case "system":
 			result = append(result, openai.SystemMessage(msg.Content))
 		case "user":
-			result = append(result, openai.UserMessage(msg.Content))
+			if len(msg.ContentParts) > 0 {
+				parts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(msg.ContentParts))
+				for _, cp := range msg.ContentParts {
+					switch cp.Type {
+					case "text":
+						parts = append(parts, openai.TextContentPart(cp.Text))
+					case "image_url":
+						if cp.ImageURL != nil {
+							imgParam := openai.ChatCompletionContentPartImageImageURLParam{
+								URL: cp.ImageURL.URL,
+							}
+							if cp.ImageURL.Detail != "" {
+								imgParam.Detail = cp.ImageURL.Detail
+							}
+							parts = append(parts, openai.ImageContentPart(imgParam))
+						}
+					case "file":
+						if cp.File != nil {
+							fileParam := openai.ChatCompletionContentPartFileFileParam{}
+							if cp.File.FileData != "" {
+								fileParam.FileData = openai.String(cp.File.FileData)
+							}
+							if cp.File.FileID != "" {
+								fileParam.FileID = openai.String(cp.File.FileID)
+							}
+							if cp.File.Filename != "" {
+								fileParam.Filename = openai.String(cp.File.Filename)
+							}
+							parts = append(parts, openai.FileContentPart(fileParam))
+						}
+					}
+				}
+				result = append(result, openai.UserMessage(parts))
+			} else {
+				result = append(result, openai.UserMessage(msg.Content))
+			}
 		case "assistant":
 			if len(msg.ToolCalls) > 0 {
 				// Assistant message with tool calls
