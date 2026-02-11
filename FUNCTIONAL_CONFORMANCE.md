@@ -148,15 +148,17 @@ Multi-turn is fully implemented via `previous_response_id`:
 | GET /v1/models | ✅ | Returns available models |
 | GET /v1/models/{id} | ✅ | Get specific model details |
 
-### Prompts API (5/5 endpoints)
+### Prompts API (7/7 endpoints) — versioned, llama-stack pattern
 
 | Endpoint | Status | Notes |
 |----------|--------|-------|
-| POST /v1/prompts | ✅ | Create prompt template |
-| GET /v1/prompts | ✅ | List prompts |
-| GET /v1/prompts/{id} | ✅ | Get prompt |
-| PUT /v1/prompts/{id} | ✅ | Update prompt |
-| DELETE /v1/prompts/{id} | ✅ | Delete prompt |
+| POST /v1/prompts | ✅ | Create prompt template (version 1) |
+| GET /v1/prompts | ✅ | List prompts (default version of each) |
+| GET /v1/prompts/{id} | ✅ | Get prompt (default or `?version=N`) |
+| PUT /v1/prompts/{id} | ✅ | Update prompt (creates new version; `version` field required) |
+| DELETE /v1/prompts/{id} | ✅ | Delete prompt (all versions) |
+| GET /v1/prompts/{id}/versions | ✅ | List all versions of a prompt |
+| POST /v1/prompts/{id}/default_version | ✅ | Set the default version |
 
 ### Files API (5/5 endpoints)
 

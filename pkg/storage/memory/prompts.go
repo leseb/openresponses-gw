@@ -13,6 +13,16 @@ import (
 	"time"
 )
 
+// VersionMismatchError indicates an optimistic concurrency conflict
+type VersionMismatchError struct {
+	ProvidedVersion int
+	LatestVersion   int
+}
+
+func (e *VersionMismatchError) Error() string {
+	return fmt.Sprintf("version mismatch: provided %d, latest is %d", e.ProvidedVersion, e.LatestVersion)
+}
+
 // Prompt represents a stored prompt template
 type Prompt struct {
 	ID          string
@@ -123,7 +133,7 @@ func (s *PromptsStore) UpdatePrompt(ctx context.Context, promptID string, versio
 
 	latest := s.latestVersion(promptID)
 	if version != latest {
-		return nil, fmt.Errorf("version mismatch: provided %d, latest is %d", version, latest)
+		return nil, &VersionMismatchError{ProvidedVersion: version, LatestVersion: latest}
 	}
 
 	currentPrompt := versionMap[latest]

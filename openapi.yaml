@@ -315,14 +315,115 @@ paths:
               $ref: '#/components/schemas/CreatePromptRequest'
       responses:
         '200':
-          description: Prompt created
+          description: Prompt created (version 1, is_default true)
     get:
       tags: [Prompts]
-      summary: List prompts
+      summary: List prompts (default version of each)
       operationId: listPrompts
       responses:
         '200':
           description: List of prompts
+
+  /v1/prompts/{id}:
+    get:
+      tags: [Prompts]
+      summary: Get prompt (default version, or specific version via query param)
+      operationId: getPrompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Return a specific version instead of the default
+      responses:
+        '200':
+          description: Prompt retrieved
+        '404':
+          description: Prompt or version not found
+    put:
+      tags: [Prompts]
+      summary: Update prompt (creates a new version)
+      operationId: updatePrompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePromptRequest'
+      responses:
+        '200':
+          description: New prompt version created
+        '400':
+          description: Missing or invalid version field
+        '409':
+          description: Version mismatch (optimistic concurrency conflict)
+    delete:
+      tags: [Prompts]
+      summary: Delete prompt (all versions)
+      operationId: deletePrompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Prompt deleted
+        '404':
+          description: Prompt not found
+
+  /v1/prompts/{id}/versions:
+    get:
+      tags: [Prompts]
+      summary: List all versions of a prompt
+      operationId: listPromptVersions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of prompt versions (sorted ascending)
+        '404':
+          description: Prompt not found
+
+  /v1/prompts/{id}/default_version:
+    post:
+      tags: [Prompts]
+      summary: Set the default version of a prompt
+      operationId: setDefaultVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetDefaultVersionRequest'
+      responses:
+        '200':
+          description: Default version updated
+        '404':
+          description: Prompt or version not found
 
   /v1/files:
     post:
@@ -1371,6 +1472,67 @@ components:
         template:
           type: string
           example: "Hello {{name}}!"
+        metadata:
+          type: object
+
+    UpdatePromptRequest:
+      type: object
+      required: [version]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        template:
+          type: string
+        version:
+          type: integer
+          description: Current version being updated (required for optimistic concurrency)
+        set_as_default:
+          type: boolean
+          description: Whether the new version should become the default (default true)
+        metadata:
+          type: object
+
+    SetDefaultVersionRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          description: Version number to set as the default
+
+    Prompt:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "prompt_abc123"
+        object:
+          type: string
+          enum: [prompt]
+        name:
+          type: string
+        description:
+          type: string
+        template:
+          type: string
+        variables:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+          description: Version number (starts at 1)
+        is_default:
+          type: boolean
+          description: Whether this is the default version
+        created_at:
+          type: integer
+          description: Unix timestamp
+        updated_at:
+          type: integer
+          description: Unix timestamp
         metadata:
           type: object
 

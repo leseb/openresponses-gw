@@ -5,6 +5,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -213,7 +214,8 @@ func (h *Handler) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error("Failed to update prompt", "error", err, "prompt_id", promptID)
 		// Return 409 for version mismatch, 404 for not found
-		if isVersionMismatch(err) {
+		var vme *memory.VersionMismatchError
+		if errors.As(err, &vme) {
 			h.writeError(w, http.StatusConflict, "version_conflict", err.Error())
 		} else {
 			h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
@@ -327,9 +329,4 @@ func (h *Handler) handleSetDefaultVersion(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(toSchemaPrompt(prompt))
-}
-
-// isVersionMismatch checks if an error is a version mismatch error
-func isVersionMismatch(err error) bool {
-	return err != nil && len(err.Error()) > 17 && err.Error()[:17] == "version mismatch:"
 }
