@@ -73,6 +73,8 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("GET /v1/prompts/{id}", h.handleGetPrompt)
 	h.mux.HandleFunc("PUT /v1/prompts/{id}", h.handleUpdatePrompt)
 	h.mux.HandleFunc("DELETE /v1/prompts/{id}", h.handleDeletePrompt)
+	h.mux.HandleFunc("GET /v1/prompts/{id}/versions", h.handleListPromptVersions)
+	h.mux.HandleFunc("POST /v1/prompts/{id}/default_version", h.handleSetDefaultVersion)
 
 	// Files API
 	h.mux.HandleFunc("POST /v1/files", h.handleUploadFile)

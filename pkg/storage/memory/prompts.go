@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,84 +20,181 @@ type Prompt struct {
 	Description string
 	Template    string
 	Variables   []string
+	Version     int
+	IsDefault   bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Metadata    map[string]string
 }
 
-// PromptsStore is an in-memory prompts store
+// PromptsStore is an in-memory prompts store with versioning support
 type PromptsStore struct {
-	mu      sync.RWMutex
-	prompts map[string]*Prompt
+	mu             sync.RWMutex
+	versions       map[string]map[int]*Prompt // promptID -> version -> Prompt
+	defaultVersion map[string]int             // promptID -> default version number
 }
 
 // NewPromptsStore creates a new prompts store
 func NewPromptsStore() *PromptsStore {
 	return &PromptsStore{
-		prompts: make(map[string]*Prompt),
+		versions:       make(map[string]map[int]*Prompt),
+		defaultVersion: make(map[string]int),
 	}
 }
 
-// CreatePrompt creates a new prompt
+// CreatePrompt creates a new prompt (version 1)
 func (s *PromptsStore) CreatePrompt(ctx context.Context, prompt *Prompt) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.prompts[prompt.ID]; exists {
+	if _, exists := s.versions[prompt.ID]; exists {
 		return fmt.Errorf("prompt %s already exists", prompt.ID)
 	}
 
 	// Extract variables from template
 	prompt.Variables = extractVariables(prompt.Template)
+	prompt.Version = 1
+	prompt.IsDefault = true
 
-	s.prompts[prompt.ID] = prompt
+	s.versions[prompt.ID] = map[int]*Prompt{1: prompt}
+	s.defaultVersion[prompt.ID] = 1
 	return nil
 }
 
-// GetPrompt retrieves a prompt by ID
+// GetPrompt retrieves the default version of a prompt by ID
 func (s *PromptsStore) GetPrompt(ctx context.Context, promptID string) (*Prompt, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	prompt, exists := s.prompts[promptID]
+	versionMap, exists := s.versions[promptID]
 	if !exists {
 		return nil, fmt.Errorf("prompt %s not found", promptID)
+	}
+
+	defVer := s.defaultVersion[promptID]
+	prompt, exists := versionMap[defVer]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s default version %d not found", promptID, defVer)
 	}
 
 	return prompt, nil
 }
 
-// UpdatePrompt updates an existing prompt
-func (s *PromptsStore) UpdatePrompt(ctx context.Context, prompt *Prompt) error {
+// GetPromptVersion retrieves a specific version of a prompt
+func (s *PromptsStore) GetPromptVersion(ctx context.Context, promptID string, version int) (*Prompt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	versionMap, exists := s.versions[promptID]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s not found", promptID)
+	}
+
+	prompt, exists := versionMap[version]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s version %d not found", promptID, version)
+	}
+
+	return prompt, nil
+}
+
+// latestVersion returns the highest version number for a prompt (caller must hold lock)
+func (s *PromptsStore) latestVersion(promptID string) int {
+	maxVer := 0
+	for v := range s.versions[promptID] {
+		if v > maxVer {
+			maxVer = v
+		}
+	}
+	return maxVer
+}
+
+// UpdatePrompt creates a new version of an existing prompt.
+// The provided version must match the latest version (optimistic concurrency).
+// Returns the newly created prompt version.
+func (s *PromptsStore) UpdatePrompt(ctx context.Context, promptID string, version int, updates *Prompt, setAsDefault *bool) (*Prompt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.prompts[prompt.ID]; !exists {
-		return fmt.Errorf("prompt %s not found", prompt.ID)
+	versionMap, exists := s.versions[promptID]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s not found", promptID)
 	}
 
-	// Re-extract variables if template changed
-	prompt.Variables = extractVariables(prompt.Template)
-	prompt.UpdatedAt = time.Now()
+	latest := s.latestVersion(promptID)
+	if version != latest {
+		return nil, fmt.Errorf("version mismatch: provided %d, latest is %d", version, latest)
+	}
 
-	s.prompts[prompt.ID] = prompt
-	return nil
+	currentPrompt := versionMap[latest]
+
+	// Build new version from current + updates
+	newVer := latest + 1
+	now := time.Now()
+
+	newPrompt := &Prompt{
+		ID:          promptID,
+		Name:        currentPrompt.Name,
+		Description: currentPrompt.Description,
+		Template:    currentPrompt.Template,
+		Version:     newVer,
+		CreatedAt:   currentPrompt.CreatedAt,
+		UpdatedAt:   now,
+		Metadata:    currentPrompt.Metadata,
+	}
+
+	if updates.Name != "" {
+		newPrompt.Name = updates.Name
+	}
+	if updates.Description != "" {
+		newPrompt.Description = updates.Description
+	}
+	if updates.Template != "" {
+		newPrompt.Template = updates.Template
+	}
+	if updates.Metadata != nil {
+		newPrompt.Metadata = updates.Metadata
+	}
+
+	// Re-extract variables
+	newPrompt.Variables = extractVariables(newPrompt.Template)
+
+	// Determine if this version should be the default (default: true)
+	makeDefault := true
+	if setAsDefault != nil {
+		makeDefault = *setAsDefault
+	}
+
+	if makeDefault {
+		// Unmark previous default
+		prevDefVer := s.defaultVersion[promptID]
+		if prev, ok := versionMap[prevDefVer]; ok {
+			prev.IsDefault = false
+		}
+		newPrompt.IsDefault = true
+		s.defaultVersion[promptID] = newVer
+	}
+
+	versionMap[newVer] = newPrompt
+
+	return newPrompt, nil
 }
 
-// DeletePrompt deletes a prompt
+// DeletePrompt deletes all versions of a prompt
 func (s *PromptsStore) DeletePrompt(ctx context.Context, promptID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.prompts[promptID]; !exists {
+	if _, exists := s.versions[promptID]; !exists {
 		return fmt.Errorf("prompt %s not found", promptID)
 	}
 
-	delete(s.prompts, promptID)
+	delete(s.versions, promptID)
+	delete(s.defaultVersion, promptID)
 	return nil
 }
 
-// ListPromptsPaginated lists prompts with pagination
+// ListPromptsPaginated lists the default version of each prompt with pagination
 func (s *PromptsStore) ListPromptsPaginated(ctx context.Context, after, before string, limit int, order string) ([]*Prompt, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -106,10 +204,13 @@ func (s *PromptsStore) ListPromptsPaginated(ctx context.Context, after, before s
 		limit = 50
 	}
 
-	// Collect all prompts
+	// Collect default version of each prompt
 	var allPrompts []*Prompt
-	for _, prompt := range s.prompts {
-		allPrompts = append(allPrompts, prompt)
+	for promptID, versionMap := range s.versions {
+		defVer := s.defaultVersion[promptID]
+		if prompt, ok := versionMap[defVer]; ok {
+			allPrompts = append(allPrompts, prompt)
+		}
 	}
 
 	// Apply cursor-based pagination
@@ -142,6 +243,55 @@ func (s *PromptsStore) ListPromptsPaginated(ctx context.Context, after, before s
 	hasMore := len(allPrompts) > len(filtered) && len(filtered) == limit
 
 	return filtered, hasMore, nil
+}
+
+// ListPromptVersions returns all versions of a prompt, sorted by version ascending
+func (s *PromptsStore) ListPromptVersions(ctx context.Context, promptID string) ([]*Prompt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	versionMap, exists := s.versions[promptID]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s not found", promptID)
+	}
+
+	var result []*Prompt
+	for _, prompt := range versionMap {
+		result = append(result, prompt)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Version < result[j].Version
+	})
+
+	return result, nil
+}
+
+// SetDefaultVersion sets the default version for a prompt
+func (s *PromptsStore) SetDefaultVersion(ctx context.Context, promptID string, version int) (*Prompt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	versionMap, exists := s.versions[promptID]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s not found", promptID)
+	}
+
+	newDefault, exists := versionMap[version]
+	if !exists {
+		return nil, fmt.Errorf("prompt %s version %d not found", promptID, version)
+	}
+
+	// Unmark previous default
+	prevDefVer := s.defaultVersion[promptID]
+	if prev, ok := versionMap[prevDefVer]; ok {
+		prev.IsDefault = false
+	}
+
+	newDefault.IsDefault = true
+	s.defaultVersion[promptID] = version
+
+	return newDefault, nil
 }
 
 // extractVariables extracts variable names from a template

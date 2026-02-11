@@ -13,6 +13,23 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
+// toSchemaPrompt converts a memory.Prompt to a schema.Prompt
+func toSchemaPrompt(p *memory.Prompt) schema.Prompt {
+	return schema.Prompt{
+		ID:          p.ID,
+		Object:      "prompt",
+		Name:        p.Name,
+		Description: p.Description,
+		Template:    p.Template,
+		Variables:   p.Variables,
+		Version:     p.Version,
+		IsDefault:   p.IsDefault,
+		CreatedAt:   p.CreatedAt.Unix(),
+		UpdatedAt:   p.UpdatedAt.Unix(),
+		Metadata:    convertMetadataToInterface(p.Metadata),
+	}
+}
+
 // handleCreatePrompt handles POST /v1/prompts
 func (h *Handler) handleCreatePrompt(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
@@ -56,22 +73,9 @@ func (h *Handler) handleCreatePrompt(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("Prompt created", "prompt_id", promptID)
 
-	// Return prompt
-	schemaPrompt := schema.Prompt{
-		ID:          prompt.ID,
-		Object:      "prompt",
-		Name:        prompt.Name,
-		Description: prompt.Description,
-		Template:    prompt.Template,
-		Variables:   prompt.Variables,
-		CreatedAt:   prompt.CreatedAt.Unix(),
-		UpdatedAt:   prompt.UpdatedAt.Unix(),
-		Metadata:    convertMetadataToInterface(prompt.Metadata),
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(schemaPrompt)
+	json.NewEncoder(w).Encode(toSchemaPrompt(prompt))
 }
 
 // handleListPrompts handles GET /v1/prompts
@@ -107,18 +111,7 @@ func (h *Handler) handleListPrompts(w http.ResponseWriter, r *http.Request) {
 	// Convert to schema
 	schemaPrompts := make([]schema.Prompt, 0, len(prompts))
 	for _, prompt := range prompts {
-		p := schema.Prompt{
-			ID:          prompt.ID,
-			Object:      "prompt",
-			Name:        prompt.Name,
-			Description: prompt.Description,
-			Template:    prompt.Template,
-			Variables:   prompt.Variables,
-			CreatedAt:   prompt.CreatedAt.Unix(),
-			UpdatedAt:   prompt.UpdatedAt.Unix(),
-			Metadata:    convertMetadataToInterface(prompt.Metadata),
-		}
-		schemaPrompts = append(schemaPrompts, p)
+		schemaPrompts = append(schemaPrompts, toSchemaPrompt(prompt))
 	}
 
 	// Build response
@@ -149,30 +142,30 @@ func (h *Handler) handleGetPrompt(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("Getting prompt", "prompt_id", promptID)
 
-	// Get prompt from storage
-	prompt, err := h.promptsStore.GetPrompt(r.Context(), promptID)
+	// Check for optional ?version=N query param
+	var prompt *memory.Prompt
+	var err error
+
+	if versionStr := r.URL.Query().Get("version"); versionStr != "" {
+		version, parseErr := strconv.Atoi(versionStr)
+		if parseErr != nil || version < 1 {
+			h.writeError(w, http.StatusBadRequest, "invalid_request", "Invalid version number")
+			return
+		}
+		prompt, err = h.promptsStore.GetPromptVersion(r.Context(), promptID, version)
+	} else {
+		prompt, err = h.promptsStore.GetPrompt(r.Context(), promptID)
+	}
+
 	if err != nil {
 		h.logger.Error("Failed to get prompt", "error", err, "prompt_id", promptID)
 		h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
 		return
 	}
 
-	// Convert to schema
-	schemaPrompt := schema.Prompt{
-		ID:          prompt.ID,
-		Object:      "prompt",
-		Name:        prompt.Name,
-		Description: prompt.Description,
-		Template:    prompt.Template,
-		Variables:   prompt.Variables,
-		CreatedAt:   prompt.CreatedAt.Unix(),
-		UpdatedAt:   prompt.UpdatedAt.Unix(),
-		Metadata:    convertMetadataToInterface(prompt.Metadata),
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(schemaPrompt)
+	json.NewEncoder(w).Encode(toSchemaPrompt(prompt))
 }
 
 // handleUpdatePrompt handles PUT /v1/prompts/{id}
@@ -192,54 +185,45 @@ func (h *Handler) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("Updating prompt", "prompt_id", promptID)
-
-	// Get existing prompt
-	prompt, err := h.promptsStore.GetPrompt(r.Context(), promptID)
-	if err != nil {
-		h.logger.Error("Failed to get prompt", "error", err, "prompt_id", promptID)
-		h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
+	// Validate version field is provided
+	if req.Version == 0 {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "version is required")
 		return
 	}
 
-	// Update fields if provided
+	h.logger.Info("Updating prompt", "prompt_id", promptID, "version", req.Version)
+
+	// Build updates
+	updates := &memory.Prompt{}
 	if req.Name != nil {
-		prompt.Name = *req.Name
+		updates.Name = *req.Name
 	}
 	if req.Description != nil {
-		prompt.Description = *req.Description
+		updates.Description = *req.Description
 	}
 	if req.Template != nil {
-		prompt.Template = *req.Template
+		updates.Template = *req.Template
 	}
 	if req.Metadata != nil {
-		prompt.Metadata = convertMetadata(req.Metadata)
+		updates.Metadata = convertMetadata(req.Metadata)
 	}
 
-	// Update in storage
-	err = h.promptsStore.UpdatePrompt(r.Context(), prompt)
+	// Create new version in storage
+	newPrompt, err := h.promptsStore.UpdatePrompt(r.Context(), promptID, req.Version, updates, req.SetAsDefault)
 	if err != nil {
 		h.logger.Error("Failed to update prompt", "error", err, "prompt_id", promptID)
-		h.writeError(w, http.StatusInternalServerError, "update_error", err.Error())
+		// Return 409 for version mismatch, 404 for not found
+		if isVersionMismatch(err) {
+			h.writeError(w, http.StatusConflict, "version_conflict", err.Error())
+		} else {
+			h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
+		}
 		return
-	}
-
-	// Convert to schema
-	schemaPrompt := schema.Prompt{
-		ID:          prompt.ID,
-		Object:      "prompt",
-		Name:        prompt.Name,
-		Description: prompt.Description,
-		Template:    prompt.Template,
-		Variables:   prompt.Variables,
-		CreatedAt:   prompt.CreatedAt.Unix(),
-		UpdatedAt:   prompt.UpdatedAt.Unix(),
-		Metadata:    convertMetadataToInterface(prompt.Metadata),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(schemaPrompt)
+	json.NewEncoder(w).Encode(toSchemaPrompt(newPrompt))
 }
 
 // handleDeletePrompt handles DELETE /v1/prompts/{id}
@@ -271,4 +255,81 @@ func (h *Handler) handleDeletePrompt(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(deleteResp)
+}
+
+// handleListPromptVersions handles GET /v1/prompts/{id}/versions
+func (h *Handler) handleListPromptVersions(w http.ResponseWriter, r *http.Request) {
+	promptID := r.PathValue("id")
+	if promptID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Prompt ID is required")
+		return
+	}
+
+	h.logger.Info("Listing prompt versions", "prompt_id", promptID)
+
+	versions, err := h.promptsStore.ListPromptVersions(r.Context(), promptID)
+	if err != nil {
+		h.logger.Error("Failed to list prompt versions", "error", err, "prompt_id", promptID)
+		h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
+		return
+	}
+
+	schemaPrompts := make([]schema.Prompt, 0, len(versions))
+	for _, prompt := range versions {
+		schemaPrompts = append(schemaPrompts, toSchemaPrompt(prompt))
+	}
+
+	listResp := schema.ListPromptsResponse{
+		Object:  "list",
+		Data:    schemaPrompts,
+		HasMore: false,
+	}
+
+	if len(schemaPrompts) > 0 {
+		listResp.FirstID = schemaPrompts[0].ID
+		listResp.LastID = schemaPrompts[len(schemaPrompts)-1].ID
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(listResp)
+}
+
+// handleSetDefaultVersion handles POST /v1/prompts/{id}/default_version
+func (h *Handler) handleSetDefaultVersion(w http.ResponseWriter, r *http.Request) {
+	promptID := r.PathValue("id")
+	if promptID == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Prompt ID is required")
+		return
+	}
+
+	var req schema.SetDefaultVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("Failed to parse set default version request", "error", err)
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "Failed to parse request body")
+		return
+	}
+
+	if req.Version < 1 {
+		h.writeError(w, http.StatusBadRequest, "invalid_request", "version must be >= 1")
+		return
+	}
+
+	h.logger.Info("Setting default version", "prompt_id", promptID, "version", req.Version)
+
+	prompt, err := h.promptsStore.SetDefaultVersion(r.Context(), promptID, req.Version)
+	if err != nil {
+		h.logger.Error("Failed to set default version", "error", err, "prompt_id", promptID)
+		h.writeError(w, http.StatusNotFound, "prompt_not_found", err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(toSchemaPrompt(prompt))
+}
+
+// isVersionMismatch checks if an error is a version mismatch error
+func isVersionMismatch(err error) bool {
+	return err != nil && len(err.Error()) > 17 && err.Error()[:17] == "version mismatch:"
 }

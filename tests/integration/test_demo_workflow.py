@@ -1,10 +1,10 @@
-"""End-to-end demo: Files, Vector Stores, and Responses API workflow.
+"""End-to-end demo: Files, Vector Stores, Prompts, and Responses API workflow.
 
 Exercises the complete API surface in a single ordered test class using a
 fictional "NovaTech Solutions" knowledge base scenario.  Three inline text
 documents are uploaded, indexed into a vector store, then queried with
 file_search, web_search, multi-turn conversations, structured input,
-and MCP tool execution.
+versioned prompt templates, and MCP tool execution.
 
 Inspired by OpenAI's RAG on PDFs cookbook and the llama-stack RAG Lifecycle
 notebook pattern of progressive stages.
@@ -189,7 +189,7 @@ def mcp_connector(httpx_client, mcp_server):
 
 
 class TestDemoWorkflow:
-    """Ordered end-to-end demo exercising Files, Vector Stores, and Responses."""
+    """Ordered end-to-end demo exercising Files, Vector Stores, Prompts, and Responses."""
 
     _state: dict = {}
 
@@ -428,9 +428,116 @@ class TestDemoWorkflow:
         assert raw.status_code == 200
         assert "conversation" in raw.json()
 
-    # -- Stage 7: Mixed tools ----------------------------------------------
+    # -- Stage 7: Versioned Prompts API -----------------------------------
 
-    def test_15_mixed_tools(self, client, model, vector_store):
+    def test_15_create_prompt_template(self, httpx_client):
+        """Create a versioned prompt template for customer inquiries.
+
+        Uses httpx because the Prompts API is a gateway extension with no
+        corresponding SDK method.
+        """
+        resp = httpx_client.post(
+            "/prompts",
+            json={
+                "name": "novatech-inquiry",
+                "template": (
+                    "You are a NovaTech support agent. "
+                    "A customer asks: {{question}}"
+                ),
+                "description": "Standard customer inquiry template",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"].startswith("prompt_")
+        assert data["object"] == "prompt"
+        assert data["version"] == 1
+        assert data["is_default"] is True
+        assert "question" in data["variables"]
+
+        TestDemoWorkflow._state["prompt_id"] = data["id"]
+
+    def test_16_update_prompt_creates_version(self, httpx_client):
+        """Update the prompt template; verify a new version is created."""
+        prompt_id = TestDemoWorkflow._state["prompt_id"]
+        resp = httpx_client.put(
+            f"/prompts/{prompt_id}",
+            json={
+                "template": (
+                    "You are a NovaTech CloudSync support agent. "
+                    "Answer concisely. Customer asks: {{question}}"
+                ),
+                "version": 1,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == 2
+        assert data["is_default"] is True
+        assert data["name"] == "novatech-inquiry"
+
+    def test_17_list_prompt_versions(self, httpx_client):
+        """List all versions and verify both are present."""
+        prompt_id = TestDemoWorkflow._state["prompt_id"]
+        resp = httpx_client.get(f"/prompts/{prompt_id}/versions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "list"
+        versions = data["data"]
+        assert len(versions) == 2
+        assert versions[0]["version"] == 1
+        assert versions[1]["version"] == 2
+
+    def test_18_get_specific_version(self, httpx_client):
+        """Retrieve a specific prompt version via query param."""
+        prompt_id = TestDemoWorkflow._state["prompt_id"]
+
+        # Version 1 should still have the original template
+        resp = httpx_client.get(f"/prompts/{prompt_id}", params={"version": 1})
+        assert resp.status_code == 200
+        v1 = resp.json()
+        assert v1["version"] == 1
+        assert "Answer concisely" not in v1["template"]
+
+        # Default (no param) should return version 2
+        resp = httpx_client.get(f"/prompts/{prompt_id}")
+        assert resp.status_code == 200
+        assert resp.json()["version"] == 2
+
+    def test_19_set_default_version(self, httpx_client):
+        """Set default back to version 1, verify GET returns it."""
+        prompt_id = TestDemoWorkflow._state["prompt_id"]
+        resp = httpx_client.post(
+            f"/prompts/{prompt_id}/default_version",
+            json={"version": 1},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["version"] == 1
+        assert resp.json()["is_default"] is True
+
+        # GET without version should now return version 1
+        resp = httpx_client.get(f"/prompts/{prompt_id}")
+        assert resp.status_code == 200
+        assert resp.json()["version"] == 1
+
+        # Restore default to version 2 for subsequent tests
+        httpx_client.post(
+            f"/prompts/{prompt_id}/default_version",
+            json={"version": 2},
+        ).raise_for_status()
+
+    def test_20_stale_version_update_rejected(self, httpx_client):
+        """Updating with a stale version number returns 409 Conflict."""
+        prompt_id = TestDemoWorkflow._state["prompt_id"]
+        resp = httpx_client.put(
+            f"/prompts/{prompt_id}",
+            json={"template": "stale update", "version": 1},
+        )
+        assert resp.status_code == 409
+
+    # -- Stage 8: Mixed tools ----------------------------------------------
+
+    def test_21_mixed_tools(self, client, model, vector_store):
         """Combine file_search + function tools in a single request."""
         response = client.responses.create(
             model=model,
@@ -462,15 +569,15 @@ class TestDemoWorkflow:
         assert "file_search" in tool_types
         assert "function" in tool_types
 
-    # -- Stage 8: MCP tool integration ------------------------------------
+    # -- Stage 9: MCP tool integration ------------------------------------
 
-    def test_16_register_mcp_connector(self, mcp_connector):
+    def test_22_register_mcp_connector(self, mcp_connector):
         """Register the NovaTech MCP server via the Connectors API."""
         assert mcp_connector["connector_id"] == "novatech-mcp"
         assert mcp_connector["connector_type"] == "mcp"
         assert mcp_connector["object"] == "connector"
 
-    def test_17_list_connectors(self, httpx_client, mcp_connector):
+    def test_23_list_connectors(self, httpx_client, mcp_connector):
         """List connectors and verify the MCP registration is present."""
         resp = httpx_client.get("/connectors")
         assert resp.status_code == 200
@@ -478,7 +585,7 @@ class TestDemoWorkflow:
         connector_ids = [c["connector_id"] for c in data.get("data", [])]
         assert "novatech-mcp" in connector_ids
 
-    def test_18_query_with_mcp_tool(self, httpx_client, model, mcp_connector):
+    def test_24_query_with_mcp_tool(self, httpx_client, model, mcp_connector):
         """Responses API + mcp tool: engine discovers and executes MCP tool server-side.
 
         Uses httpx because the SDK does not support type="mcp" tools.
@@ -505,7 +612,7 @@ class TestDemoWorkflow:
         # Save for next test
         TestDemoWorkflow._state["mcp_output"] = data.get("output", [])
 
-    def test_19_verify_mcp_output(self):
+    def test_25_verify_mcp_output(self):
         """Verify the MCP response includes function_call and function_call_output items."""
         output = TestDemoWorkflow._state.get("mcp_output", [])
         types = [o["type"] for o in output]
@@ -515,10 +622,21 @@ class TestDemoWorkflow:
         assert "function_call_output" in types, f"Expected function_call_output in output types: {types}"
         assert "message" in types, f"Expected message in output types: {types}"
 
-    # -- Stage 9: Explicit cleanup -----------------------------------------
+    # -- Stage 10: Explicit cleanup ----------------------------------------
 
-    def test_20_cleanup(self, client, httpx_client, uploaded_files, vector_store):
-        """Delete files from VS, delete VS, delete files, delete MCP connector."""
+    def test_26_cleanup(self, client, httpx_client, uploaded_files, vector_store):
+        """Delete prompts, files from VS, VS, files, and MCP connector."""
+        # Delete prompt (all versions)
+        prompt_id = TestDemoWorkflow._state.get("prompt_id")
+        if prompt_id:
+            resp = httpx_client.delete(f"/prompts/{prompt_id}")
+            assert resp.status_code == 200
+            assert resp.json()["deleted"] is True
+
+            # Verify all versions are gone
+            resp = httpx_client.get(f"/prompts/{prompt_id}/versions")
+            assert resp.status_code == 404
+
         # Remove files from vector store
         for f in uploaded_files.values():
             deletion = client.vector_stores.files.delete(
