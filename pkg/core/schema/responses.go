@@ -253,11 +253,14 @@ type IncompleteDetailsField struct {
 
 // ResponsesToolParam represents a tool definition (request)
 type ResponsesToolParam struct {
-	Type        string                 `json:"type"` // "function", "file_search", "web_search"
+	Type        string                 `json:"type"` // "function", "file_search", "web_search", "mcp"
 	Name        string                 `json:"name,omitempty"`
 	Description *string                `json:"description,omitempty"`
 	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema
 	Strict      *bool                  `json:"strict,omitempty"`
+
+	// MCP fields (type="mcp")
+	ServerLabel string `json:"server_label,omitempty"` // matches connector_id
 
 	// Web search fields (type="web_search")
 	SearchContextSize *string                `json:"search_context_size,omitempty"`
@@ -277,6 +280,9 @@ type ResponsesTool struct {
 	Description *string                `json:"description"` // nullable
 	Parameters  map[string]interface{} `json:"parameters"`  // nullable
 	Strict      *bool                  `json:"strict"`      // nullable
+
+	// MCP fields
+	ServerLabel string `json:"server_label,omitempty"`
 
 	// Web search fields
 	SearchContextSize *string                `json:"search_context_size,omitempty"`

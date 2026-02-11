@@ -66,8 +66,12 @@ func main() {
 	store := memory.New()
 	logger.Info("Initialized in-memory storage")
 
+	// Initialize connectors store (needed by engine for MCP tool support)
+	connectorsStore := memory.NewConnectorsStore()
+	logger.Info("Initialized connectors store")
+
 	// Initialize engine
-	eng, err := engine.New(&cfg.Engine, store)
+	eng, err := engine.New(&cfg.Engine, store, connectorsStore)
 	if err != nil {
 		logger.Error("Failed to initialize engine", "error", err)
 		os.Exit(1)
@@ -89,10 +93,6 @@ func main() {
 	// Initialize vector stores store
 	vectorStoresStore := memory.NewVectorStoresStore()
 	logger.Info("Initialized vector stores store")
-
-	// Initialize connectors store
-	connectorsStore := memory.NewConnectorsStore()
-	logger.Info("Initialized connectors store")
 
 	// Initialize HTTP adapter
 	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore, connectorsStore)

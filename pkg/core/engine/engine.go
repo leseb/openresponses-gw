@@ -7,26 +7,37 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
 	"github.com/leseb/openresponses-gw/pkg/core/state"
+	"github.com/leseb/openresponses-gw/pkg/mcp"
+	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
 const defaultMaxToolCalls = 10
 
-// Engine is the core orchestration engine for the Responses API
-type Engine struct {
-	config   *config.EngineConfig
-	sessions state.SessionStore
-	llm      api.ChatCompletionClient
+// ConnectorLookup provides read access to registered connectors.
+type ConnectorLookup interface {
+	GetConnector(ctx context.Context, connectorID string) (*memory.Connector, error)
 }
 
-// New creates a new Engine instance
-func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
+// Engine is the core orchestration engine for the Responses API
+type Engine struct {
+	config     *config.EngineConfig
+	sessions   state.SessionStore
+	llm        api.ChatCompletionClient
+	connectors ConnectorLookup // nil-safe: nil means no MCP support
+}
+
+// New creates a new Engine instance.
+// The connectors parameter is optional (nil disables MCP tool support).
+func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup) (*Engine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -41,9 +52,10 @@ func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
 	llm := api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
 
 	return &Engine{
-		config:   cfg,
-		sessions: store,
-		llm:      llm,
+		config:     cfg,
+		sessions:   store,
+		llm:        llm,
+		connectors: connectors,
 	}, nil
 }
 
@@ -732,6 +744,79 @@ func (e *Engine) buildConversationMessagesFromConversation(ctx context.Context, 
 	return messages, nil
 }
 
+// expandMCPTools discovers tools from MCP servers and replaces MCP tool entries
+// with concrete function tool definitions. It returns the expanded tools list
+// and a map from tool name to MCP client for server-side execution.
+func (e *Engine) expandMCPTools(ctx context.Context, tools []schema.ResponsesToolParam) (
+	[]schema.ResponsesToolParam, map[string]*mcp.Client, error,
+) {
+	if e.connectors == nil {
+		// No connector support — pass through all tools unchanged
+		return tools, nil, nil
+	}
+
+	var expanded []schema.ResponsesToolParam
+	mcpToolNames := map[string]*mcp.Client{}
+
+	for _, t := range tools {
+		if t.Type != "mcp" {
+			expanded = append(expanded, t)
+			continue
+		}
+
+		// Look up the connector by server_label (which matches connector_id)
+		connector, err := e.connectors.GetConnector(ctx, t.ServerLabel)
+		if err != nil {
+			return nil, nil, fmt.Errorf("mcp connector %q not found: %w", t.ServerLabel, err)
+		}
+
+		// Create MCP client, initialize, and list tools
+		mcpClient := mcp.NewClient(connector.URL)
+		if err := mcpClient.Initialize(ctx); err != nil {
+			return nil, nil, fmt.Errorf("mcp server %q initialize: %w", t.ServerLabel, err)
+		}
+
+		toolInfos, err := mcpClient.ListTools(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("mcp server %q list tools: %w", t.ServerLabel, err)
+		}
+
+		// Convert each MCP ToolInfo to a function tool
+		for _, ti := range toolInfos {
+			desc := ti.Description
+			expanded = append(expanded, schema.ResponsesToolParam{
+				Type:        "function",
+				Name:        ti.Name,
+				Description: &desc,
+				Parameters:  ti.InputSchema,
+			})
+			mcpToolNames[ti.Name] = mcpClient
+		}
+	}
+
+	return expanded, mcpToolNames, nil
+}
+
+// parseJSONArgs parses a JSON string into a map for MCP tool call arguments.
+func parseJSONArgs(jsonStr string) map[string]any {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &args); err != nil {
+		return map[string]any{}
+	}
+	return args
+}
+
+// mcpResultToString converts an MCP tool call result to a string for the LLM.
+func mcpResultToString(result *mcp.ToolCallResult) string {
+	var parts []string
+	for _, block := range result.Content {
+		if block.Text != "" {
+			parts = append(parts, block.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // ProcessRequest processes a Responses API request (non-streaming)
 func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest) (*schema.Response, error) {
 	// 1. Validate request
@@ -774,7 +859,23 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		return resp, nil
 	}
 
-	// 6. Agentic loop
+	// 6. Expand MCP tools into function tools
+	expandedTools := req.Tools
+	var mcpToolNames map[string]*mcp.Client
+	if len(req.Tools) > 0 {
+		var expandErr error
+		expandedTools, mcpToolNames, expandErr = e.expandMCPTools(ctx, req.Tools)
+		if expandErr != nil {
+			resp.MarkFailed("api_error", "mcp_error", fmt.Sprintf("failed to expand MCP tools: %v", expandErr))
+			return resp, nil
+		}
+	}
+
+	// Build a modified request with expanded tools for the LLM
+	expandedReq := *req
+	expandedReq.Tools = expandedTools
+
+	// 7. Agentic loop
 	maxIters := defaultMaxToolCalls
 	if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
 		maxIters = *req.MaxToolCalls
@@ -785,7 +886,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 
 	for iter := 0; iter < maxIters; iter++ {
 		// Build LLM request
-		llmReq := buildLLMRequest(model, messages, req, false)
+		llmReq := buildLLMRequest(model, messages, &expandedReq, false)
 
 		// Adjust token budget if max_output_tokens is set
 		if req.MaxOutputTokens != nil {
@@ -814,30 +915,82 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		choice := llmResp.Choices[0]
 
 		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
-			// Emit function_call output items
+			var clientSideCalls []api.ToolCall
+
 			for _, tc := range choice.Message.ToolCalls {
-				completedStatus := "completed"
-				callID := tc.ID
-				funcName := tc.Function.Name
-				funcArgs := tc.Function.Arguments
-				allOutput = append(allOutput, schema.ItemField{
-					Type:      "function_call",
-					ID:        generateID("fc_"),
-					CallID:    &callID,
-					Name:      &funcName,
-					Arguments: &funcArgs,
-					Status:    &completedStatus,
-				})
+				mcpClient, isMCP := mcpToolNames[tc.Function.Name]
+				if isMCP {
+					// Execute MCP tool server-side
+					args := parseJSONArgs(tc.Function.Arguments)
+					result, mcpErr := mcpClient.CallTool(ctx, tc.Function.Name, args)
+
+					completedStatus := "completed"
+					callID := tc.ID
+					funcName := tc.Function.Name
+					funcArgs := tc.Function.Arguments
+
+					// Emit function_call item
+					allOutput = append(allOutput, schema.ItemField{
+						Type:      "function_call",
+						ID:        generateID("fc_"),
+						CallID:    &callID,
+						Name:      &funcName,
+						Arguments: &funcArgs,
+						Status:    &completedStatus,
+					})
+
+					// Emit function_call_output item
+					var outputStr string
+					if mcpErr != nil {
+						outputStr = fmt.Sprintf("Error calling tool: %v", mcpErr)
+					} else {
+						outputStr = mcpResultToString(result)
+					}
+					allOutput = append(allOutput, schema.ItemField{
+						Type:   "function_call_output",
+						ID:     generateID("fco_"),
+						CallID: &callID,
+						Output: &outputStr,
+					})
+
+					// Append tool call + result to messages for LLM context
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{tc},
+					})
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    outputStr,
+						ToolCallID: tc.ID,
+					})
+				} else {
+					// Client-side function — collect for break
+					completedStatus := "completed"
+					callID := tc.ID
+					funcName := tc.Function.Name
+					funcArgs := tc.Function.Arguments
+					allOutput = append(allOutput, schema.ItemField{
+						Type:      "function_call",
+						ID:        generateID("fc_"),
+						CallID:    &callID,
+						Name:      &funcName,
+						Arguments: &funcArgs,
+						Status:    &completedStatus,
+					})
+					clientSideCalls = append(clientSideCalls, tc)
+				}
 			}
 
-			// Append assistant message with tool calls to messages for storage
-			messages = append(messages, api.Message{
-				Role:      "assistant",
-				ToolCalls: choice.Message.ToolCalls,
-			})
-
-			// Function tools are client-side - break to let client execute
-			break
+			if len(clientSideCalls) > 0 {
+				// Append assistant message with client-side calls and break
+				messages = append(messages, api.Message{
+					Role:      "assistant",
+					ToolCalls: clientSideCalls,
+				})
+				break // client handles execution
+			}
+			// All calls were MCP — continue loop so LLM can reason with results
+			continue
 		}
 
 		// Normal text response
@@ -1019,8 +1172,31 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		seqNum++
 
+		// Expand MCP tools into function tools
+		expandedTools := req.Tools
+		var mcpToolNames map[string]*mcp.Client
+		if len(req.Tools) > 0 {
+			var expandErr error
+			expandedTools, mcpToolNames, expandErr = e.expandMCPTools(ctx, req.Tools)
+			if expandErr != nil {
+				errorField := schema.ErrorField{
+					Type:    "api_error",
+					Message: fmt.Sprintf("failed to expand MCP tools: %v", expandErr),
+				}
+				events <- &schema.ErrorStreamingEvent{
+					Type:  "error",
+					Error: errorField,
+				}
+				return
+			}
+		}
+
+		// Build a modified request with expanded tools for the LLM
+		expandedReq := *req
+		expandedReq.Tools = expandedTools
+
 		// Build LLM request
-		llmReq := buildLLMRequest(model, messages, req, true)
+		llmReq := buildLLMRequest(model, messages, &expandedReq, true)
 
 		// Get streaming response from LLM
 		streamChan, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
@@ -1159,7 +1335,10 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 		if finishReason == "tool_calls" && len(toolCallAccum) > 0 {
 			// Emit tool call output items
-			for i, tc := range toolCallAccum {
+			outputIdx := 0
+			for _, tc := range toolCallAccum {
+				mcpClient, isMCP := mcpToolNames[tc.Name]
+
 				completedStatus := "completed"
 				callID := tc.ID
 				funcName := tc.Name
@@ -1176,7 +1355,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				events <- &schema.ResponseOutputItemAddedStreamingEvent{
 					Type:           "response.output_item.added",
 					SequenceNumber: seqNum,
-					OutputIndex:    i,
+					OutputIndex:    outputIdx,
 					Item:           toolItem,
 				}
 				seqNum++
@@ -1185,7 +1364,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				events <- &schema.ResponseFunctionCallArgumentsDoneStreamingEvent{
 					Type:        "response.function_call_arguments.done",
 					ResponseID:  respID,
-					OutputIndex: i,
+					OutputIndex: outputIdx,
 					Arguments:   funcArgs,
 				}
 				seqNum++
@@ -1194,30 +1373,102 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				events <- &schema.ResponseOutputItemDoneStreamingEvent{
 					Type:           "response.output_item.done",
 					SequenceNumber: seqNum,
-					OutputIndex:    i,
+					OutputIndex:    outputIdx,
 					Item:           toolItem,
 				}
 				seqNum++
 
 				allOutput = append(allOutput, toolItem)
+				outputIdx++
+
+				if isMCP {
+					// Execute MCP tool server-side
+					args := parseJSONArgs(tc.Arguments)
+					result, mcpErr := mcpClient.CallTool(ctx, tc.Name, args)
+
+					var outputStr string
+					if mcpErr != nil {
+						outputStr = fmt.Sprintf("Error calling tool: %v", mcpErr)
+					} else {
+						outputStr = mcpResultToString(result)
+					}
+
+					// Emit function_call_output item
+					outputItem := schema.ItemField{
+						Type:   "function_call_output",
+						ID:     generateID("fco_"),
+						CallID: &callID,
+						Output: &outputStr,
+					}
+
+					events <- &schema.ResponseOutputItemAddedStreamingEvent{
+						Type:           "response.output_item.added",
+						SequenceNumber: seqNum,
+						OutputIndex:    outputIdx,
+						Item:           outputItem,
+					}
+					seqNum++
+
+					events <- &schema.ResponseOutputItemDoneStreamingEvent{
+						Type:           "response.output_item.done",
+						SequenceNumber: seqNum,
+						OutputIndex:    outputIdx,
+						Item:           outputItem,
+					}
+					seqNum++
+
+					allOutput = append(allOutput, outputItem)
+					outputIdx++
+
+					// Append to messages for LLM context
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{{
+							ID:   tc.ID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      tc.Name,
+								Arguments: tc.Arguments,
+							},
+						}},
+					})
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    outputStr,
+						ToolCallID: tc.ID,
+					})
+				}
 			}
 
-			// Append assistant message with tool calls to messages for storage
-			var tcForMsg []api.ToolCall
+			// Check if any tool calls were client-side (non-MCP)
+			hasClientSide := false
+			var clientSideTCs []api.ToolCall
 			for _, tc := range toolCallAccum {
-				tcForMsg = append(tcForMsg, api.ToolCall{
-					ID:   tc.ID,
-					Type: "function",
-					Function: api.ToolCallFunction{
-						Name:      tc.Name,
-						Arguments: tc.Arguments,
-					},
+				if _, isMCP := mcpToolNames[tc.Name]; !isMCP {
+					hasClientSide = true
+					clientSideTCs = append(clientSideTCs, api.ToolCall{
+						ID:   tc.ID,
+						Type: "function",
+						Function: api.ToolCallFunction{
+							Name:      tc.Name,
+							Arguments: tc.Arguments,
+						},
+					})
+				}
+			}
+
+			if hasClientSide {
+				// Append assistant message with client-side calls for storage
+				messages = append(messages, api.Message{
+					Role:      "assistant",
+					ToolCalls: clientSideTCs,
 				})
 			}
-			messages = append(messages, api.Message{
-				Role:      "assistant",
-				ToolCalls: tcForMsg,
-			})
+
+			// If all calls were MCP, the agentic loop in streaming doesn't
+			// re-iterate here, but we include the results in the output.
+			// (Streaming currently does a single LLM call; the results are
+			// included for the response but the loop does not continue.)
 
 		} else {
 			// Normal text response
@@ -1370,6 +1621,7 @@ func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.Respo
 			Description:       t.Description,
 			Parameters:        t.Parameters,
 			Strict:            t.Strict,
+			ServerLabel:       t.ServerLabel,
 			SearchContextSize: t.SearchContextSize,
 			UserLocation:      t.UserLocation,
 			VectorStoreIDs:    t.VectorStoreIDs,

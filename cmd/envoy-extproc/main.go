@@ -66,7 +66,7 @@ func main() {
 	store := memory.New()
 
 	// Initialize engine
-	eng, err := engine.New(&cfg.Engine, store)
+	eng, err := engine.New(&cfg.Engine, store, nil)
 	if err != nil {
 		logger.Error("failed to create engine", "error", err)
 		os.Exit(1)
