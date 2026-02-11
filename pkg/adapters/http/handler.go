@@ -26,10 +26,11 @@ type Handler struct {
 	promptsStore      *memory.PromptsStore
 	filesStore        *memory.FilesStore
 	vectorStoresStore *memory.VectorStoresStore
+	connectorsStore   *memory.ConnectorsStore
 }
 
 // New creates a new HTTP handler
-func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore) *Handler {
+func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore) *Handler {
 	h := &Handler{
 		engine:            eng,
 		logger:            logger,
@@ -38,6 +39,7 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 		promptsStore:      promptsStore,
 		filesStore:        filesStore,
 		vectorStoresStore: vectorStoresStore,
+		connectorsStore:   connectorsStore,
 	}
 
 	// Register routes
@@ -95,6 +97,12 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("GET /v1/vector_stores/{id}/file_batches/{batch_id}", h.handleGetVectorStoreFileBatch)
 	h.mux.HandleFunc("GET /v1/vector_stores/{id}/file_batches/{batch_id}/files", h.handleListVectorStoreFileBatchFiles)
 	h.mux.HandleFunc("POST /v1/vector_stores/{id}/file_batches/{batch_id}/cancel", h.handleCancelVectorStoreFileBatch)
+
+	// Connectors API (llama-stack pattern)
+	h.mux.HandleFunc("POST /v1/connectors", h.handleRegisterConnector)
+	h.mux.HandleFunc("GET /v1/connectors", h.handleListConnectors)
+	h.mux.HandleFunc("GET /v1/connectors/{connector_id}", h.handleGetConnector)
+	h.mux.HandleFunc("DELETE /v1/connectors/{connector_id}", h.handleDeleteConnector)
 
 	return h
 }

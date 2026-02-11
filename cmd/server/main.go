@@ -90,8 +90,12 @@ func main() {
 	vectorStoresStore := memory.NewVectorStoresStore()
 	logger.Info("Initialized vector stores store")
 
+	// Initialize connectors store
+	connectorsStore := memory.NewConnectorsStore()
+	logger.Info("Initialized connectors store")
+
 	// Initialize HTTP adapter
-	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore)
+	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore, connectorsStore)
 	logger.Info("Initialized HTTP adapter")
 
 	// Create HTTP server
