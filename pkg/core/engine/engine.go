@@ -34,15 +34,11 @@ func New(cfg *config.EngineConfig, store state.SessionStore) (*Engine, error) {
 		return nil, fmt.Errorf("session store is required")
 	}
 
-	// Create chat completion client
-	var llm api.ChatCompletionClient
-	if cfg.APIKey != "" && cfg.ModelEndpoint != "" {
-		// Use real OpenAI-compatible client
-		llm = api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
-	} else {
-		// Use mock client for testing
-		llm = api.NewMockChatCompletionClient()
+	// Create chat completion client – a real inference backend is required
+	if cfg.ModelEndpoint == "" {
+		return nil, fmt.Errorf("model endpoint is required (set OPENAI_API_ENDPOINT)")
 	}
+	llm := api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
 
 	return &Engine{
 		config:   cfg,
