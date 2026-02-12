@@ -93,6 +93,69 @@ docker run -d --name milvus \
 
 ---
 
+## File Store Configuration
+
+By default, uploaded files are stored in memory and lost on restart. You can switch to a persistent backend via environment variables or YAML config.
+
+### Environment Variables
+
+```bash
+# Filesystem backend
+export FILE_STORE_TYPE=filesystem
+export FILE_STORE_BASE_DIR=/var/lib/openresponses-gw/files
+
+# S3 / MinIO backend
+export FILE_STORE_TYPE=s3
+export FILE_STORE_S3_BUCKET=my-files-bucket
+export FILE_STORE_S3_REGION=us-east-1
+export FILE_STORE_S3_PREFIX=files/               # optional key prefix
+export FILE_STORE_S3_ENDPOINT=http://localhost:9000  # for MinIO
+```
+
+Setting `FILE_STORE_BASE_DIR` without `FILE_STORE_TYPE` auto-selects `filesystem`. Setting `FILE_STORE_S3_BUCKET` without `FILE_STORE_TYPE` auto-selects `s3`.
+
+### YAML Configuration
+
+```yaml
+file_store:
+  type: filesystem          # "memory" (default), "filesystem", or "s3"
+  base_dir: /tmp/gw-files   # filesystem only
+
+  # S3 / MinIO settings
+  # type: s3
+  # s3_bucket: my-bucket
+  # s3_region: us-east-1
+  # s3_prefix: files/
+  # s3_endpoint: http://localhost:9000  # for MinIO
+```
+
+### Backends
+
+| Backend | Persistence | Use Case |
+|---------|-------------|----------|
+| `memory` (default) | None — data lost on restart | Development, testing |
+| `filesystem` | Local disk | Single-node deployments |
+| `s3` | S3-compatible object storage | Production, multi-node, MinIO |
+
+### Starting MinIO (for S3-compatible local testing)
+
+```bash
+docker run -d --name minio \
+  -p 9000:9000 -p 9001:9001 \
+  minio/minio server /data --console-address :9001
+
+# Create a bucket
+aws --endpoint-url http://localhost:9000 s3 mb s3://test-bucket
+
+# Configure gateway
+export FILE_STORE_TYPE=s3
+export FILE_STORE_S3_BUCKET=test-bucket
+export FILE_STORE_S3_ENDPOINT=http://localhost:9000
+export FILE_STORE_S3_REGION=us-east-1
+```
+
+---
+
 ## Configuration Methods
 
 The gateway supports **3 ways** to configure the inference backend (in order of precedence):
@@ -521,6 +584,9 @@ docker run -p 8080:8080 \
   -e EMBEDDING_ENDPOINT=https://api.openai.com/v1 \
   -e EMBEDDING_API_KEY=sk-... \
   -e MILVUS_ADDRESS=host.docker.internal:19530 \
+  -e FILE_STORE_TYPE=s3 \
+  -e FILE_STORE_S3_BUCKET=my-bucket \
+  -e FILE_STORE_S3_REGION=us-east-1 \
   openresponses-gw:latest
 ```
 

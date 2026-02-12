@@ -26,3 +26,8 @@ engine:
 # vector_store:
 #   type: milvus
 #   milvus_address: localhost:19530
+
+# Optional: persistent file storage
+# file_store:
+#   type: filesystem
+#   base_dir: /tmp/gw-files

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
-	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/filestore"
 )
 
 const (
@@ -68,7 +68,7 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	fileID := generateID("file_")
 	now := time.Now()
 
-	storeFile := &memory.File{
+	storeFile := &filestore.File{
 		ID:        fileID,
 		Filename:  header.Filename,
 		Purpose:   purpose,

@@ -13,6 +13,7 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
 	"github.com/leseb/openresponses-gw/pkg/core/services"
+	"github.com/leseb/openresponses-gw/pkg/filestore"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
@@ -27,14 +28,14 @@ type Handler struct {
 	mux                 *http.ServeMux
 	modelsService       *services.ModelsService
 	promptsStore        *memory.PromptsStore
-	filesStore          *memory.FilesStore
+	filesStore          filestore.FileStore
 	vectorStoresStore   *memory.VectorStoresStore
 	connectorsStore     *memory.ConnectorsStore
 	vectorStoreService  *services.VectorStoreService // nil when feature is disabled
 }
 
 // New creates a new HTTP handler
-func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore, vectorStoreService *services.VectorStoreService) *Handler {
+func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore filestore.FileStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore, vectorStoreService *services.VectorStoreService) *Handler {
 	h := &Handler{
 		engine:             eng,
 		logger:             logger,

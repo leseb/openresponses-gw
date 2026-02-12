@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/leseb/openresponses-gw/pkg/core/api"
-	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/filestore"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 )
 
@@ -18,14 +18,14 @@ import (
 // Nil-safe: NewVectorStoreService returns nil if embedder or backend is nil.
 // All methods are nil-receiver safe and return nil on a nil receiver.
 type VectorStoreService struct {
-	files    *memory.FilesStore
+	files    filestore.FileStore
 	embedder api.EmbeddingClient
 	backend  vectorstore.Backend
 }
 
 // NewVectorStoreService creates a VectorStoreService.
 // Returns nil if either embedder or backend is nil (feature disabled).
-func NewVectorStoreService(files *memory.FilesStore, embedder api.EmbeddingClient, backend vectorstore.Backend) *VectorStoreService {
+func NewVectorStoreService(files filestore.FileStore, embedder api.EmbeddingClient, backend vectorstore.Backend) *VectorStoreService {
 	if embedder == nil || backend == nil {
 		return nil
 	}

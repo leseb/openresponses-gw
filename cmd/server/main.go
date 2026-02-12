@@ -18,6 +18,10 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/core/services"
+	"github.com/leseb/openresponses-gw/pkg/filestore"
+	"github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
+	fsmemory "github.com/leseb/openresponses-gw/pkg/filestore/memory"
+	fss3 "github.com/leseb/openresponses-gw/pkg/filestore/s3"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
@@ -78,8 +82,34 @@ func main() {
 	logger.Info("Initialized prompts store")
 
 	// Initialize files store
-	filesStore := memory.NewFilesStore()
-	logger.Info("Initialized files store")
+	var filesStore filestore.FileStore
+	switch cfg.FileStore.Type {
+	case "filesystem":
+		fs, fsErr := filesystem.New(cfg.FileStore.BaseDir)
+		if fsErr != nil {
+			logger.Error("Failed to initialize filesystem file store", "error", fsErr)
+			os.Exit(1)
+		}
+		filesStore = fs
+		logger.Info("Initialized filesystem file store", "base_dir", cfg.FileStore.BaseDir)
+	case "s3":
+		s3Store, s3Err := fss3.New(context.Background(), fss3.Options{
+			Bucket:   cfg.FileStore.S3Bucket,
+			Region:   cfg.FileStore.S3Region,
+			Prefix:   cfg.FileStore.S3Prefix,
+			Endpoint: cfg.FileStore.S3Endpoint,
+		})
+		if s3Err != nil {
+			logger.Error("Failed to initialize S3 file store", "error", s3Err)
+			os.Exit(1)
+		}
+		filesStore = s3Store
+		logger.Info("Initialized S3 file store", "bucket", cfg.FileStore.S3Bucket)
+	default:
+		filesStore = fsmemory.New()
+		logger.Info("Initialized in-memory file store")
+	}
+	defer filesStore.Close(context.Background())
 
 	// Initialize vector stores store
 	vectorStoresStore := memory.NewVectorStoresStore()

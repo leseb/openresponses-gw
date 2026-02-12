@@ -17,6 +17,7 @@ type Config struct {
 	Engine      EngineConfig      `yaml:"engine"`
 	Embedding   EmbeddingConfig   `yaml:"embedding"`
 	VectorStore VectorStoreConfig `yaml:"vector_store"`
+	FileStore   FileStoreConfig   `yaml:"file_store"`
 }
 
 // ServerConfig contains HTTP server configuration
@@ -46,6 +47,16 @@ type EmbeddingConfig struct {
 type VectorStoreConfig struct {
 	Type          string `yaml:"type"`           // "memory" (default) or "milvus"
 	MilvusAddress string `yaml:"milvus_address"` // e.g. "localhost:19530"
+}
+
+// FileStoreConfig contains file storage backend configuration
+type FileStoreConfig struct {
+	Type       string `yaml:"type"`        // "memory" (default), "filesystem", "s3"
+	BaseDir    string `yaml:"base_dir"`    // filesystem only
+	S3Bucket   string `yaml:"s3_bucket"`
+	S3Region   string `yaml:"s3_region"`
+	S3Prefix   string `yaml:"s3_prefix"`
+	S3Endpoint string `yaml:"s3_endpoint"` // for MinIO compatibility
 }
 
 // Load loads configuration from a YAML file
@@ -85,9 +96,36 @@ func Load(path string) (*Config, error) {
 		cfg.VectorStore.Type = "milvus"
 	}
 
+	// File store env overrides
+	if v := os.Getenv("FILE_STORE_TYPE"); v != "" {
+		cfg.FileStore.Type = v
+	}
+	if v := os.Getenv("FILE_STORE_BASE_DIR"); v != "" {
+		cfg.FileStore.BaseDir = v
+		if cfg.FileStore.Type == "" {
+			cfg.FileStore.Type = "filesystem"
+		}
+	}
+	if v := os.Getenv("FILE_STORE_S3_BUCKET"); v != "" {
+		cfg.FileStore.S3Bucket = v
+		if cfg.FileStore.Type == "" {
+			cfg.FileStore.Type = "s3"
+		}
+	}
+	if v := os.Getenv("FILE_STORE_S3_REGION"); v != "" {
+		cfg.FileStore.S3Region = v
+	}
+	if v := os.Getenv("FILE_STORE_S3_PREFIX"); v != "" {
+		cfg.FileStore.S3Prefix = v
+	}
+	if v := os.Getenv("FILE_STORE_S3_ENDPOINT"); v != "" {
+		cfg.FileStore.S3Endpoint = v
+	}
+
 	// Apply defaults
 	applyEmbeddingDefaults(&cfg.Embedding)
 	applyVectorStoreDefaults(&cfg.VectorStore)
+	applyFileStoreDefaults(&cfg.FileStore)
 
 	return &cfg, nil
 }
@@ -108,6 +146,22 @@ func Default() *Config {
 	}
 	applyVectorStoreDefaults(&vsCfg)
 
+	fsCfg := FileStoreConfig{
+		Type:       os.Getenv("FILE_STORE_TYPE"),
+		BaseDir:    os.Getenv("FILE_STORE_BASE_DIR"),
+		S3Bucket:   os.Getenv("FILE_STORE_S3_BUCKET"),
+		S3Region:   os.Getenv("FILE_STORE_S3_REGION"),
+		S3Prefix:   os.Getenv("FILE_STORE_S3_PREFIX"),
+		S3Endpoint: os.Getenv("FILE_STORE_S3_ENDPOINT"),
+	}
+	if fsCfg.Type == "" && fsCfg.BaseDir != "" {
+		fsCfg.Type = "filesystem"
+	}
+	if fsCfg.Type == "" && fsCfg.S3Bucket != "" {
+		fsCfg.Type = "s3"
+	}
+	applyFileStoreDefaults(&fsCfg)
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
@@ -122,6 +176,7 @@ func Default() *Config {
 		},
 		Embedding:   embCfg,
 		VectorStore: vsCfg,
+		FileStore:   fsCfg,
 	}
 }
 
@@ -135,6 +190,12 @@ func applyEmbeddingDefaults(cfg *EmbeddingConfig) {
 }
 
 func applyVectorStoreDefaults(cfg *VectorStoreConfig) {
+	if cfg.Type == "" {
+		cfg.Type = "memory"
+	}
+}
+
+func applyFileStoreDefaults(cfg *FileStoreConfig) {
 	if cfg.Type == "" {
 		cfg.Type = "memory"
 	}
