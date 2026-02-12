@@ -24,7 +24,7 @@ func getOpenAPISpec() map[string]interface{} {
 		"openapi": "3.0.0",
 		"info": map[string]interface{}{
 			"title":       "Open Responses Gateway API",
-			"description": "100% Open Responses Specification Compliant Gateway\n\nBased on: https://github.com/openresponses/openresponses\n\nThis gateway provides:\n- **Core API**: Full Open Responses spec compliance (POST /v1/responses)\n- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Models\n- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration\n\nStreaming: All 24 event types from Open Responses spec\nRequest Echo: All request parameters returned in response\nMultimodal: Support for text, images, files, video",
+			"description": "100% Open Responses Specification Compliant Gateway\n\nBased on: https://github.com/openresponses/openresponses\n\nThis gateway provides:\n- **Core API**: Full Open Responses spec compliance (POST /v1/responses)\n- **Extended APIs**: Conversations, Prompts, Files, Vector Stores\n- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration\n\nStreaming: All 24 event types from Open Responses spec\nRequest Echo: All request parameters returned in response\nMultimodal: Support for text, images, files, video",
 			"version":     "1.0.0",
 			"contact": map[string]string{
 				"name": "Open Responses Gateway",
@@ -44,7 +44,6 @@ func getOpenAPISpec() map[string]interface{} {
 			{"name": "Prompts", "description": "Extended - Prompt template management"},
 			{"name": "Files", "description": "Extended - File upload and management"},
 			{"name": "Vector Stores", "description": "Extended - Vector store and embeddings"},
-			{"name": "Models", "description": "Extended - Model discovery"},
 		},
 		"paths": map[string]interface{}{
 			"/health": map[string]interface{}{
@@ -251,25 +250,6 @@ func getOpenAPISpec() map[string]interface{} {
 					},
 				},
 			},
-			"/v1/models": map[string]interface{}{
-				"get": map[string]interface{}{
-					"tags":        []string{"Models"},
-					"summary":     "List available models",
-					"operationId": "listModels",
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "List of models",
-							"content": map[string]interface{}{
-								"application/json": map[string]interface{}{
-									"schema": map[string]interface{}{
-										"$ref": "#/components/schemas/ListModelsResponse",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 		"components": map[string]interface{}{
 			"schemas": map[string]interface{}{
@@ -367,15 +347,6 @@ func getOpenAPISpec() map[string]interface{} {
 							"type":        "string",
 							"nullable":    true,
 							"description": "Convenience field - concatenated output text",
-						},
-					},
-				},
-				"ListModelsResponse": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"object": map[string]string{"type": "string", "example": "list"},
-						"data": map[string]interface{}{
-							"type": "array",
 						},
 					},
 				},

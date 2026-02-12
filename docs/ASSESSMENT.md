@@ -101,10 +101,6 @@ What the gateway does need to own:
 - **Durable storage backends** -- PostgreSQL or Redis so state survives restarts and works across replicas
 - **Observability** -- Prometheus metrics and OpenTelemetry tracing so operators can monitor the gateway in production
 
-### 4. The models service is a dead end
-
-The `ModelsService` returns a hardcoded static list of model names. This should either proxy the backend's `/v1/models` endpoint (which vLLM supports) or be removed. Returning stale model names adds no value.
-
 ## Bottom line
 
 The project is heading in the right direction architecturally. The stateful-layer thesis is sound, the API surface is comprehensive, and the Open Responses spec alignment is well-timed. The main risks are:

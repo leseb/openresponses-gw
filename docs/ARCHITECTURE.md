@@ -65,7 +65,7 @@ Gateway-agnostic business logic (`pkg/core/`):
 - **schema/** — API type definitions for Responses, Files, Vector Stores, Conversations, Prompts
 - **config/** — Configuration loading from YAML files and environment variables
 - **api/** — Responses API client (`ResponsesAPIClient` interface) for calling the inference backend
-- **services/** — Higher-level service layer (models discovery)
+- **services/** — Higher-level service layer (vector store ingestion and search)
 - **state/** — State management interfaces
 
 ### Vector Store Layer

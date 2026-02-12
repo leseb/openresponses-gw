@@ -26,7 +26,6 @@ type Handler struct {
 	engine              *engine.Engine
 	logger              *logging.Logger
 	mux                 *http.ServeMux
-	modelsService       *services.ModelsService
 	promptsStore        *memory.PromptsStore
 	filesStore          filestore.FileStore
 	vectorStoresStore   *memory.VectorStoresStore
@@ -35,12 +34,11 @@ type Handler struct {
 }
 
 // New creates a new HTTP handler
-func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore filestore.FileStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore, vectorStoreService *services.VectorStoreService) *Handler {
+func New(eng *engine.Engine, logger *logging.Logger, promptsStore *memory.PromptsStore, filesStore filestore.FileStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore, vectorStoreService *services.VectorStoreService) *Handler {
 	h := &Handler{
 		engine:             eng,
 		logger:             logger,
 		mux:                http.NewServeMux(),
-		modelsService:      modelsService,
 		promptsStore:       promptsStore,
 		filesStore:         filesStore,
 		vectorStoresStore:  vectorStoresStore,
@@ -68,10 +66,6 @@ func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.Mod
 	h.mux.HandleFunc("DELETE /v1/conversations/{id}", h.handleDeleteConversation)
 	h.mux.HandleFunc("POST /v1/conversations/{id}/items", h.handleAddConversationItems)
 	h.mux.HandleFunc("GET /v1/conversations/{id}/items", h.handleListConversationItems)
-
-	// Models API
-	h.mux.HandleFunc("GET /v1/models", h.handleListModels)
-	h.mux.HandleFunc("GET /v1/models/{id}", h.handleGetModel)
 
 	// Prompts API
 	h.mux.HandleFunc("POST /v1/prompts", h.handleCreatePrompt)

@@ -163,12 +163,8 @@ func main() {
 	}
 	logger.Info("Initialized engine")
 
-	// Initialize services
-	modelsService := services.NewModelsService()
-	logger.Info("Initialized models service")
-
 	// Initialize HTTP adapter
-	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
+	handler := httpAdapter.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
 	logger.Info("Initialized HTTP adapter")
 
 	// Create HTTP server

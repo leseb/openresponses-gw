@@ -70,7 +70,6 @@ For Envoy deployment, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 | **Prompts** | 5 | Working |
 | **Files** | 5 | Working |
 | **Vector Stores** | 15 | Working (search via Milvus) |
-| **Models** | 2 | Working |
 
 **Vector search / RAG:** File ingestion (chunk, embed, insert) and vector search are supported via a pluggable backend. Milvus is the default vector store. The `file_search` tool in the Responses API is executed server-side when an embedding service and vector backend are configured. See [CONFIGURATION.md](./CONFIGURATION.md#vector-store--embedding-configuration) for setup.
 
