@@ -13,7 +13,7 @@ Welcome to the Open Responses Gateway! This guide will get you up and running in
 ✅ **Core Architecture**
 - Gateway-agnostic core engine
 - HTTP adapter with streaming support
-- In-memory storage (development mode)
+- In-memory storage (development mode) and SQLite (persistent)
 - Request/response handling
 - Configuration management
 - Structured logging
@@ -81,17 +81,11 @@ Or use the test script:
 ./examples/standalone/test-requests.sh
 ```
 
-### 3. With Dependencies (PostgreSQL, Redis)
+### 3. With Persistent Storage (SQLite)
 
 ```bash
-# Start PostgreSQL and Redis
-docker-compose up -d
-
-# Verify they're running
-docker-compose ps
-
-# Run server (will use in-memory storage for now)
-make run
+# Run server with SQLite session store
+SESSION_STORE_TYPE=sqlite SESSION_STORE_DSN=data/responses.db make run
 ```
 
 ## Configuration
@@ -114,9 +108,13 @@ vim my-config.yaml
 ### Environment Variables
 
 ```bash
-# OpenAI API (for future integration)
+# OpenAI API
 export OPENAI_API_KEY="sk-..."
 export OPENAI_API_ENDPOINT="https://api.openai.com/v1"
+
+# Persistent session store (optional, default: in-memory)
+export SESSION_STORE_TYPE=sqlite
+export SESSION_STORE_DSN=data/responses.db
 
 # Custom port
 ./bin/openresponses-gw-server --port 9090
@@ -259,24 +257,21 @@ make lint
 │   │   └── config/         # Configuration
 │   ├── adapters/http/      # HTTP adapter
 │   ├── storage/memory/     # In-memory storage
+│   ├── storage/sqlite/     # SQLite persistent storage
 │   └── observability/      # Logging, metrics
 ├── examples/               # Usage examples
 ├── tests/                  # Tests
 └── deployments/           # Docker, Helm
 ```
 
-## Current Limitations (Phase 1)
+## Current Limitations
 
-Since this is Phase 1 (Foundation), the following are **mock implementations**:
+The following are areas with ongoing development:
 
-- ❌ Real LLM integration (returns mock responses)
-- ❌ Persistent storage (in-memory only)
-- ❌ Tool execution (file search, web search, etc.)
-- ❌ Vector stores and search
-- ❌ Files API
-- ❌ Conversations API
+- ❌ Tool execution (file search, web search, etc.) — partially implemented
+- ❌ Advanced RAG pipelines
 
-These will be implemented in upcoming phases. See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the roadmap.
+See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the roadmap.
 
 ## What Works Now
 
@@ -288,7 +283,7 @@ These will be implemented in upcoming phases. See [PROJECT_PLAN.md](./PROJECT_PL
 ✅ Health checks
 ✅ Structured logging
 ✅ Configuration from YAML and env vars
-✅ In-memory session storage
+✅ In-memory and SQLite session storage
 
 ## Next Steps
 
@@ -305,13 +300,10 @@ These will be implemented in upcoming phases. See [PROJECT_PLAN.md](./PROJECT_PL
 3. **Open an issue** - Discuss your contribution
 4. **Submit a PR** - We welcome contributions!
 
-### Upcoming in Phase 2 (Week 3-4)
+### Upcoming
 
-- PostgreSQL storage backend
-- Redis caching layer
-- Real multi-turn conversation state
-- Database migrations
-- Session lifecycle management
+- Additional storage backends
+- Advanced session lifecycle management
 
 ## Troubleshooting
 
@@ -384,6 +376,5 @@ Check out the [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the full 14-week implemen
 
 ---
 
-**Status:** Phase 1 Complete ✅
-**Next Phase:** Phase 2 - State & Storage (PostgreSQL, Redis)
+**Storage:** In-memory (default) or SQLite (persistent)
 **Contributors Welcome:** See open issues and [CONTRIBUTING.md](./CONTRIBUTING.md)

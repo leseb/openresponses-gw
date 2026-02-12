@@ -61,3 +61,35 @@ Connect to any OpenAI-compatible backend via environment variables:
 | OpenAI | `https://api.openai.com/v1` | Required |
 | Ollama | `http://localhost:11434/v1` | Not needed |
 | vLLM | `http://your-server:8000/v1` | Optional |
+
+## Session Store Configuration
+
+By default, sessions, conversations, and responses are stored in memory. For persistence across restarts, use the SQLite backend:
+
+```bash
+export SESSION_STORE_TYPE=sqlite
+export SESSION_STORE_DSN=data/responses.db
+```
+
+Or in `config.yaml`:
+
+```yaml
+session_store:
+  type: sqlite
+  dsn: data/responses.db
+```
+
+| Backend | Persistence | Use Case |
+|---------|-------------|----------|
+| `memory` (default) | None — data lost on restart | Development, testing |
+| `sqlite` | Local disk (pure Go, no CGO) | Production, single-node deployments |
+
+When using Docker, mount a volume for the SQLite database:
+
+```bash
+docker run -p 8080:8080 \
+  -e SESSION_STORE_TYPE=sqlite \
+  -e SESSION_STORE_DSN=/data/responses.db \
+  -v $(pwd)/data:/data \
+  openresponses-gw:latest
+```

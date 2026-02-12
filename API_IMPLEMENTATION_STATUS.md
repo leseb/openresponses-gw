@@ -374,15 +374,15 @@ curl -X POST http://localhost:8080/v1/vector_stores/vs_abc123/search \
 │                    Core Engine Layer                      │
 │  - Response Orchestration (✅ complete)                   │
 │  - LLM Client Abstraction (✅ complete)                   │
-│  - Storage Layer (in-memory, ✅ complete)                 │
+│  - Storage Layer (in-memory + SQLite, ✅ complete)         │
 │  - Pagination Support (✅ complete)                       │
 └──────────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────────────────────────────────────────┐
 │                   Backend Services                        │
 │  - OpenAI, Ollama, vLLM (via openai-go SDK)             │
-│  - In-memory storage (working)                           │
-│  - Future: PostgreSQL, S3, Vector DBs                    │
+│  - In-memory and SQLite storage (working)                 │
+│  - File stores: memory, filesystem, S3                   │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -461,6 +461,7 @@ All implemented endpoints are compatible with OpenAI's API format:
 
 ### Storage Layer: 100%
 - ✅ In-memory session store
+- ✅ SQLite persistent session store (pure Go, no CGO)
 - ✅ Conversation storage
 - ✅ Response history
 - ✅ Prompt storage
@@ -512,6 +513,7 @@ See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for complete detail
 **Storage:**
 - `pkg/core/state/store.go` - Storage interface
 - `pkg/storage/memory/memory.go` - In-memory implementation
+- `pkg/storage/sqlite/sqlite.go` - SQLite persistent implementation
 - `pkg/storage/memory/prompts_store.go` - Prompts storage
 - `pkg/storage/memory/files_store.go` - Files storage
 - `pkg/storage/memory/vector_stores_store.go` - Vector stores storage

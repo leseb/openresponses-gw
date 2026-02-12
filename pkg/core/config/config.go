@@ -13,11 +13,18 @@ import (
 
 // Config represents the main configuration
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	Engine      EngineConfig      `yaml:"engine"`
-	Embedding   EmbeddingConfig   `yaml:"embedding"`
-	VectorStore VectorStoreConfig `yaml:"vector_store"`
-	FileStore   FileStoreConfig   `yaml:"file_store"`
+	Server       ServerConfig       `yaml:"server"`
+	Engine       EngineConfig       `yaml:"engine"`
+	Embedding    EmbeddingConfig    `yaml:"embedding"`
+	VectorStore  VectorStoreConfig  `yaml:"vector_store"`
+	FileStore    FileStoreConfig    `yaml:"file_store"`
+	SessionStore SessionStoreConfig `yaml:"session_store"`
+}
+
+// SessionStoreConfig contains session store backend configuration
+type SessionStoreConfig struct {
+	Type string `yaml:"type"` // "memory" (default) or "sqlite"
+	DSN  string `yaml:"dsn"`  // SQLite file path, e.g. "data/responses.db"
 }
 
 // ServerConfig contains HTTP server configuration
@@ -122,10 +129,19 @@ func Load(path string) (*Config, error) {
 		cfg.FileStore.S3Endpoint = v
 	}
 
+	// Session store env overrides
+	if v := os.Getenv("SESSION_STORE_TYPE"); v != "" {
+		cfg.SessionStore.Type = v
+	}
+	if v := os.Getenv("SESSION_STORE_DSN"); v != "" {
+		cfg.SessionStore.DSN = v
+	}
+
 	// Apply defaults
 	applyEmbeddingDefaults(&cfg.Embedding)
 	applyVectorStoreDefaults(&cfg.VectorStore)
 	applyFileStoreDefaults(&cfg.FileStore)
+	applySessionStoreDefaults(&cfg.SessionStore)
 
 	return &cfg, nil
 }
@@ -162,6 +178,12 @@ func Default() *Config {
 	}
 	applyFileStoreDefaults(&fsCfg)
 
+	ssCfg := SessionStoreConfig{
+		Type: os.Getenv("SESSION_STORE_TYPE"),
+		DSN:  os.Getenv("SESSION_STORE_DSN"),
+	}
+	applySessionStoreDefaults(&ssCfg)
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
@@ -174,9 +196,10 @@ func Default() *Config {
 			MaxTokens:     4096,
 			Timeout:       60 * time.Second,
 		},
-		Embedding:   embCfg,
-		VectorStore: vsCfg,
-		FileStore:   fsCfg,
+		Embedding:    embCfg,
+		VectorStore:  vsCfg,
+		FileStore:    fsCfg,
+		SessionStore: ssCfg,
 	}
 }
 
@@ -196,6 +219,12 @@ func applyVectorStoreDefaults(cfg *VectorStoreConfig) {
 }
 
 func applyFileStoreDefaults(cfg *FileStoreConfig) {
+	if cfg.Type == "" {
+		cfg.Type = "memory"
+	}
+}
+
+func applySessionStoreDefaults(cfg *SessionStoreConfig) {
 	if cfg.Type == "" {
 		cfg.Type = "memory"
 	}

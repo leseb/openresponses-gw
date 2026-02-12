@@ -22,8 +22,10 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
 	fsmemory "github.com/leseb/openresponses-gw/pkg/filestore/memory"
 	fss3 "github.com/leseb/openresponses-gw/pkg/filestore/s3"
+	"github.com/leseb/openresponses-gw/pkg/core/state"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 	milvusbackend "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
 )
@@ -103,9 +105,22 @@ func main() {
 		cfg.Server.Port = *port
 	}
 
-	// Initialize storage (start with in-memory for Phase 1)
-	store := memory.New()
-	logger.Info("Initialized in-memory storage")
+	// Initialize session store
+	var store state.SessionStore
+	switch cfg.SessionStore.Type {
+	case "sqlite":
+		sqliteStore, storeErr := sqlite.New(cfg.SessionStore.DSN)
+		if storeErr != nil {
+			logger.Error("Failed to initialize SQLite session store", "error", storeErr)
+			os.Exit(1)
+		}
+		defer sqliteStore.Close()
+		store = sqliteStore
+		logger.Info("Initialized SQLite session store", "dsn", cfg.SessionStore.DSN)
+	default:
+		store = memory.New()
+		logger.Info("Initialized in-memory session store")
+	}
 
 	// Initialize connectors store (needed by engine for MCP tool support)
 	connectorsStore := memory.NewConnectorsStore()

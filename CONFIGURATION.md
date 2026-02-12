@@ -156,6 +156,36 @@ export FILE_STORE_S3_REGION=us-east-1
 
 ---
 
+## Session Store Configuration
+
+By default, sessions, conversations, and responses are stored in memory and lost on restart. You can switch to a persistent SQLite backend via environment variables or YAML config.
+
+### Environment Variables
+
+```bash
+export SESSION_STORE_TYPE=sqlite
+export SESSION_STORE_DSN=data/responses.db
+```
+
+### YAML Configuration
+
+```yaml
+session_store:
+  type: sqlite              # "memory" (default) or "sqlite"
+  dsn: data/responses.db    # SQLite file path
+```
+
+### Backends
+
+| Backend | Persistence | Use Case |
+|---------|-------------|----------|
+| `memory` (default) | None — data lost on restart | Development, testing |
+| `sqlite` | Local disk (pure Go, no CGO) | Production, single-node deployments |
+
+The SQLite backend uses WAL mode for concurrent read/write performance and stores JSON columns for complex fields (request, output, usage, etc.).
+
+---
+
 ## Configuration Methods
 
 The gateway supports **3 ways** to configure the inference backend (in order of precedence):
@@ -174,6 +204,10 @@ export EMBEDDING_MODEL=text-embedding-3-small  # default
 
 # Optional — vector store backend (auto-selects Milvus when set)
 export MILVUS_ADDRESS=localhost:19530
+
+# Optional — persistent session store (default: in-memory)
+export SESSION_STORE_TYPE=sqlite
+export SESSION_STORE_DSN=data/responses.db
 
 # Run
 ./bin/openresponses-gw-server
@@ -201,6 +235,10 @@ engine:
   api_key: sk-your-key-here  # Not recommended - use env vars instead
   max_tokens: 4096
   timeout: 60s
+
+session_store:
+  type: sqlite               # "memory" (default) or "sqlite"
+  dsn: data/responses.db
 ```
 
 Run:
@@ -418,6 +456,9 @@ docker run -p 8080:8080 \
   -e FILE_STORE_TYPE=s3 \
   -e FILE_STORE_S3_BUCKET=my-bucket \
   -e FILE_STORE_S3_REGION=us-east-1 \
+  -e SESSION_STORE_TYPE=sqlite \
+  -e SESSION_STORE_DSN=/data/responses.db \
+  -v $(pwd)/data:/data \
   openresponses-gw:latest
 ```
 
@@ -452,6 +493,13 @@ services:
       - EMBEDDING_ENDPOINT=https://api.openai.com/v1
       - EMBEDDING_API_KEY=${OPENAI_API_KEY}
       - MILVUS_ADDRESS=milvus:19530
+      - SESSION_STORE_TYPE=sqlite
+      - SESSION_STORE_DSN=/data/responses.db
+    volumes:
+      - gateway-data:/data
+
+volumes:
+  gateway-data:
 ```
 
 Run:

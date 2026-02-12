@@ -42,8 +42,8 @@ The gateway adds state management, tool execution, and storage on top.
            │
 ┌──────────▼──────────────────────────────────────────────────────┐
 │                       Storage Layer                              │
-│  • In-Memory Store (current)                                     │
-│  • PostgreSQL, Redis (planned)                                   │
+│  • In-Memory Store (default)                                     │
+│  • SQLite Store (persistent, pure Go)                            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,8 +84,8 @@ Pluggable vector search backends (`pkg/vectorstore/`):
 
 Pluggable storage backends (`pkg/storage/`):
 
-- **memory/** — In-memory store for sessions, files, vectors, conversations, and prompts (current default)
-- PostgreSQL and Redis backends are planned
+- **memory/** — In-memory store for sessions, files, vectors, conversations, and prompts (default)
+- **sqlite/** — SQLite persistent store for sessions, conversations, and responses (pure Go via `modernc.org/sqlite`, no CGO required)
 
 ## Request Flow
 
