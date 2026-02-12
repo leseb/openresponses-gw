@@ -174,15 +174,13 @@ install-swag: ## Install swag CLI for OpenAPI generation
 gen-openapi: ## Generate OpenAPI spec from Go annotations
 	@test -x $(SWAG) || $(MAKE) install-swag
 	$(SWAG) init --v3.1 --generalInfo cmd/server/main.go --dir ./ --output docs --outputTypes yaml --parseDependency --parseInternal
-	@cp docs/swagger.yaml openapi.yaml
 	@echo "$(GREEN)✓ OpenAPI spec generated$(NC)"
 
 check-openapi: ## Check generated OpenAPI spec is up to date
 	@echo "$(GREEN)Checking OpenAPI spec is up to date...$(NC)"
 	@test -x $(SWAG) || $(MAKE) install-swag
 	$(SWAG) init --v3.1 --generalInfo cmd/server/main.go --dir ./ --output docs --outputTypes yaml --parseDependency --parseInternal
-	@cp docs/swagger.yaml openapi.yaml
-	@git diff --exit-code openapi.yaml docs/swagger.yaml || (echo "$(RED)OpenAPI spec is out of date. Run 'make gen-openapi' and commit.$(NC)" && exit 1)
+	@git diff --exit-code docs/swagger.yaml || (echo "$(RED)OpenAPI spec is out of date. Run 'make gen-openapi' and commit.$(NC)" && exit 1)
 	@echo "$(GREEN)✓ OpenAPI spec is up to date$(NC)"
 
 # Pre-commit and Conformance Testing
