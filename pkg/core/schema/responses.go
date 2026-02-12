@@ -273,6 +273,72 @@ type ResponsesToolParam struct {
 	Filters        interface{}            `json:"filters,omitempty"`
 }
 
+// UnmarshalJSON handles both the flat format used by the Open Responses spec
+// and the nested format sent by the OpenAI SDK.
+//
+// Flat (Open Responses / gateway native):
+//
+//	{"type": "file_search", "vector_store_ids": ["vs_1"]}
+//
+// Nested (OpenAI SDK):
+//
+//	{"type": "file_search", "file_search": {"vector_store_ids": ["vs_1"]}}
+func (t *ResponsesToolParam) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid infinite recursion.
+	type Alias ResponsesToolParam
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*t = ResponsesToolParam(alias)
+
+	// Check for nested "file_search" or "web_search" objects and merge fields.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // already parsed via alias, best-effort
+	}
+
+	if nested, ok := raw["file_search"]; ok && t.Type == "file_search" {
+		var fs struct {
+			VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
+			MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+			RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
+			Filters        interface{}            `json:"filters,omitempty"`
+		}
+		if err := json.Unmarshal(nested, &fs); err == nil {
+			if len(fs.VectorStoreIDs) > 0 && len(t.VectorStoreIDs) == 0 {
+				t.VectorStoreIDs = fs.VectorStoreIDs
+			}
+			if fs.MaxNumResults != nil && t.MaxNumResults == nil {
+				t.MaxNumResults = fs.MaxNumResults
+			}
+			if fs.RankingOptions != nil && t.RankingOptions == nil {
+				t.RankingOptions = fs.RankingOptions
+			}
+			if fs.Filters != nil && t.Filters == nil {
+				t.Filters = fs.Filters
+			}
+		}
+	}
+
+	if nested, ok := raw["web_search"]; ok && t.Type == "web_search" {
+		var ws struct {
+			SearchContextSize *string                `json:"search_context_size,omitempty"`
+			UserLocation      map[string]interface{} `json:"user_location,omitempty"`
+		}
+		if err := json.Unmarshal(nested, &ws); err == nil {
+			if ws.SearchContextSize != nil && t.SearchContextSize == nil {
+				t.SearchContextSize = ws.SearchContextSize
+			}
+			if ws.UserLocation != nil && t.UserLocation == nil {
+				t.UserLocation = ws.UserLocation
+			}
+		}
+	}
+
+	return nil
+}
+
 // ResponsesTool represents a tool (response echo) - flat structure per Open Responses spec
 type ResponsesTool struct {
 	Type        string                 `json:"type"`
