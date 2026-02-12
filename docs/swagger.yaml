@@ -621,9 +621,6 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.Response:
       properties:
-        background:
-          description: required boolean
-          type: boolean
         completed_at:
           description: Completion timestamp
           type: integer
@@ -669,38 +666,20 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ItemField'
           type: array
           uniqueItems: false
-        parallel_tool_calls:
-          description: required boolean
-          type: boolean
         presence_penalty:
           description: required number
           type: number
         previous_response_id:
-          description: Echo request parameters (all fields must be present per Open
-            Responses spec)
-          type: string
-        prompt_cache_key:
-          description: nullable
+          description: Echo request parameters
           type: string
         reasoning:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningConfig'
-        safety_identifier:
-          description: nullable
-          type: string
-        service_tier:
-          description: required string
-          type: string
         status:
           description: 'Status: "queued", "in_progress", "completed", "failed", "incomplete"'
           type: string
-        store:
-          description: required boolean
-          type: boolean
         temperature:
           description: required number
           type: number
-        text:
-          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TextField'
         tool_choice:
           description: string enum ("none", "auto", "required") or object
           type: object
@@ -710,23 +689,14 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesTool'
           type: array
           uniqueItems: false
-        top_logprobs:
-          description: required number
-          type: integer
         top_p:
           description: required number
           type: number
-        truncation:
-          description: 'required: "auto" or "disabled"'
-          type: string
         usage:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UsageField'
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ResponseRequest:
       properties:
-        background:
-          description: Process in background
-          type: boolean
         conversation:
           description: Conversation ID for multi-turn conversations (mutually exclusive
             with previous_response_id)
@@ -760,29 +730,14 @@ components:
         model:
           description: Model ID used to generate the response
           type: string
-        parallel_tool_calls:
-          description: Allow parallel tool calls
-          type: boolean
         presence_penalty:
           description: Presence penalty (-2.0 to 2.0)
           type: number
         previous_response_id:
           description: Previous response ID for multi-turn conversations
           type: string
-        prompt_cache_key:
-          description: Cache key for prompt caching
-          type: string
         reasoning:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningParam'
-        safety_identifier:
-          description: Safety identifier for content filtering
-          type: string
-        service_tier:
-          description: Service tier for routing (auto, default)
-          type: string
-        store:
-          description: Store conversation for later retrieval
-          type: boolean
         stream:
           description: Whether to stream the response (HTTP-specific, not in spec
             but required for SSE)
@@ -799,14 +754,9 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesToolParam'
           type: array
           uniqueItems: false
-        top_logprobs:
-          description: Number of top log probabilities to return
-          type: integer
         top_p:
           description: Top P for nucleus sampling
           type: number
-        truncation:
-          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TruncationStrategyParam'
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesTool:
       properties:
@@ -917,27 +867,6 @@ components:
         max_chunk_size_tokens:
           description: Max tokens per chunk
           type: integer
-      type: object
-    github_com_leseb_openresponses-gw_pkg_core_schema.TextField:
-      description: 'Text field: object with format (required)'
-      properties:
-        format:
-          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TextFormat'
-      type: object
-    github_com_leseb_openresponses-gw_pkg_core_schema.TextFormat:
-      properties:
-        type:
-          description: '"text", "json_object", "json_schema"'
-          type: string
-      type: object
-    github_com_leseb_openresponses-gw_pkg_core_schema.TruncationStrategyParam:
-      description: Truncation strategy for context
-      properties:
-        last_messages:
-          type: integer
-        type:
-          description: '"auto", "last_messages"'
-          type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.UpdatePromptRequest:
       properties:
