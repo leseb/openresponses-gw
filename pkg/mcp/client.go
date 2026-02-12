@@ -31,6 +31,11 @@ func NewClient(serverURL string) *Client {
 	}
 }
 
+// ServerURL returns the server URL for this client.
+func (c *Client) ServerURL() string {
+	return c.serverURL
+}
+
 // Initialize performs the MCP initialize handshake and stores the session ID.
 func (c *Client) Initialize(ctx context.Context) error {
 	params := InitializeParams{
