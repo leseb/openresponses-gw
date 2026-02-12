@@ -18,6 +18,7 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/core/state"
 	"github.com/leseb/openresponses-gw/pkg/mcp"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 )
 
 const defaultMaxToolCalls = 10
@@ -27,17 +28,24 @@ type ConnectorLookup interface {
 	GetConnector(ctx context.Context, connectorID string) (*memory.Connector, error)
 }
 
+// VectorSearcher performs vector similarity search.
+// Implemented by services.VectorStoreService.
+type VectorSearcher interface {
+	Search(ctx context.Context, vectorStoreID, query string, topK int) ([]vectorstore.SearchResult, error)
+}
+
 // Engine is the core orchestration engine for the Responses API
 type Engine struct {
-	config     *config.EngineConfig
-	sessions   state.SessionStore
-	llm        api.ChatCompletionClient
-	connectors ConnectorLookup // nil-safe: nil means no MCP support
+	config       *config.EngineConfig
+	sessions     state.SessionStore
+	llm          api.ChatCompletionClient
+	connectors   ConnectorLookup  // nil-safe: nil means no MCP support
+	vectorSearch VectorSearcher   // nil-safe: nil means no file_search support
 }
 
 // New creates a new Engine instance.
-// The connectors parameter is optional (nil disables MCP tool support).
-func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup) (*Engine, error) {
+// The connectors and vectorSearch parameters are optional (nil disables the feature).
+func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup, vectorSearch VectorSearcher) (*Engine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -52,10 +60,11 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 	llm := api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
 
 	return &Engine{
-		config:     cfg,
-		sessions:   store,
-		llm:        llm,
-		connectors: connectors,
+		config:       cfg,
+		sessions:     store,
+		llm:          llm,
+		connectors:   connectors,
+		vectorSearch: vectorSearch,
 	}, nil
 }
 
@@ -797,6 +806,94 @@ func (e *Engine) expandMCPTools(ctx context.Context, tools []schema.ResponsesToo
 	return expanded, mcpToolNames, nil
 }
 
+// fileSearchConfig holds the configuration for a file_search tool.
+type fileSearchConfig struct {
+	VectorStoreIDs []string
+	MaxNumResults  int
+}
+
+// expandFileSearchTools replaces file_search tool entries with a synthetic
+// function tool and records the configuration for server-side execution.
+// Returns the expanded tools and a map from tool name to config.
+func (e *Engine) expandFileSearchTools(tools []schema.ResponsesToolParam) (
+	[]schema.ResponsesToolParam, map[string]fileSearchConfig,
+) {
+	if e.vectorSearch == nil {
+		return tools, nil
+	}
+
+	var expanded []schema.ResponsesToolParam
+	configs := map[string]fileSearchConfig{}
+
+	for _, t := range tools {
+		if t.Type != "file_search" {
+			expanded = append(expanded, t)
+			continue
+		}
+
+		// Record config
+		maxResults := 10
+		if t.MaxNumResults != nil && *t.MaxNumResults > 0 {
+			maxResults = *t.MaxNumResults
+		}
+		configs["file_search"] = fileSearchConfig{
+			VectorStoreIDs: t.VectorStoreIDs,
+			MaxNumResults:  maxResults,
+		}
+
+		// Replace with a synthetic function tool
+		desc := "Search files in vector stores for relevant content based on a query."
+		expanded = append(expanded, schema.ResponsesToolParam{
+			Type:        "function",
+			Name:        "file_search",
+			Description: &desc,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "The search query to find relevant file content.",
+					},
+				},
+				"required":             []string{"query"},
+				"additionalProperties": false,
+			},
+		})
+	}
+
+	if len(configs) == 0 {
+		return tools, nil
+	}
+
+	return expanded, configs
+}
+
+// executeFileSearch runs a file_search tool call against all configured vector stores.
+func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, query string) string {
+	var allResults []vectorstore.SearchResult
+	for _, vsID := range cfg.VectorStoreIDs {
+		results, err := e.vectorSearch.Search(ctx, vsID, query, cfg.MaxNumResults)
+		if err != nil {
+			continue
+		}
+		allResults = append(allResults, results...)
+	}
+
+	if len(allResults) == 0 {
+		return "No relevant results found."
+	}
+
+	// Format results as text
+	var sb strings.Builder
+	for i, r := range allResults {
+		if i > 0 {
+			sb.WriteString("\n---\n")
+		}
+		fmt.Fprintf(&sb, "[File: %s, Score: %.4f]\n%s", r.FileID, r.Score, r.Content)
+	}
+	return sb.String()
+}
+
 // parseJSONArgs parses a JSON string into a map for MCP tool call arguments.
 func parseJSONArgs(jsonStr string) map[string]any {
 	var args map[string]any
@@ -871,6 +968,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		}
 	}
 
+	// 6b. Expand file_search tools into function tools
+	var fileSearchConfigs map[string]fileSearchConfig
+	if len(expandedTools) > 0 {
+		expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
+	}
+
 	// Build a modified request with expanded tools for the LLM
 	expandedReq := *req
 	expandedReq.Tools = expandedTools
@@ -919,6 +1022,8 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 
 			for _, tc := range choice.Message.ToolCalls {
 				mcpClient, isMCP := mcpToolNames[tc.Function.Name]
+				fsCfg, isFileSearch := fileSearchConfigs[tc.Function.Name]
+
 				if isMCP {
 					// Execute MCP tool server-side
 					args := parseJSONArgs(tc.Function.Arguments)
@@ -956,6 +1061,41 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 					// Append tool call + result to messages for LLM context
 					messages = append(messages, api.Message{
 						Role: "assistant",
+						ToolCalls: []api.ToolCall{tc},
+					})
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    outputStr,
+						ToolCallID: tc.ID,
+					})
+				} else if isFileSearch {
+					// Execute file_search server-side
+					args := parseJSONArgs(tc.Function.Arguments)
+					query, _ := args["query"].(string)
+					outputStr := e.executeFileSearch(ctx, fsCfg, query)
+
+					completedStatus := "completed"
+					callID := tc.ID
+					funcName := tc.Function.Name
+					funcArgs := tc.Function.Arguments
+
+					allOutput = append(allOutput, schema.ItemField{
+						Type:      "function_call",
+						ID:        generateID("fc_"),
+						CallID:    &callID,
+						Name:      &funcName,
+						Arguments: &funcArgs,
+						Status:    &completedStatus,
+					})
+					allOutput = append(allOutput, schema.ItemField{
+						Type:   "function_call_output",
+						ID:     generateID("fco_"),
+						CallID: &callID,
+						Output: &outputStr,
+					})
+
+					messages = append(messages, api.Message{
+						Role:      "assistant",
 						ToolCalls: []api.ToolCall{tc},
 					})
 					messages = append(messages, api.Message{
@@ -1191,6 +1331,12 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			}
 		}
 
+		// Expand file_search tools into function tools
+		var fileSearchConfigs map[string]fileSearchConfig
+		if len(expandedTools) > 0 {
+			expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
+		}
+
 		// Build a modified request with expanded tools for the LLM
 		expandedReq := *req
 		expandedReq.Tools = expandedTools
@@ -1338,6 +1484,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			outputIdx := 0
 			for _, tc := range toolCallAccum {
 				mcpClient, isMCP := mcpToolNames[tc.Name]
+				fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
 
 				completedStatus := "completed"
 				callID := tc.ID
@@ -1381,24 +1528,33 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				allOutput = append(allOutput, toolItem)
 				outputIdx++
 
+				// Determine if this is a server-side tool call
+				var serverSideOutput string
+				isServerSide := false
+
 				if isMCP {
-					// Execute MCP tool server-side
+					isServerSide = true
 					args := parseJSONArgs(tc.Arguments)
 					result, mcpErr := mcpClient.CallTool(ctx, tc.Name, args)
-
-					var outputStr string
 					if mcpErr != nil {
-						outputStr = fmt.Sprintf("Error calling tool: %v", mcpErr)
+						serverSideOutput = fmt.Sprintf("Error calling tool: %v", mcpErr)
 					} else {
-						outputStr = mcpResultToString(result)
+						serverSideOutput = mcpResultToString(result)
 					}
+				} else if isFileSearch {
+					isServerSide = true
+					args := parseJSONArgs(tc.Arguments)
+					query, _ := args["query"].(string)
+					serverSideOutput = e.executeFileSearch(ctx, fsCfg, query)
+				}
 
+				if isServerSide {
 					// Emit function_call_output item
 					outputItem := schema.ItemField{
 						Type:   "function_call_output",
 						ID:     generateID("fco_"),
 						CallID: &callID,
-						Output: &outputStr,
+						Output: &serverSideOutput,
 					}
 
 					events <- &schema.ResponseOutputItemAddedStreamingEvent{
@@ -1434,17 +1590,19 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 					})
 					messages = append(messages, api.Message{
 						Role:       "tool",
-						Content:    outputStr,
+						Content:    serverSideOutput,
 						ToolCallID: tc.ID,
 					})
 				}
 			}
 
-			// Check if any tool calls were client-side (non-MCP)
+			// Check if any tool calls were client-side (not MCP and not file_search)
 			hasClientSide := false
 			var clientSideTCs []api.ToolCall
 			for _, tc := range toolCallAccum {
-				if _, isMCP := mcpToolNames[tc.Name]; !isMCP {
+				_, isMCP := mcpToolNames[tc.Name]
+				_, isFS := fileSearchConfigs[tc.Name]
+				if !isMCP && !isFS {
 					hasClientSide = true
 					clientSideTCs = append(clientSideTCs, api.ToolCall{
 						ID:   tc.ID,
@@ -1465,10 +1623,9 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				})
 			}
 
-			// If all calls were MCP, the agentic loop in streaming doesn't
-			// re-iterate here, but we include the results in the output.
-			// (Streaming currently does a single LLM call; the results are
-			// included for the response but the loop does not continue.)
+			// If all calls were server-side (MCP or file_search), the agentic loop
+			// in streaming doesn't re-iterate here, but we include the results in
+			// the output.
 
 		} else {
 			// Normal text response

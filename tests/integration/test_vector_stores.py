@@ -1,6 +1,13 @@
-"""Integration tests for the Vector Stores API."""
+"""Integration tests for the Vector Stores API.
+
+Tests cover CRUD operations, file management, batch operations, and
+vector search.  Search tests validate that the endpoint returns results
+when a real vector backend (Milvus) and embedding service are configured.
+Without them, the search endpoint returns an empty list (backward compat).
+"""
 
 import io
+import time
 
 import httpx
 import pytest
@@ -137,3 +144,67 @@ class TestVectorStores:
         )
         assert retrieved_batch.id == batch.id
         assert retrieved_batch.file_counts.total == 2
+
+    def test_search_empty_store(self, base_url, api_key, create_vector_store):
+        """Search an empty vector store returns an empty list."""
+        vs = create_vector_store(name="search-empty-test")
+
+        resp = httpx.post(
+            f"{base_url}/vector_stores/{vs.id}/search",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"query": "anything", "top_k": 5},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "list"
+        assert isinstance(data["data"], list)
+
+    def test_search_with_content(
+        self, client, base_url, api_key, create_vector_store, upload_file
+    ):
+        """Upload a file, add to store, and search.
+
+        When a real vector backend and embedding service are configured
+        the search returns results with scores and content.  Without them
+        the endpoint returns an empty list (backward compat).
+        """
+        content = (
+            b"The Acme Widget is our flagship product. "
+            b"It comes in three sizes: small ($10), medium ($25), and large ($50). "
+            b"All widgets include a lifetime warranty."
+        )
+        f = upload_file(content=content, filename="acme-widget.txt")
+        vs = create_vector_store(name="search-content-test")
+
+        vs_file = client.vector_stores.files.create(
+            vector_store_id=vs.id,
+            file_id=f.id,
+        )
+        assert vs_file.object == "vector_store.file"
+
+        # Wait for ingestion to complete
+        for _ in range(30):
+            check = client.vector_stores.files.retrieve(
+                vector_store_id=vs.id,
+                file_id=f.id,
+            )
+            if check.status in ("completed", "failed"):
+                break
+            time.sleep(0.5)
+
+        # Search
+        resp = httpx.post(
+            f"{base_url}/vector_stores/{vs.id}/search",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"query": "widget pricing", "top_k": 3},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "list"
+        assert isinstance(data["data"], list)
+
+        # Validate result shape if results are returned
+        for result in data["data"]:
+            assert "file_id" in result
+            assert "score" in result
+            assert isinstance(result["score"], (int, float))

@@ -4,6 +4,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 )
 
 // handleCreateVectorStore handles POST /v1/vector_stores
@@ -54,6 +56,14 @@ func (h *Handler) handleCreateVectorStore(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Provision backend storage (e.g. Milvus collection)
+	if h.vectorStoreService != nil {
+		if err := h.vectorStoreService.CreateStore(r.Context(), vsID, 0); err != nil {
+			h.logger.Error("Failed to provision vector store backend", "error", err, "vector_store_id", vsID)
+			// Continue — metadata is created; backend can be retried
+		}
+	}
+
 	h.logger.Info("Vector store created", "vector_store_id", vsID)
 
 	// Add files if provided
@@ -63,10 +73,14 @@ func (h *Handler) handleCreateVectorStore(w http.ResponseWriter, r *http.Request
 				ID:            generateID("vsf_"),
 				VectorStoreID: vsID,
 				FileID:        fileID,
-				Status:        "completed", // Simplified
+				Status:        "in_progress",
 				CreatedAt:     now,
 			}
-			h.vectorStoresStore.AddVectorStoreFile(r.Context(), vsFile)
+			if addErr := h.vectorStoresStore.AddVectorStoreFile(r.Context(), vsFile); addErr != nil {
+				h.logger.Error("Failed to add file to vector store", "error", addErr)
+				continue
+			}
+			h.startFileIngestion(vsID, fileID, nil)
 		}
 	}
 
@@ -234,6 +248,13 @@ func (h *Handler) handleDeleteVectorStore(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Delete backend storage (e.g. Milvus collection)
+	if h.vectorStoreService != nil {
+		if delErr := h.vectorStoreService.DeleteStore(r.Context(), vsID); delErr != nil {
+			h.logger.Error("Failed to delete vector store backend", "error", delErr, "vector_store_id", vsID)
+		}
+	}
+
 	// Return deletion confirmation
 	deleteResp := schema.DeleteVectorStoreResponse{
 		ID:      vsID,
@@ -286,11 +307,17 @@ func (h *Handler) handleAddVectorStoreFile(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Set initial status based on whether ingestion is possible
+	initialStatus := "completed"
+	if h.vectorStoreService != nil {
+		initialStatus = "in_progress"
+	}
+
 	vsFile := &memory.VectorStoreFile{
 		ID:               generateID("vsf_"),
 		VectorStoreID:    vsID,
 		FileID:           req.FileID,
-		Status:           "completed", // Simplified
+		Status:           initialStatus,
 		CreatedAt:        now,
 		ChunkingStrategy: chunkingStrategy,
 	}
@@ -301,6 +328,9 @@ func (h *Handler) handleAddVectorStoreFile(w http.ResponseWriter, r *http.Reques
 		h.writeError(w, http.StatusInternalServerError, "add_file_error", err.Error())
 		return
 	}
+
+	// Trigger async ingestion
+	h.startFileIngestion(vsID, req.FileID, chunkingStrategy)
 
 	// Convert to schema
 	schemaVSFile := convertToSchemaVectorStoreFile(vsFile)
@@ -494,6 +524,13 @@ func (h *Handler) handleDeleteVectorStoreFile(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Remove chunks from backend
+	if h.vectorStoreService != nil {
+		if rmErr := h.vectorStoreService.RemoveFile(r.Context(), vsID, fileID); rmErr != nil {
+			h.logger.Error("Failed to remove file chunks from backend", "error", rmErr, "vector_store_id", vsID, "file_id", fileID)
+		}
+	}
+
 	deleteResp := schema.DeleteVectorStoreFileResponse{
 		ID:      fileID,
 		Object:  "vector_store.file.deleted",
@@ -562,11 +599,35 @@ func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request
 
 	h.logger.Info("Searching vector store", "vector_store_id", vsID, "query", req.Query)
 
-	// TODO: Implement actual vector search
-	// For now, return empty results
+	topK := req.TopK
+	if topK <= 0 {
+		topK = 10
+	}
+
+	var results []vectorstore.SearchResult
+	if h.vectorStoreService != nil {
+		var searchErr error
+		results, searchErr = h.vectorStoreService.Search(r.Context(), vsID, req.Query, topK)
+		if searchErr != nil {
+			h.logger.Error("Vector store search failed", "error", searchErr, "vector_store_id", vsID)
+			h.writeError(w, http.StatusInternalServerError, "search_error", searchErr.Error())
+			return
+		}
+	}
+
+	// Convert to schema results
+	data := make([]schema.VectorStoreSearchResult, 0, len(results))
+	for _, r := range results {
+		data = append(data, schema.VectorStoreSearchResult{
+			FileID:  r.FileID,
+			Score:   r.Score,
+			Content: r.Content,
+		})
+	}
+
 	searchResp := schema.SearchVectorStoreResponse{
 		Object: "list",
-		Data:   []schema.VectorStoreSearchResult{},
+		Data:   data,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -757,6 +818,49 @@ func (h *Handler) handleCancelVectorStoreFileBatch(w http.ResponseWriter, r *htt
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(schemaBatch)
+}
+
+// startFileIngestion triggers async file ingestion via the VectorStoreService.
+// If the service is nil (feature disabled), this is a no-op.
+func (h *Handler) startFileIngestion(vsID, fileID string, cs *memory.ChunkingStrategy) {
+	if h.vectorStoreService == nil {
+		return
+	}
+
+	chunkSize := vectorstore.DefaultChunkSize
+	overlap := vectorstore.DefaultChunkOverlap
+	if cs != nil && cs.Static != nil {
+		if cs.Static.MaxChunkSizeTokens > 0 {
+			chunkSize = vectorstore.TokensToChars(cs.Static.MaxChunkSizeTokens)
+		}
+		if cs.Static.ChunkOverlapTokens > 0 {
+			overlap = vectorstore.TokensToChars(cs.Static.ChunkOverlapTokens)
+		}
+	}
+
+	go func() {
+		ctx := context.Background()
+		if err := h.vectorStoreService.IngestFile(ctx, vsID, fileID, chunkSize, overlap); err != nil {
+			h.logger.Error("File ingestion failed", "error", err, "vector_store_id", vsID, "file_id", fileID)
+			// Update file status to failed
+			if vsFile, getErr := h.vectorStoresStore.GetVectorStoreFile(ctx, vsID, fileID); getErr == nil {
+				vsFile.Status = "failed"
+				vsFile.LastError = &memory.VectorStoreFileError{
+					Code:    "ingestion_failed",
+					Message: err.Error(),
+				}
+				h.vectorStoresStore.UpdateVectorStoreFile(ctx, vsFile)
+			}
+			return
+		}
+
+		// Update file status to completed
+		if vsFile, getErr := h.vectorStoresStore.GetVectorStoreFile(ctx, vsID, fileID); getErr == nil {
+			vsFile.Status = "completed"
+			h.vectorStoresStore.UpdateVectorStoreFile(ctx, vsFile)
+		}
+		h.logger.Info("File ingestion completed", "vector_store_id", vsID, "file_id", fileID)
+	}()
 }
 
 // convertToSchemaFileBatch converts internal batch to schema

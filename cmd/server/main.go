@@ -14,11 +14,14 @@ import (
 	"time"
 
 	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
+	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/core/services"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/vectorstore"
+	milvusbackend "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
 )
 
 var (
@@ -70,18 +73,6 @@ func main() {
 	connectorsStore := memory.NewConnectorsStore()
 	logger.Info("Initialized connectors store")
 
-	// Initialize engine
-	eng, err := engine.New(&cfg.Engine, store, connectorsStore)
-	if err != nil {
-		logger.Error("Failed to initialize engine", "error", err)
-		os.Exit(1)
-	}
-	logger.Info("Initialized engine")
-
-	// Initialize services
-	modelsService := services.NewModelsService(eng.LLMClient())
-	logger.Info("Initialized models service")
-
 	// Initialize prompts store
 	promptsStore := memory.NewPromptsStore()
 	logger.Info("Initialized prompts store")
@@ -94,8 +85,60 @@ func main() {
 	vectorStoresStore := memory.NewVectorStoresStore()
 	logger.Info("Initialized vector stores store")
 
+	// Initialize embedding client (optional)
+	var embedder api.EmbeddingClient
+	if cfg.Embedding.Endpoint != "" {
+		embedder = api.NewOpenAIEmbeddingClient(
+			cfg.Embedding.Endpoint,
+			cfg.Embedding.APIKey,
+			cfg.Embedding.Model,
+			cfg.Embedding.Dimensions,
+		)
+		logger.Info("Initialized embedding client", "endpoint", cfg.Embedding.Endpoint, "model", cfg.Embedding.Model)
+	}
+
+	// Initialize vector store backend
+	initCtx := context.Background()
+	var vsBackend vectorstore.Backend
+	switch cfg.VectorStore.Type {
+	case "milvus":
+		mb, err := milvusbackend.NewBackend(initCtx, cfg.VectorStore.MilvusAddress)
+		if err != nil {
+			logger.Error("Failed to connect to Milvus", "error", err)
+			os.Exit(1)
+		}
+		defer mb.Close(context.Background())
+		vsBackend = mb
+		logger.Info("Initialized Milvus vector store backend", "address", cfg.VectorStore.MilvusAddress)
+	default:
+		vsBackend = vectorstore.NewMemoryBackend()
+		logger.Info("Initialized memory vector store backend")
+	}
+
+	// Initialize vector store service (nil if embedding not configured)
+	vectorStoreService := services.NewVectorStoreService(filesStore, embedder, vsBackend)
+	if vectorStoreService != nil {
+		logger.Info("Initialized vector store service")
+	}
+
+	// Initialize engine (pass vectorStoreService as VectorSearcher)
+	var vectorSearcher engine.VectorSearcher
+	if vectorStoreService != nil {
+		vectorSearcher = vectorStoreService
+	}
+	eng, err := engine.New(&cfg.Engine, store, connectorsStore, vectorSearcher)
+	if err != nil {
+		logger.Error("Failed to initialize engine", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Initialized engine")
+
+	// Initialize services
+	modelsService := services.NewModelsService(eng.LLMClient())
+	logger.Info("Initialized models service")
+
 	// Initialize HTTP adapter
-	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore, connectorsStore)
+	handler := httpAdapter.New(eng, logger, modelsService, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
 	logger.Info("Initialized HTTP adapter")
 
 	// Create HTTP server

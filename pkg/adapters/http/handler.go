@@ -17,29 +17,34 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 )
 
+// ensure Handler satisfies http.Handler
+var _ http.Handler = (*Handler)(nil)
+
 // Handler implements the HTTP adapter
 type Handler struct {
-	engine            *engine.Engine
-	logger            *logging.Logger
-	mux               *http.ServeMux
-	modelsService     *services.ModelsService
-	promptsStore      *memory.PromptsStore
-	filesStore        *memory.FilesStore
-	vectorStoresStore *memory.VectorStoresStore
-	connectorsStore   *memory.ConnectorsStore
+	engine              *engine.Engine
+	logger              *logging.Logger
+	mux                 *http.ServeMux
+	modelsService       *services.ModelsService
+	promptsStore        *memory.PromptsStore
+	filesStore          *memory.FilesStore
+	vectorStoresStore   *memory.VectorStoresStore
+	connectorsStore     *memory.ConnectorsStore
+	vectorStoreService  *services.VectorStoreService // nil when feature is disabled
 }
 
 // New creates a new HTTP handler
-func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore) *Handler {
+func New(eng *engine.Engine, logger *logging.Logger, modelsService *services.ModelsService, promptsStore *memory.PromptsStore, filesStore *memory.FilesStore, vectorStoresStore *memory.VectorStoresStore, connectorsStore *memory.ConnectorsStore, vectorStoreService *services.VectorStoreService) *Handler {
 	h := &Handler{
-		engine:            eng,
-		logger:            logger,
-		mux:               http.NewServeMux(),
-		modelsService:     modelsService,
-		promptsStore:      promptsStore,
-		filesStore:        filesStore,
-		vectorStoresStore: vectorStoresStore,
-		connectorsStore:   connectorsStore,
+		engine:             eng,
+		logger:             logger,
+		mux:                http.NewServeMux(),
+		modelsService:      modelsService,
+		promptsStore:       promptsStore,
+		filesStore:         filesStore,
+		vectorStoresStore:  vectorStoresStore,
+		connectorsStore:    connectorsStore,
+		vectorStoreService: vectorStoreService,
 	}
 
 	// Register routes

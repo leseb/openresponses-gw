@@ -245,6 +245,30 @@ func (s *VectorStoresStore) GetVectorStoreFile(ctx context.Context, vsID, fileID
 	return vsFile, nil
 }
 
+// UpdateVectorStoreFile updates a file's metadata in a vector store
+func (s *VectorStoresStore) UpdateVectorStoreFile(ctx context.Context, vsFile *VectorStoreFile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := vsFile.VectorStoreID + ":" + vsFile.FileID
+	old, exists := s.vsFiles[key]
+	if !exists {
+		return fmt.Errorf("file %s not found in vector store %s", vsFile.FileID, vsFile.VectorStoreID)
+	}
+
+	// Update file counts if status changed
+	if old.Status != vsFile.Status {
+		vs, vsExists := s.vectorStores[vsFile.VectorStoreID]
+		if vsExists {
+			decrementFileCount(&vs.FileCounts, old.Status)
+			incrementFileCount(&vs.FileCounts, vsFile.Status)
+		}
+	}
+
+	s.vsFiles[key] = vsFile
+	return nil
+}
+
 // DeleteVectorStoreFile removes a file from a vector store
 func (s *VectorStoresStore) DeleteVectorStoreFile(ctx context.Context, vsID, fileID string) error {
 	s.mu.Lock()
@@ -376,6 +400,40 @@ func (s *VectorStoresStore) GetVectorStoreFileBatch(ctx context.Context, vsID, b
 	}
 
 	return batch, nil
+}
+
+func incrementFileCount(fc *VectorStoreFileCounts, status string) {
+	switch status {
+	case "in_progress":
+		fc.InProgress++
+	case "completed":
+		fc.Completed++
+	case "failed":
+		fc.Failed++
+	case "cancelled":
+		fc.Cancelled++
+	}
+}
+
+func decrementFileCount(fc *VectorStoreFileCounts, status string) {
+	switch status {
+	case "in_progress":
+		if fc.InProgress > 0 {
+			fc.InProgress--
+		}
+	case "completed":
+		if fc.Completed > 0 {
+			fc.Completed--
+		}
+	case "failed":
+		if fc.Failed > 0 {
+			fc.Failed--
+		}
+	case "cancelled":
+		if fc.Cancelled > 0 {
+			fc.Cancelled--
+		}
+	}
 }
 
 // UpdateVectorStoreFileBatch updates a file batch

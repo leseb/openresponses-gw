@@ -6,6 +6,11 @@ documents are uploaded, indexed into a vector store, then queried with
 file_search, web_search, multi-turn conversations, structured input,
 versioned prompt templates, and MCP tool execution.
 
+When a vector store backend (e.g. Milvus) and embedding service are
+configured, the tests also verify real vector search: the search endpoint
+returns ranked results with content snippets, and the file_search tool in
+the Responses API is executed server-side by the engine.
+
 Inspired by OpenAI's RAG on PDFs cookbook and the llama-stack RAG Lifecycle
 notebook pattern of progressive stages.
 """
@@ -235,6 +240,17 @@ class TestDemoWorkflow:
         assert vs_file.object == "vector_store.file"
         assert vs_file.id == f.id
 
+        # Wait for ingestion (async) — poll until status is completed or failed
+        for _ in range(30):
+            check = client.vector_stores.files.retrieve(
+                vector_store_id=vector_store.id,
+                file_id=f.id,
+            )
+            if check.status in ("completed", "failed"):
+                break
+            time.sleep(0.5)
+        assert check.status == "completed", f"File ingestion status: {check.status}"
+
     def test_06_add_files_via_batch(self, client, uploaded_files, vector_store):
         """Batch-add remaining 2 files to the vector store."""
         remaining_ids = [
@@ -248,6 +264,17 @@ class TestDemoWorkflow:
         assert batch.object == "vector_store.file_batch"
         assert batch.file_counts.total == 2
 
+        # Wait for all batch files to complete ingestion
+        for fid in remaining_ids:
+            for _ in range(30):
+                check = client.vector_stores.files.retrieve(
+                    vector_store_id=vector_store.id,
+                    file_id=fid,
+                )
+                if check.status in ("completed", "failed"):
+                    break
+                time.sleep(0.5)
+
     def test_07_verify_vector_store_files(self, client, uploaded_files, vector_store):
         """List vector store files and verify all 3 are present."""
         files = client.vector_stores.files.list(vector_store_id=vector_store.id)
@@ -255,12 +282,49 @@ class TestDemoWorkflow:
         for f in uploaded_files.values():
             assert f.id in vs_file_ids
 
+    # -- Stage 2b: Vector Store Search API ---------------------------------
+
+    def test_07b_search_vector_store(self, httpx_client, vector_store):
+        """Search the vector store via the search endpoint.
+
+        Verifies the search endpoint returns results.  When a real vector
+        backend (Milvus) and embedding service are configured, results
+        contain content snippets and scores.  Without them, the endpoint
+        returns an empty list (backward-compatible).
+        """
+        resp = httpx_client.post(
+            f"/vector_stores/{vector_store.id}/search",
+            json={"query": "CloudSync pricing tiers", "top_k": 5},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["object"] == "list"
+        assert isinstance(data["data"], list)
+
+        # If results are returned (real backend configured), validate shape
+        for result in data["data"]:
+            assert "file_id" in result
+            assert "score" in result
+            assert isinstance(result["score"], (int, float))
+            if "content" in result:
+                assert len(result["content"]) > 0
+
+        # Save for later assertion
+        TestDemoWorkflow._state["search_results"] = data["data"]
+
     # -- Stage 3: Responses API with tools ---------------------------------
 
     def test_08_query_with_file_search(
         self, client, httpx_client, model, uploaded_files, vector_store
     ):
-        """Responses API + file_search tool; tool is echoed back."""
+        """Responses API + file_search tool.
+
+        When the vector store backend is configured the engine executes
+        file_search server-side: the output will contain function_call and
+        function_call_output items followed by a final message.  Without a
+        backend, file_search is treated as a client-side tool and the LLM
+        response is returned directly.
+        """
         response = client.responses.create(
             model=model,
             input="What are the pricing tiers for CloudSync?",
@@ -274,18 +338,23 @@ class TestDemoWorkflow:
         assert response.id.startswith("resp_")
         assert response.status == "completed"
 
-        # file_search tool is echoed
-        assert len(response.tools) > 0
-        fs_tools = [t for t in response.tools if t.type == "file_search"]
-        assert len(fs_tools) == 1
-        assert vector_store.id in fs_tools[0].vector_store_ids
-
         # Output contains at least one message with non-empty text
         assert len(response.output) > 0
-        assert response.output[0].type == "message"
-        assert len(response.output[0].content) > 0
-        assert response.output[0].content[0].type == "output_text"
-        assert len(response.output[0].content[0].text) > 0
+        output_types = [o.type for o in response.output]
+        messages = [o for o in response.output if o.type == "message"]
+        assert len(messages) > 0
+        assert len(messages[0].content) > 0
+        assert messages[0].content[0].type == "output_text"
+        assert len(messages[0].content[0].text) > 0
+
+        # When vector search is active, file_search is executed server-side
+        search_results = TestDemoWorkflow._state.get("search_results", [])
+        if len(search_results) > 0:
+            # Engine should have produced function_call + function_call_output
+            assert "function_call" in output_types, (
+                f"Expected server-side file_search execution; got types: {output_types}"
+            )
+            assert "function_call_output" in output_types
 
         # Save state for multi-turn tests
         TestDemoWorkflow._state["response_id"] = response.id

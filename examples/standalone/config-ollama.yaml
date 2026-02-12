@@ -15,3 +15,14 @@ engine:
 
   max_tokens: 4096
   timeout: 120s  # Ollama can be slower on first run
+
+# Optional: use Ollama for embeddings too (requires a model that supports embeddings)
+# embedding:
+#   endpoint: http://localhost:11434/v1
+#   model: nomic-embed-text
+#   dimensions: 768
+
+# Optional: vector store backend
+# vector_store:
+#   type: milvus
+#   milvus_address: localhost:19530

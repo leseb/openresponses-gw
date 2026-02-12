@@ -39,6 +39,60 @@ curl -X POST http://localhost:8080/v1/responses \
 OPENAI_API_KEY=sk-... ./examples/standalone/test-with-openai.sh
 ```
 
+## Vector Store & Embedding Configuration
+
+To enable vector search (RAG) and server-side `file_search` tool execution, configure an embedding service and a vector store backend.
+
+### Environment Variables
+
+```bash
+# Embedding service (required for vector search)
+export EMBEDDING_ENDPOINT="https://api.openai.com/v1"   # or any OpenAI-compatible endpoint
+export EMBEDDING_API_KEY="sk-..."
+export EMBEDDING_MODEL="text-embedding-3-small"          # default
+
+# Vector store backend
+export MILVUS_ADDRESS="localhost:19530"  # automatically selects Milvus backend
+```
+
+### YAML Configuration
+
+```yaml
+embedding:
+  endpoint: https://api.openai.com/v1
+  api_key: sk-...                        # prefer EMBEDDING_API_KEY env var
+  model: text-embedding-3-small          # default
+  dimensions: 1536                       # default
+
+vector_store:
+  type: milvus                           # "memory" (default, no-op) or "milvus"
+  milvus_address: localhost:19530
+```
+
+### How It Works
+
+1. **File ingestion:** When a file is added to a vector store, the gateway reads the file content, splits it into chunks, generates embeddings via the configured embedding service, and inserts the vectors into the Milvus collection.
+
+2. **Search endpoint:** `POST /v1/vector_stores/{id}/search` embeds the query and performs vector similarity search against the Milvus collection.
+
+3. **file_search tool:** When a `file_search` tool is included in a Responses API request and vector search is configured, the engine intercepts the tool call, executes the search server-side, and feeds the results back to the LLM — just like MCP tool execution.
+
+### Without Configuration
+
+If no `EMBEDDING_ENDPOINT` is set, the vector store feature is disabled. The search endpoint returns empty results, and `file_search` is passed through to the LLM as a client-side tool. No behavior changes for existing users.
+
+### Starting Milvus
+
+```bash
+# Docker (standalone mode)
+docker run -d --name milvus \
+  -p 19530:19530 \
+  -p 9091:9091 \
+  milvusdb/milvus:latest standalone
+```
+
+---
+
 ## Configuration Methods
 
 The gateway supports **3 ways** to configure the inference backend (in order of precedence):
@@ -46,11 +100,17 @@ The gateway supports **3 ways** to configure the inference backend (in order of 
 ### Method 1: Environment Variables (Recommended)
 
 ```bash
-# Required
+# Required — LLM backend
 export OPENAI_API_KEY=sk-your-key-here
+export OPENAI_API_ENDPOINT=https://api.openai.com/v1  # optional, this is the default
 
-# Optional (defaults to https://api.openai.com/v1)
-export OPENAI_API_ENDPOINT=https://api.openai.com/v1
+# Optional — embedding service (enables vector search / RAG)
+export EMBEDDING_ENDPOINT=https://api.openai.com/v1
+export EMBEDDING_API_KEY=sk-your-key-here
+export EMBEDDING_MODEL=text-embedding-3-small  # default
+
+# Optional — vector store backend (auto-selects Milvus when set)
+export MILVUS_ADDRESS=localhost:19530
 
 # Run
 ./bin/openresponses-gw-server
@@ -458,6 +518,9 @@ curl -X POST http://localhost:8080/v1/responses \
 docker run -p 8080:8080 \
   -e OPENAI_API_KEY=sk-... \
   -e OPENAI_API_ENDPOINT=https://api.openai.com/v1 \
+  -e EMBEDDING_ENDPOINT=https://api.openai.com/v1 \
+  -e EMBEDDING_API_KEY=sk-... \
+  -e MILVUS_ADDRESS=host.docker.internal:19530 \
   openresponses-gw:latest
 ```
 
@@ -474,13 +537,24 @@ docker run -p 8080:8080 \
 ```yaml
 version: '3.8'
 services:
+  milvus:
+    image: milvusdb/milvus:latest
+    command: milvus run standalone
+    ports:
+      - "19530:19530"
+
   gateway:
     image: openresponses-gw:latest
     ports:
       - "8080:8080"
+    depends_on:
+      - milvus
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_API_ENDPOINT=https://api.openai.com/v1
+      - EMBEDDING_ENDPOINT=https://api.openai.com/v1
+      - EMBEDDING_API_KEY=${OPENAI_API_KEY}
+      - MILVUS_ADDRESS=milvus:19530
 ```
 
 Run:

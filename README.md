@@ -38,10 +38,12 @@ For Envoy deployment, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 | **Conversations** | 6 | Working |
 | **Prompts** | 5 | Working |
 | **Files** | 5 | Working |
-| **Vector Stores** | 15 | Working (search is stub) |
+| **Vector Stores** | 15 | Working (search via Milvus) |
 | **Models** | 2 | Working |
 
-**Not yet implemented:** RAG integration, file_search/web_search tools, vision/multimodal.
+**Vector search / RAG:** File ingestion (chunk, embed, insert) and vector search are supported via a pluggable backend. Milvus is the default vector store. The `file_search` tool in the Responses API is executed server-side when an embedding service and vector backend are configured. See [CONFIGURATION.md](./CONFIGURATION.md#vector-store--embedding-configuration) for setup.
+
+**Not yet implemented:** web_search tool execution, vision/multimodal.
 
 See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for details.
 
@@ -71,6 +73,7 @@ pkg/
     envoy/             # Envoy ExtProc adapter
   storage/
     memory/            # In-memory store (sessions, files, vectors)
+  vectorstore/         # Vector store backends (Milvus, memory)
 scripts/               # Utility & validation scripts
 tests/
   scripts/             # Shell-based test scripts
