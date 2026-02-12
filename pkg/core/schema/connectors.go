@@ -16,9 +16,9 @@ type Connector struct {
 
 // RegisterConnectorRequest represents a request to register a connector
 type RegisterConnectorRequest struct {
-	ConnectorID   string                 `json:"connector_id"`           // Required
-	ConnectorType string                 `json:"connector_type"`         // Required, must be "mcp"
-	URL           string                 `json:"url"`                    // Required
+	ConnectorID   string                 `json:"connector_id"`   // Required
+	ConnectorType string                 `json:"connector_type"` // Required, must be "mcp"
+	URL           string                 `json:"url"`            // Required
 	ServerLabel   string                 `json:"server_label,omitempty"`
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`
 }

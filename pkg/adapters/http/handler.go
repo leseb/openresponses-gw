@@ -23,14 +23,14 @@ var _ http.Handler = (*Handler)(nil)
 
 // Handler implements the HTTP adapter
 type Handler struct {
-	engine              *engine.Engine
-	logger              *logging.Logger
-	mux                 *http.ServeMux
-	promptsStore        *memory.PromptsStore
-	filesStore          filestore.FileStore
-	vectorStoresStore   *memory.VectorStoresStore
-	connectorsStore     *memory.ConnectorsStore
-	vectorStoreService  *services.VectorStoreService // nil when feature is disabled
+	engine             *engine.Engine
+	logger             *logging.Logger
+	mux                *http.ServeMux
+	promptsStore       *memory.PromptsStore
+	filesStore         filestore.FileStore
+	vectorStoresStore  *memory.VectorStoresStore
+	connectorsStore    *memory.ConnectorsStore
+	vectorStoreService *services.VectorStoreService // nil when feature is disabled
 }
 
 // New creates a new HTTP handler

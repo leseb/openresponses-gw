@@ -37,7 +37,7 @@ type EngineConfig struct {
 
 // EmbeddingConfig contains embedding service configuration
 type EmbeddingConfig struct {
-	Endpoint   string `yaml:"endpoint"`   // e.g. "https://api.openai.com/v1"
+	Endpoint   string `yaml:"endpoint"` // e.g. "https://api.openai.com/v1"
 	APIKey     string `yaml:"api_key"`
 	Model      string `yaml:"model"`      // e.g. "text-embedding-3-small"
 	Dimensions int    `yaml:"dimensions"` // default 1536
@@ -51,8 +51,8 @@ type VectorStoreConfig struct {
 
 // FileStoreConfig contains file storage backend configuration
 type FileStoreConfig struct {
-	Type       string `yaml:"type"`        // "memory" (default), "filesystem", "s3"
-	BaseDir    string `yaml:"base_dir"`    // filesystem only
+	Type       string `yaml:"type"`     // "memory" (default), "filesystem", "s3"
+	BaseDir    string `yaml:"base_dir"` // filesystem only
 	S3Bucket   string `yaml:"s3_bucket"`
 	S3Region   string `yaml:"s3_region"`
 	S3Prefix   string `yaml:"s3_prefix"`

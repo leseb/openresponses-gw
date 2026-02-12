@@ -48,7 +48,7 @@ type ToolParam struct {
 
 // ReasoningParam configures reasoning behavior for the backend.
 type ReasoningParam struct {
-	Effort *string `json:"effort,omitempty"`
+	Effort  *string `json:"effort,omitempty"`
 	Summary *string `json:"summary,omitempty"`
 }
 

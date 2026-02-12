@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/leseb/openresponses-gw/pkg/filestore"
-	"github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
 	"github.com/leseb/openresponses-gw/pkg/filestore/filestoretest"
+	"github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
 )
 
 func TestFilesystemConformance(t *testing.T) {

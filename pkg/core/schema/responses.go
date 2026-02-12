@@ -268,7 +268,7 @@ type ResponsesToolParam struct {
 
 	// File search fields (type="file_search")
 	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
-	MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+	MaxNumResults  *int                   `json:"max_num_results,omitempty"`
 	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
 	Filters        interface{}            `json:"filters,omitempty"`
 }
@@ -301,7 +301,7 @@ func (t *ResponsesToolParam) UnmarshalJSON(data []byte) error {
 	if nested, ok := raw["file_search"]; ok && t.Type == "file_search" {
 		var fs struct {
 			VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
-			MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+			MaxNumResults  *int                   `json:"max_num_results,omitempty"`
 			RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
 			Filters        interface{}            `json:"filters,omitempty"`
 		}
@@ -356,7 +356,7 @@ type ResponsesTool struct {
 
 	// File search fields
 	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
-	MaxNumResults  *int                    `json:"max_num_results,omitempty"`
+	MaxNumResults  *int                   `json:"max_num_results,omitempty"`
 	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
 	Filters        interface{}            `json:"filters,omitempty"`
 }
