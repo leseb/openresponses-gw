@@ -4,6 +4,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -188,9 +189,8 @@ type ContentPart struct {
 	VideoURL *VideoURL `json:"video_url,omitempty"`
 
 	// Annotation fields
-	StartIndex *int    `json:"start_index,omitempty"`
-	EndIndex   *int    `json:"end_index,omitempty"`
-	FileID2    *string `json:"file_id,omitempty"` // For annotations
+	StartIndex *int `json:"start_index,omitempty"`
+	EndIndex   *int `json:"end_index,omitempty"`
 }
 
 // ImageURL represents an image URL
@@ -530,6 +530,18 @@ type ResponseFunctionCallArgumentsDoneStreamingEvent struct {
 type ErrorStreamingEvent struct {
 	Type  string     `json:"type"` // "error"
 	Error ErrorField `json:"error"`
+}
+
+// RawStreamingEvent wraps a pre-serialized SSE event from the backend.
+// It implements json.Marshaler so the HTTP adapter can forward it as-is.
+type RawStreamingEvent struct {
+	EventType string          // SSE event type (e.g. "response.output_text.delta")
+	RawData   json.RawMessage // Pre-serialized JSON payload
+}
+
+// MarshalJSON returns the raw data directly, avoiding double-serialization.
+func (e *RawStreamingEvent) MarshalJSON() ([]byte, error) {
+	return e.RawData, nil
 }
 
 // Validate validates the request

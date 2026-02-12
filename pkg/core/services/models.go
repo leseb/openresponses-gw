@@ -8,30 +8,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
 )
 
 // ModelsService handles model listing and information
-type ModelsService struct {
-	client api.ChatCompletionClient
-}
+type ModelsService struct{}
 
 // NewModelsService creates a new models service
-func NewModelsService(client api.ChatCompletionClient) *ModelsService {
-	return &ModelsService{
-		client: client,
-	}
+func NewModelsService() *ModelsService {
+	return &ModelsService{}
 }
 
 // ListModels returns available models
 func (s *ModelsService) ListModels(ctx context.Context) (*schema.ListModelsResponse, error) {
-	// Try to get models from backend if it's an OpenAI client
-	if openaiClient, ok := s.client.(*api.OpenAIClient); ok {
-		return s.listFromOpenAI(ctx, openaiClient)
-	}
-
-	// Fall back to static model list for other backends
 	return s.staticModelList(), nil
 }
 
@@ -51,14 +40,6 @@ func (s *ModelsService) GetModel(ctx context.Context, modelID string) (*schema.M
 	}
 
 	return nil, fmt.Errorf("model not found: %s", modelID)
-}
-
-// listFromOpenAI gets models from OpenAI API
-func (s *ModelsService) listFromOpenAI(ctx context.Context, client *api.OpenAIClient) (*schema.ListModelsResponse, error) {
-	// Access the underlying OpenAI client
-	// Note: This requires exposing the client field or using reflection
-	// For now, fall back to static list
-	return s.staticModelList(), nil
 }
 
 // staticModelList returns a static list of common models

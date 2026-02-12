@@ -2,6 +2,10 @@
 
 ## Overview
 
+The gateway implements the **stateful tier** of the Open Responses API. Inference
+backends (vLLM, OpenAI, etc.) provide stateless LLM generation via `/v1/responses`.
+The gateway adds state management, tool execution, and storage on top.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Adapter Layer                            │
@@ -11,16 +15,22 @@
 └─────────────────────────┬───────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────────┐
-│                    Core Engine (Gateway-Agnostic)                │
-│  • Responses API → Chat Completions Translation                 │
-│  • Request Validation & Parameter Handling                       │
-│  • Streaming (SSE) Support                                       │
+│                    Core Engine (Stateful Tier)                    │
+│  • Response & Conversation storage                               │
+│  • Agentic tool loop (MCP, file_search)                          │
+│  • Connectors (MCP registry)                                     │
+│  • Files + Vector Stores                                         │
+│  • Prompts API                                                   │
+│  • Streaming (SSE) — forwards native backend events              │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
+                   POST /v1/responses
+                   (inference only)
+                          │
 ┌─────────────────────────▼───────────────────────────────────────┐
-│                   LLM Backend Integration                        │
-│  • OpenAI Client (via openai-go SDK)                            │
-│  • Supports: OpenAI, Ollama, vLLM, etc.                         │
+│                   Inference Backend                               │
+│  • Any /v1/responses-compatible server                           │
+│  • vLLM, OpenAI, etc.                                            │
 └──────────┬──────────────────────────────────────────────────────┘
            │
 ┌──────────▼──────────────────────────────────────────────────────┐
@@ -51,10 +61,10 @@ Gateway-specific adapters that translate between the gateway's protocol and the 
 
 Gateway-agnostic business logic (`pkg/core/`):
 
-- **engine/** — Main orchestration: translates Responses API requests to Chat Completions, handles tool calling loops, manages streaming
+- **engine/** — Main orchestration: forwards requests to the backend's `/v1/responses` endpoint, handles agentic tool calling loops (MCP, file_search), manages streaming by forwarding native SSE events
 - **schema/** — API type definitions for Responses, Files, Vector Stores, Conversations, Prompts
 - **config/** — Configuration loading from YAML files and environment variables
-- **api/** — OpenAI-compatible LLM client (via `openai-go` SDK)
+- **api/** — Responses API client (`ResponsesAPIClient` interface) for calling the inference backend
 - **services/** — Higher-level service layer (models discovery)
 - **state/** — State management interfaces
 
@@ -81,12 +91,13 @@ Pluggable storage backends (`pkg/storage/`):
 
 1. Request arrives at an adapter (HTTP or Envoy ExtProc)
 2. Adapter parses and validates the request
-3. Core engine translates Responses API format to Chat Completions
+3. Core engine resolves conversation context (previous_response_id)
 4. `file_search` and MCP tools are expanded into function definitions
-5. LLM client sends the request to the configured backend
+5. Engine sends a `/v1/responses` request to the inference backend
 6. For tool calls: engine executes the agentic loop (call → result → call)
    - MCP tools: executed via MCP client
    - file_search: query embedded → vector search → results fed back to LLM
-   - Client-side tools: returned to the caller for execution
-7. Response is streamed back through the adapter as SSE events
-8. Session state is persisted incrementally during streaming
+   - Client-side function tools: returned to the caller for execution
+7. Native SSE events from the backend are forwarded through the adapter
+8. Gateway manages response lifecycle events (created, completed)
+9. Session state is persisted after streaming completes

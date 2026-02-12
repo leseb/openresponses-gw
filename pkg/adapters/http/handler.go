@@ -429,6 +429,8 @@ func extractEventType(event interface{}) string {
 		return e.Type
 	case *schema.ErrorStreamingEvent:
 		return e.Type
+	case *schema.RawStreamingEvent:
+		return e.EventType
 	default:
 		return "message"
 	}

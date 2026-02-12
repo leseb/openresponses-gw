@@ -34,13 +34,15 @@ type VectorSearcher interface {
 	Search(ctx context.Context, vectorStoreID, query string, topK int) ([]vectorstore.SearchResult, error)
 }
 
-// Engine is the core orchestration engine for the Responses API
+// Engine is the core orchestration engine for the Responses API.
+// It calls a /v1/responses-compatible backend for inference and adds
+// persistence, conversations, MCP tools, file_search, and prompts.
 type Engine struct {
 	config       *config.EngineConfig
 	sessions     state.SessionStore
-	llm          api.ChatCompletionClient
-	connectors   ConnectorLookup  // nil-safe: nil means no MCP support
-	vectorSearch VectorSearcher   // nil-safe: nil means no file_search support
+	llm          api.ResponsesAPIClient
+	connectors   ConnectorLookup // nil-safe: nil means no MCP support
+	vectorSearch VectorSearcher  // nil-safe: nil means no file_search support
 }
 
 // New creates a new Engine instance.
@@ -53,11 +55,11 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		return nil, fmt.Errorf("session store is required")
 	}
 
-	// Create chat completion client – a real inference backend is required
+	// Create Responses API client — backend must support /v1/responses
 	if cfg.ModelEndpoint == "" {
 		return nil, fmt.Errorf("model endpoint is required (set OPENAI_API_ENDPOINT)")
 	}
-	llm := api.NewOpenAIClient(cfg.ModelEndpoint, cfg.APIKey)
+	llm := api.NewOpenAIResponsesClient(cfg.ModelEndpoint, cfg.APIKey)
 
 	return &Engine{
 		config:       cfg,
@@ -66,11 +68,6 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		connectors:   connectors,
 		vectorSearch: vectorSearch,
 	}, nil
-}
-
-// LLMClient returns the chat completion client
-func (e *Engine) LLMClient() api.ChatCompletionClient {
-	return e.llm
 }
 
 // Store returns the session store
@@ -298,80 +295,274 @@ func extractMessageFromItem(item map[string]interface{}, role string) *api.Messa
 	return nil
 }
 
-// convertToolsForLLM converts Responses API tools to chat completion tools
-func convertToolsForLLM(tools []schema.ResponsesToolParam) []api.Tool {
-	var result []api.Tool
+// convertToToolParams converts Responses API tool params to backend ToolParams.
+// Only function tools are forwarded; MCP and file_search are already expanded.
+func convertToToolParams(tools []schema.ResponsesToolParam) []api.ToolParam {
+	var result []api.ToolParam
 	for _, t := range tools {
 		if t.Type != "function" {
 			continue
 		}
-		tool := api.Tool{
-			Type: "function",
-			Function: api.ToolFunction{
-				Name:       t.Name,
-				Parameters: t.Parameters,
-			},
-		}
-		if t.Description != nil {
-			tool.Function.Description = *t.Description
-		}
-		if t.Strict != nil {
-			tool.Function.Strict = t.Strict
-		}
-		result = append(result, tool)
+		result = append(result, api.ToolParam{
+			Type:        "function",
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  t.Parameters,
+			Strict:      t.Strict,
+		})
 	}
 	return result
 }
 
-// buildLLMRequest constructs a ChatCompletionRequest from a ResponseRequest
-func buildLLMRequest(model string, messages []api.Message, req *schema.ResponseRequest, stream bool) *api.ChatCompletionRequest {
-	llmReq := &api.ChatCompletionRequest{
-		Model:    model,
-		Messages: messages,
-		Stream:   stream,
+// buildResponsesAPIRequest constructs a ResponsesAPIRequest from conversation
+// messages and the original request parameters.
+func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.ResponseRequest, tools []schema.ResponsesToolParam, stream bool) *api.ResponsesAPIRequest {
+	// Convert messages to Responses API input, skipping system messages
+	// (instructions are passed via the Instructions field)
+	input := convertMessagesToResponsesInput(messages)
+
+	// Only include function tools (MCP/file_search already expanded)
+	funcTools := convertToToolParams(tools)
+
+	// Gateway owns storage, not the backend
+	storeFalse := false
+
+	apiReq := &api.ResponsesAPIRequest{
+		Model:  model,
+		Input:  input,
+		Tools:  funcTools,
+		Stream: stream,
+		Store:  &storeFalse,
 	}
+
+	// Pass instructions from request
+	apiReq.Instructions = req.Instructions
 
 	// Sampling parameters
-	llmReq.Temperature = req.Temperature
-	llmReq.TopP = req.TopP
-	if req.FrequencyPenalty != nil {
-		llmReq.FrequencyPenalty = req.FrequencyPenalty
-	}
-	if req.PresencePenalty != nil {
-		llmReq.PresencePenalty = req.PresencePenalty
-	}
+	apiReq.Temperature = req.Temperature
+	apiReq.TopP = req.TopP
+	apiReq.FrequencyPenalty = req.FrequencyPenalty
+	apiReq.PresencePenalty = req.PresencePenalty
+	apiReq.MaxOutputTokens = req.MaxOutputTokens
+	apiReq.ParallelToolCalls = req.ParallelToolCalls
 
-	// Token limits
-	if req.MaxOutputTokens != nil {
-		llmReq.MaxCompletionTokens = req.MaxOutputTokens
-	}
+	// Tool choice
+	apiReq.ToolChoice = req.ToolChoice
 
-	// Tools
-	tools := convertToolsForLLM(req.Tools)
-	if len(tools) > 0 {
-		llmReq.Tools = tools
-	}
-
-	// ToolChoice
-	if req.ToolChoice != nil {
-		llmReq.ToolChoice = req.ToolChoice
-	}
-
-	// ParallelToolCalls
-	llmReq.ParallelToolCalls = req.ParallelToolCalls
-
-	// Reasoning effort
+	// Reasoning
 	if req.Reasoning != nil && req.Reasoning.Effort != nil {
-		llmReq.ReasoningEffort = req.Reasoning.Effort
+		apiReq.Reasoning = &api.ReasoningParam{
+			Effort: req.Reasoning.Effort,
+		}
 	}
 
-	// PromptCacheKey
-	llmReq.PromptCacheKey = req.PromptCacheKey
+	return apiReq
+}
 
-	// SafetyIdentifier
-	llmReq.SafetyIdentifier = req.SafetyIdentifier
+// convertMessagesToResponsesInput converts internal Messages to the Responses
+// API input format. System messages are skipped (handled by the Instructions field).
+func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
+	var input []interface{}
+	for _, msg := range messages {
+		switch msg.Role {
+		case "system":
+			// Skip — instructions are passed separately via the Instructions field
+			continue
+		case "user":
+			if len(msg.ContentParts) > 0 {
+				// Multimodal content
+				var parts []map[string]interface{}
+				for _, cp := range msg.ContentParts {
+					switch cp.Type {
+					case "text":
+						parts = append(parts, map[string]interface{}{
+							"type": "input_text",
+							"text": cp.Text,
+						})
+					case "image_url":
+						if cp.ImageURL != nil {
+							parts = append(parts, map[string]interface{}{
+								"type":      "input_image",
+								"image_url": cp.ImageURL.URL,
+							})
+						}
+					case "file":
+						if cp.File != nil {
+							fileMap := map[string]interface{}{}
+							if cp.File.FileData != "" {
+								fileMap["file_data"] = cp.File.FileData
+							}
+							if cp.File.FileID != "" {
+								fileMap["file_id"] = cp.File.FileID
+							}
+							if cp.File.Filename != "" {
+								fileMap["filename"] = cp.File.Filename
+							}
+							parts = append(parts, map[string]interface{}{
+								"type": "input_file",
+								"file": fileMap,
+							})
+						}
+					}
+				}
+				input = append(input, map[string]interface{}{
+					"type":    "message",
+					"role":    "user",
+					"content": parts,
+				})
+			} else {
+				input = append(input, map[string]interface{}{
+					"type": "message",
+					"role": "user",
+					"content": []map[string]interface{}{
+						{"type": "input_text", "text": msg.Content},
+					},
+				})
+			}
+		case "assistant":
+			if len(msg.ToolCalls) > 0 {
+				// Each tool call becomes a separate function_call input item
+				for _, tc := range msg.ToolCalls {
+					input = append(input, map[string]interface{}{
+						"type":      "function_call",
+						"call_id":   tc.ID,
+						"name":      tc.Function.Name,
+						"arguments": tc.Function.Arguments,
+					})
+				}
+			}
+			if msg.Content != "" {
+				input = append(input, map[string]interface{}{
+					"type": "message",
+					"role": "assistant",
+					"content": []map[string]interface{}{
+						{"type": "output_text", "text": msg.Content},
+					},
+				})
+			}
+		case "tool":
+			input = append(input, map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": msg.ToolCallID,
+				"output":  msg.Content,
+			})
+		case "developer":
+			input = append(input, map[string]interface{}{
+				"type": "message",
+				"role": "developer",
+				"content": []map[string]interface{}{
+					{"type": "input_text", "text": msg.Content},
+				},
+			})
+		}
+	}
+	return input
+}
 
-	return llmReq
+// toolCallInfo holds extracted function call information from backend output.
+type toolCallInfo struct {
+	ID        string
+	Name      string
+	Arguments string
+	CallID    string
+}
+
+// parseResponsesOutput extracts text content and tool calls from backend output items.
+func parseResponsesOutput(output []api.OutputItem) (textContent string, toolCalls []toolCallInfo, hasToolCalls bool) {
+	for _, item := range output {
+		switch item.Type {
+		case "message":
+			for _, c := range item.Content {
+				if c.Type == "output_text" || c.Type == "text" {
+					textContent += c.Text
+				}
+			}
+		case "function_call":
+			toolCalls = append(toolCalls, toolCallInfo{
+				ID:        item.ID,
+				Name:      item.Name,
+				Arguments: item.Arguments,
+				CallID:    item.CallID,
+			})
+			hasToolCalls = true
+		}
+	}
+	return
+}
+
+// convertOutputItemsToSchema converts backend OutputItems to schema ItemFields.
+func convertOutputItemsToSchema(items []api.OutputItem) []schema.ItemField {
+	var result []schema.ItemField
+	for _, item := range items {
+		switch item.Type {
+		case "message":
+			role := item.Role
+			status := item.Status
+			if status == "" {
+				status = "completed"
+			}
+			var content []schema.ContentPart
+			for _, c := range item.Content {
+				text := c.Text
+				content = append(content, schema.ContentPart{
+					Type: c.Type,
+					Text: &text,
+				})
+			}
+			result = append(result, schema.ItemField{
+				Type:    "message",
+				ID:      item.ID,
+				Role:    &role,
+				Status:  &status,
+				Content: content,
+			})
+		case "function_call":
+			name := item.Name
+			args := item.Arguments
+			callID := item.CallID
+			status := item.Status
+			if status == "" {
+				status = "completed"
+			}
+			result = append(result, schema.ItemField{
+				Type:      "function_call",
+				ID:        item.ID,
+				Name:      &name,
+				Arguments: &args,
+				CallID:    &callID,
+				Status:    &status,
+			})
+		case "function_call_output":
+			callID := item.CallID
+			output := item.Output
+			result = append(result, schema.ItemField{
+				Type:   "function_call_output",
+				ID:     item.ID,
+				CallID: &callID,
+				Output: &output,
+			})
+		}
+	}
+	return result
+}
+
+// patchResponseID replaces the response_id field in a raw JSON event
+// with the gateway's own response ID.
+func patchResponseID(data json.RawMessage, newResponseID string) json.RawMessage {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return data
+	}
+	if _, ok := m["response_id"]; ok {
+		quoted, _ := json.Marshal(newResponseID)
+		m["response_id"] = quoted
+		patched, err := json.Marshal(m)
+		if err != nil {
+			return data
+		}
+		return patched
+	}
+	return data
 }
 
 // buildConversationMessages reconstructs conversation history for multi-turn
@@ -914,7 +1105,8 @@ func mcpResultToString(result *mcp.ToolCallResult) string {
 	return strings.Join(parts, "\n")
 }
 
-// ProcessRequest processes a Responses API request (non-streaming)
+// ProcessRequest processes a Responses API request (non-streaming).
+// It calls the backend's /v1/responses endpoint and adds state management.
 func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest) (*schema.Response, error) {
 	// 1. Validate request
 	if err := req.Validate(); err != nil {
@@ -945,10 +1137,8 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	// 6. Build conversation messages (including multi-turn history)
 	var messages []api.Message
 	if req.Conversation != nil && *req.Conversation != "" {
-		// Use conversation-based history
 		messages, err = e.buildConversationMessagesFromConversation(ctx, conversationID, req)
 	} else {
-		// Use previous_response_id-based history (existing behavior)
 		messages, err = e.buildConversationMessages(ctx, req)
 	}
 	if err != nil {
@@ -956,7 +1146,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		return resp, nil
 	}
 
-	// 6. Expand MCP tools into function tools
+	// 7. Expand MCP tools into function tools
 	expandedTools := req.Tools
 	var mcpToolNames map[string]*mcp.Client
 	if len(req.Tools) > 0 {
@@ -968,17 +1158,13 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		}
 	}
 
-	// 6b. Expand file_search tools into function tools
+	// 7b. Expand file_search tools into function tools
 	var fileSearchConfigs map[string]fileSearchConfig
 	if len(expandedTools) > 0 {
 		expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
 	}
 
-	// Build a modified request with expanded tools for the LLM
-	expandedReq := *req
-	expandedReq.Tools = expandedTools
-
-	// 7. Agentic loop
+	// 8. Agentic loop
 	maxIters := defaultMaxToolCalls
 	if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
 		maxIters = *req.MaxToolCalls
@@ -988,8 +1174,8 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	var allOutput []schema.ItemField
 
 	for iter := 0; iter < maxIters; iter++ {
-		// Build LLM request
-		llmReq := buildLLMRequest(model, messages, &expandedReq, false)
+		// Build Responses API request
+		apiReq := buildResponsesAPIRequest(model, messages, req, expandedTools, false)
 
 		// Adjust token budget if max_output_tokens is set
 		if req.MaxOutputTokens != nil {
@@ -998,43 +1184,41 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 				resp.MarkIncomplete("max_output_tokens")
 				break
 			}
-			llmReq.MaxCompletionTokens = &remaining
+			apiReq.MaxOutputTokens = &remaining
 		}
 
-		// Call LLM
-		llmResp, err := e.llm.CreateChatCompletion(ctx, llmReq)
+		// Call backend
+		apiResp, err := e.llm.CreateResponse(ctx, apiReq)
 		if err != nil {
-			resp.MarkFailed("api_error", "llm_error", fmt.Sprintf("failed to call LLM: %v", err))
+			resp.MarkFailed("api_error", "llm_error", fmt.Sprintf("failed to call backend: %v", err))
 			return resp, nil
 		}
 
-		accumulatedOutputTokens += llmResp.Usage.CompletionTokens
-
-		if len(llmResp.Choices) == 0 {
-			resp.MarkFailed("api_error", "no_choices", "LLM returned no choices")
-			return resp, nil
+		// Track usage
+		if apiResp.Usage != nil {
+			accumulatedOutputTokens += apiResp.Usage.OutputTokens
 		}
 
-		choice := llmResp.Choices[0]
+		// Parse output for tool calls
+		_, toolCalls, hasToolCalls := parseResponsesOutput(apiResp.Output)
 
-		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
+		if hasToolCalls {
 			var clientSideCalls []api.ToolCall
 
-			for _, tc := range choice.Message.ToolCalls {
-				mcpClient, isMCP := mcpToolNames[tc.Function.Name]
-				fsCfg, isFileSearch := fileSearchConfigs[tc.Function.Name]
+			for _, tc := range toolCalls {
+				mcpClient, isMCP := mcpToolNames[tc.Name]
+				fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
 
 				if isMCP {
 					// Execute MCP tool server-side
-					args := parseJSONArgs(tc.Function.Arguments)
-					result, mcpErr := mcpClient.CallTool(ctx, tc.Function.Name, args)
+					args := parseJSONArgs(tc.Arguments)
+					result, mcpErr := mcpClient.CallTool(ctx, tc.Name, args)
 
 					completedStatus := "completed"
-					callID := tc.ID
-					funcName := tc.Function.Name
-					funcArgs := tc.Function.Arguments
+					callID := tc.CallID
+					funcName := tc.Name
+					funcArgs := tc.Arguments
 
-					// Emit function_call item
 					allOutput = append(allOutput, schema.ItemField{
 						Type:      "function_call",
 						ID:        generateID("fc_"),
@@ -1044,7 +1228,6 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 						Status:    &completedStatus,
 					})
 
-					// Emit function_call_output item
 					var outputStr string
 					if mcpErr != nil {
 						outputStr = fmt.Sprintf("Error calling tool: %v", mcpErr)
@@ -1058,26 +1241,31 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 						Output: &outputStr,
 					})
 
-					// Append tool call + result to messages for LLM context
 					messages = append(messages, api.Message{
 						Role: "assistant",
-						ToolCalls: []api.ToolCall{tc},
+						ToolCalls: []api.ToolCall{{
+							ID:   tc.CallID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      tc.Name,
+								Arguments: tc.Arguments,
+							},
+						}},
 					})
 					messages = append(messages, api.Message{
 						Role:       "tool",
 						Content:    outputStr,
-						ToolCallID: tc.ID,
+						ToolCallID: tc.CallID,
 					})
 				} else if isFileSearch {
-					// Execute file_search server-side
-					args := parseJSONArgs(tc.Function.Arguments)
+					args := parseJSONArgs(tc.Arguments)
 					query, _ := args["query"].(string)
 					outputStr := e.executeFileSearch(ctx, fsCfg, query)
 
 					completedStatus := "completed"
-					callID := tc.ID
-					funcName := tc.Function.Name
-					funcArgs := tc.Function.Arguments
+					callID := tc.CallID
+					funcName := tc.Name
+					funcArgs := tc.Arguments
 
 					allOutput = append(allOutput, schema.ItemField{
 						Type:      "function_call",
@@ -1095,20 +1283,27 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 					})
 
 					messages = append(messages, api.Message{
-						Role:      "assistant",
-						ToolCalls: []api.ToolCall{tc},
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{{
+							ID:   tc.CallID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      tc.Name,
+								Arguments: tc.Arguments,
+							},
+						}},
 					})
 					messages = append(messages, api.Message{
 						Role:       "tool",
 						Content:    outputStr,
-						ToolCallID: tc.ID,
+						ToolCallID: tc.CallID,
 					})
 				} else {
 					// Client-side function — collect for break
 					completedStatus := "completed"
-					callID := tc.ID
-					funcName := tc.Function.Name
-					funcArgs := tc.Function.Arguments
+					callID := tc.CallID
+					funcName := tc.Name
+					funcArgs := tc.Arguments
 					allOutput = append(allOutput, schema.ItemField{
 						Type:      "function_call",
 						ID:        generateID("fc_"),
@@ -1117,68 +1312,66 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 						Arguments: &funcArgs,
 						Status:    &completedStatus,
 					})
-					clientSideCalls = append(clientSideCalls, tc)
+					clientSideCalls = append(clientSideCalls, api.ToolCall{
+						ID:   tc.CallID,
+						Type: "function",
+						Function: api.ToolCallFunction{
+							Name:      tc.Name,
+							Arguments: tc.Arguments,
+						},
+					})
 				}
 			}
 
 			if len(clientSideCalls) > 0 {
-				// Append assistant message with client-side calls and break
 				messages = append(messages, api.Message{
 					Role:      "assistant",
 					ToolCalls: clientSideCalls,
 				})
 				break // client handles execution
 			}
-			// All calls were MCP — continue loop so LLM can reason with results
+			// All calls were server-side — continue loop
 			continue
 		}
 
-		// Normal text response
-		outputText := choice.Message.Content
-		assistantRole := "assistant"
-		completedStatus := "completed"
-		allOutput = append(allOutput, schema.ItemField{
-			Type:   "message",
-			ID:     generateID("msg_"),
-			Role:   &assistantRole,
-			Status: &completedStatus,
-			Content: []schema.ContentPart{
-				{
-					Type: "output_text",
-					Text: &outputText,
-				},
-			},
-		})
+		// Normal response — convert backend output items to schema
+		backendOutput := convertOutputItemsToSchema(apiResp.Output)
+		allOutput = append(allOutput, backendOutput...)
 
 		// Append assistant message for storage
-		messages = append(messages, api.Message{
-			Role:    "assistant",
-			Content: outputText,
-		})
+		textContent, _, _ := parseResponsesOutput(apiResp.Output)
+		if textContent != "" {
+			messages = append(messages, api.Message{
+				Role:    "assistant",
+				Content: textContent,
+			})
+		}
 
-		// Set usage from LLM response
-		resp.Usage = &schema.UsageField{
-			InputTokens:  llmResp.Usage.PromptTokens,
-			OutputTokens: accumulatedOutputTokens,
-			TotalTokens:  llmResp.Usage.PromptTokens + accumulatedOutputTokens,
-			InputTokensDetails: schema.InputTokensDetails{
-				CachedTokens: 0,
-			},
-			OutputTokensDetails: schema.OutputTokensDetails{
-				ReasoningTokens: 0,
-			},
+		// Set usage from backend response
+		if apiResp.Usage != nil {
+			resp.Usage = &schema.UsageField{
+				InputTokens:  apiResp.Usage.InputTokens,
+				OutputTokens: accumulatedOutputTokens,
+				TotalTokens:  apiResp.Usage.InputTokens + accumulatedOutputTokens,
+				InputTokensDetails: schema.InputTokensDetails{
+					CachedTokens: 0,
+				},
+				OutputTokensDetails: schema.OutputTokensDetails{
+					ReasoningTokens: 0,
+				},
+			}
 		}
 
 		break
 	}
 
-	// 7. Set output
+	// 9. Set output
 	resp.Output = allOutput
 	if resp.Output == nil {
 		resp.Output = make([]schema.ItemField, 0)
 	}
 
-	// 8. Set usage if not already set
+	// 10. Set usage if not already set
 	if resp.Usage == nil {
 		resp.Usage = &schema.UsageField{
 			InputTokensDetails:  schema.InputTokensDetails{},
@@ -1186,12 +1379,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		}
 	}
 
-	// 9. Mark as completed if not already marked
+	// 11. Mark as completed if not already marked
 	if resp.Status == "in_progress" {
 		resp.MarkCompleted()
 	}
 
-	// 10. Save response to state store
+	// 12. Save response to state store
 	prevRespID := ""
 	if req.PreviousResponseID != nil {
 		prevRespID = *req.PreviousResponseID
@@ -1212,16 +1405,17 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		return nil, fmt.Errorf("failed to save response: %w", err)
 	}
 
-	// 11. Append items to conversation for the Conversations API
+	// 13. Append items to conversation for the Conversations API
 	if err := e.appendItemsToConversation(ctx, conversationID, req, allOutput); err != nil {
-		// Log but don't fail the response
 		_ = err
 	}
 
 	return resp, nil
 }
 
-// ProcessRequestStream processes a streaming Responses API request
+// ProcessRequestStream processes a streaming Responses API request.
+// It streams from the backend's /v1/responses endpoint, forwarding SSE events
+// to the client and intercepting tool calls for server-side execution.
 func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseRequest) (<-chan interface{}, error) {
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -1246,13 +1440,9 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		// Resolve conversation before emitting response.created
 		conversationID, err := e.resolveConversation(ctx, req)
 		if err != nil {
-			errorField := schema.ErrorField{
-				Type:    "api_error",
-				Message: fmt.Sprintf("failed to resolve conversation: %v", err),
-			}
 			events <- &schema.ErrorStreamingEvent{
 				Type:  "error",
-				Error: errorField,
+				Error: schema.ErrorField{Type: "api_error", Message: fmt.Sprintf("failed to resolve conversation: %v", err)},
 			}
 			return
 		}
@@ -1284,7 +1474,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			CreatedAt:          time.Unix(resp.CreatedAt, 0),
 		})
 
-		// Build conversation messages (including multi-turn history)
+		// Build conversation messages
 		var messages []api.Message
 		if req.Conversation != nil && *req.Conversation != "" {
 			messages, err = e.buildConversationMessagesFromConversation(ctx, conversationID, req)
@@ -1292,13 +1482,9 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			messages, err = e.buildConversationMessages(ctx, req)
 		}
 		if err != nil {
-			errorField := schema.ErrorField{
-				Type:    "api_error",
-				Message: fmt.Sprintf("failed to build conversation: %v", err),
-			}
 			events <- &schema.ErrorStreamingEvent{
 				Type:  "error",
-				Error: errorField,
+				Error: schema.ErrorField{Type: "api_error", Message: fmt.Sprintf("failed to build conversation: %v", err)},
 			}
 			return
 		}
@@ -1312,383 +1498,296 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 		seqNum++
 
-		// Expand MCP tools into function tools
+		// Expand MCP tools
 		expandedTools := req.Tools
 		var mcpToolNames map[string]*mcp.Client
 		if len(req.Tools) > 0 {
 			var expandErr error
 			expandedTools, mcpToolNames, expandErr = e.expandMCPTools(ctx, req.Tools)
 			if expandErr != nil {
-				errorField := schema.ErrorField{
-					Type:    "api_error",
-					Message: fmt.Sprintf("failed to expand MCP tools: %v", expandErr),
-				}
 				events <- &schema.ErrorStreamingEvent{
 					Type:  "error",
-					Error: errorField,
+					Error: schema.ErrorField{Type: "api_error", Message: fmt.Sprintf("failed to expand MCP tools: %v", expandErr)},
 				}
 				return
 			}
 		}
 
-		// Expand file_search tools into function tools
+		// Expand file_search tools
 		var fileSearchConfigs map[string]fileSearchConfig
 		if len(expandedTools) > 0 {
 			expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
 		}
 
-		// Build a modified request with expanded tools for the LLM
-		expandedReq := *req
-		expandedReq.Tools = expandedTools
-
-		// Build LLM request
-		llmReq := buildLLMRequest(model, messages, &expandedReq, true)
-
-		// Get streaming response from LLM
-		streamChan, err := e.llm.CreateChatCompletionStream(ctx, llmReq)
-		if err != nil {
-			errorField := schema.ErrorField{
-				Type:    "api_error",
-				Message: fmt.Sprintf("failed to start streaming: %v", err),
-			}
-			events <- &schema.ErrorStreamingEvent{
-				Type:  "error",
-				Error: errorField,
-			}
-			return
+		// Agentic loop
+		maxIters := defaultMaxToolCalls
+		if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
+			maxIters = *req.MaxToolCalls
 		}
 
-		// Track accumulated tool calls from the stream
-		type accumulatedToolCall struct {
-			ID        string
-			Name      string
-			Arguments string
-		}
-		var toolCallAccum []accumulatedToolCall
-		var finishReason string
-
-		fullText := ""
-		contentIndex := 0
-		outputIndex := 0
-		messageItemID := ""
-		messageItemEmitted := false
-
-		// Stream deltas
-		for chunk := range streamChan {
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-
-			delta := chunk.Choices[0]
-
-			// Capture finish reason
-			if delta.FinishReason != nil {
-				finishReason = *delta.FinishReason
-			}
-
-			// Handle tool call deltas
-			if len(delta.Delta.ToolCalls) > 0 {
-				for _, tcDelta := range delta.Delta.ToolCalls {
-					idx := tcDelta.Index
-					// Extend accumulator as needed
-					for len(toolCallAccum) <= idx {
-						toolCallAccum = append(toolCallAccum, accumulatedToolCall{})
-					}
-					if tcDelta.ID != "" {
-						toolCallAccum[idx].ID = tcDelta.ID
-					}
-					if tcDelta.Function.Name != "" {
-						toolCallAccum[idx].Name = tcDelta.Function.Name
-					}
-					if tcDelta.Function.Arguments != "" {
-						toolCallAccum[idx].Arguments += tcDelta.Function.Arguments
-
-						// Emit function_call_arguments.delta event
-						events <- &schema.ResponseFunctionCallArgumentsDeltaStreamingEvent{
-							Type:        "response.function_call_arguments.delta",
-							ResponseID:  respID,
-							OutputIndex: idx,
-							Delta:       tcDelta.Function.Arguments,
-						}
-						seqNum++
-					}
-				}
-				continue
-			}
-
-			// Handle text content
-			textDelta := delta.Delta.Content
-			if textDelta == "" {
-				continue
-			}
-
-			// Emit output_item.added on first text
-			if !messageItemEmitted {
-				messageItemID = generateID("msg_")
-				assistantRole := "assistant"
-				inProgressStatus := "in_progress"
-				messageItem := schema.ItemField{
-					Type:    "message",
-					ID:      messageItemID,
-					Role:    &assistantRole,
-					Status:  &inProgressStatus,
-					Content: []schema.ContentPart{},
-				}
-
-				events <- &schema.ResponseOutputItemAddedStreamingEvent{
-					Type:           "response.output_item.added",
-					SequenceNumber: seqNum,
-					OutputIndex:    outputIndex,
-					Item:           messageItem,
-				}
-				seqNum++
-
-				// Emit content_part.added so the SDK knows about the content slot
-				emptyText := ""
-				events <- &schema.ResponseContentPartAddedStreamingEvent{
-					Type:           "response.content_part.added",
-					SequenceNumber: seqNum,
-					ItemID:         messageItemID,
-					OutputIndex:    outputIndex,
-					ContentIndex:   contentIndex,
-					Part: schema.ContentPart{
-						Type: "output_text",
-						Text: &emptyText,
-					},
-				}
-				seqNum++
-
-				messageItemEmitted = true
-			}
-
-			fullText += textDelta
-
-			// Send text delta event
-			events <- &schema.ResponseOutputTextDeltaStreamingEvent{
-				Type:           "response.output_text.delta",
-				SequenceNumber: seqNum,
-				ItemID:         messageItemID,
-				OutputIndex:    outputIndex,
-				ContentIndex:   contentIndex,
-				Delta:          textDelta,
-				Logprobs:       make([]interface{}, 0),
-			}
-			seqNum++
-		}
-
-		// Determine output based on finish reason
 		var allOutput []schema.ItemField
 
-		if finishReason == "tool_calls" && len(toolCallAccum) > 0 {
-			// Emit tool call output items
-			outputIdx := 0
-			for _, tc := range toolCallAccum {
-				mcpClient, isMCP := mcpToolNames[tc.Name]
-				fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
+		for iter := 0; iter < maxIters; iter++ {
+			// Build Responses API request
+			apiReq := buildResponsesAPIRequest(model, messages, req, expandedTools, true)
 
-				completedStatus := "completed"
-				callID := tc.ID
-				funcName := tc.Name
-				funcArgs := tc.Arguments
-				toolItem := schema.ItemField{
-					Type:      "function_call",
-					ID:        generateID("fc_"),
-					CallID:    &callID,
-					Name:      &funcName,
-					Arguments: &funcArgs,
-					Status:    &completedStatus,
+			// Start streaming from backend
+			streamChan, streamErr := e.llm.CreateResponseStream(ctx, apiReq)
+			if streamErr != nil {
+				events <- &schema.ErrorStreamingEvent{
+					Type:  "error",
+					Error: schema.ErrorField{Type: "api_error", Message: fmt.Sprintf("failed to start streaming: %v", streamErr)},
 				}
+				return
+			}
 
-				events <- &schema.ResponseOutputItemAddedStreamingEvent{
-					Type:           "response.output_item.added",
-					SequenceNumber: seqNum,
-					OutputIndex:    outputIdx,
-					Item:           toolItem,
+			// Track the backend's completed response (from response.completed event)
+			var backendOutput []api.OutputItem
+			var backendUsage *api.UsageInfo
+
+			// Forward backend events to client, skipping lifecycle events
+			for evt := range streamChan {
+				switch evt.Type {
+				case "response.created", "response.queued", "response.in_progress":
+					// Skip — we manage lifecycle events ourselves
+					continue
+
+				case "response.completed":
+					// Parse to extract final output and usage
+					var wrapper struct {
+						Response api.ResponsesAPIResponse `json:"response"`
+					}
+					if err := json.Unmarshal(evt.Data, &wrapper); err == nil {
+						backendOutput = wrapper.Response.Output
+						backendUsage = wrapper.Response.Usage
+					}
+					continue
+
+				case "response.failed":
+					// Forward error from backend
+					events <- &schema.RawStreamingEvent{
+						EventType: evt.Type,
+						RawData:   patchResponseID(evt.Data, respID),
+					}
+					continue
+
+				default:
+					// Forward all other events (deltas, items, etc.) with patched response_id
+					events <- &schema.RawStreamingEvent{
+						EventType: evt.Type,
+						RawData:   patchResponseID(evt.Data, respID),
+					}
 				}
-				seqNum++
+			}
 
-				// Emit function_call_arguments.done
-				events <- &schema.ResponseFunctionCallArgumentsDoneStreamingEvent{
-					Type:        "response.function_call_arguments.done",
-					ResponseID:  respID,
-					OutputIndex: outputIdx,
-					Arguments:   funcArgs,
-				}
-				seqNum++
+			// Check for server-side tool calls in the completed output
+			_, toolCalls, hasToolCalls := parseResponsesOutput(backendOutput)
 
-				// Emit output_item.done
-				events <- &schema.ResponseOutputItemDoneStreamingEvent{
-					Type:           "response.output_item.done",
-					SequenceNumber: seqNum,
-					OutputIndex:    outputIdx,
-					Item:           toolItem,
-				}
-				seqNum++
+			if hasToolCalls {
+				hasServerSide := false
+				var clientSideCalls []api.ToolCall
 
-				allOutput = append(allOutput, toolItem)
-				outputIdx++
+				for _, tc := range toolCalls {
+					mcpClient, isMCP := mcpToolNames[tc.Name]
+					fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
 
-				// Determine if this is a server-side tool call
-				var serverSideOutput string
-				isServerSide := false
+					if isMCP {
+						hasServerSide = true
+						args := parseJSONArgs(tc.Arguments)
+						result, mcpErr := mcpClient.CallTool(ctx, tc.Name, args)
 
-				if isMCP {
-					isServerSide = true
-					args := parseJSONArgs(tc.Arguments)
-					result, mcpErr := mcpClient.CallTool(ctx, tc.Name, args)
-					if mcpErr != nil {
-						serverSideOutput = fmt.Sprintf("Error calling tool: %v", mcpErr)
+						completedStatus := "completed"
+						callID := tc.CallID
+						funcName := tc.Name
+						funcArgs := tc.Arguments
+
+						allOutput = append(allOutput, schema.ItemField{
+							Type:      "function_call",
+							ID:        generateID("fc_"),
+							CallID:    &callID,
+							Name:      &funcName,
+							Arguments: &funcArgs,
+							Status:    &completedStatus,
+						})
+
+						var outputStr string
+						if mcpErr != nil {
+							outputStr = fmt.Sprintf("Error calling tool: %v", mcpErr)
+						} else {
+							outputStr = mcpResultToString(result)
+						}
+
+						outputItem := schema.ItemField{
+							Type:   "function_call_output",
+							ID:     generateID("fco_"),
+							CallID: &callID,
+							Output: &outputStr,
+						}
+						allOutput = append(allOutput, outputItem)
+
+						// Emit function_call_output events to client
+						events <- &schema.ResponseOutputItemAddedStreamingEvent{
+							Type:           "response.output_item.added",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+						events <- &schema.ResponseOutputItemDoneStreamingEvent{
+							Type:           "response.output_item.done",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+
+						messages = append(messages, api.Message{
+							Role: "assistant",
+							ToolCalls: []api.ToolCall{{
+								ID:   tc.CallID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      tc.Name,
+									Arguments: tc.Arguments,
+								},
+							}},
+						})
+						messages = append(messages, api.Message{
+							Role:       "tool",
+							Content:    outputStr,
+							ToolCallID: tc.CallID,
+						})
+
+					} else if isFileSearch {
+						hasServerSide = true
+						args := parseJSONArgs(tc.Arguments)
+						query, _ := args["query"].(string)
+						outputStr := e.executeFileSearch(ctx, fsCfg, query)
+
+						completedStatus := "completed"
+						callID := tc.CallID
+						funcName := tc.Name
+						funcArgs := tc.Arguments
+
+						allOutput = append(allOutput, schema.ItemField{
+							Type:      "function_call",
+							ID:        generateID("fc_"),
+							CallID:    &callID,
+							Name:      &funcName,
+							Arguments: &funcArgs,
+							Status:    &completedStatus,
+						})
+
+						outputItem := schema.ItemField{
+							Type:   "function_call_output",
+							ID:     generateID("fco_"),
+							CallID: &callID,
+							Output: &outputStr,
+						}
+						allOutput = append(allOutput, outputItem)
+
+						events <- &schema.ResponseOutputItemAddedStreamingEvent{
+							Type:           "response.output_item.added",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+						events <- &schema.ResponseOutputItemDoneStreamingEvent{
+							Type:           "response.output_item.done",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+
+						messages = append(messages, api.Message{
+							Role: "assistant",
+							ToolCalls: []api.ToolCall{{
+								ID:   tc.CallID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      tc.Name,
+									Arguments: tc.Arguments,
+								},
+							}},
+						})
+						messages = append(messages, api.Message{
+							Role:       "tool",
+							Content:    outputStr,
+							ToolCallID: tc.CallID,
+						})
+
 					} else {
-						serverSideOutput = mcpResultToString(result)
-					}
-				} else if isFileSearch {
-					isServerSide = true
-					args := parseJSONArgs(tc.Arguments)
-					query, _ := args["query"].(string)
-					serverSideOutput = e.executeFileSearch(ctx, fsCfg, query)
-				}
-
-				if isServerSide {
-					// Emit function_call_output item
-					outputItem := schema.ItemField{
-						Type:   "function_call_output",
-						ID:     generateID("fco_"),
-						CallID: &callID,
-						Output: &serverSideOutput,
-					}
-
-					events <- &schema.ResponseOutputItemAddedStreamingEvent{
-						Type:           "response.output_item.added",
-						SequenceNumber: seqNum,
-						OutputIndex:    outputIdx,
-						Item:           outputItem,
-					}
-					seqNum++
-
-					events <- &schema.ResponseOutputItemDoneStreamingEvent{
-						Type:           "response.output_item.done",
-						SequenceNumber: seqNum,
-						OutputIndex:    outputIdx,
-						Item:           outputItem,
-					}
-					seqNum++
-
-					allOutput = append(allOutput, outputItem)
-					outputIdx++
-
-					// Append to messages for LLM context
-					messages = append(messages, api.Message{
-						Role: "assistant",
-						ToolCalls: []api.ToolCall{{
-							ID:   tc.ID,
+						// Client-side function call — already forwarded via raw events
+						completedStatus := "completed"
+						callID := tc.CallID
+						funcName := tc.Name
+						funcArgs := tc.Arguments
+						allOutput = append(allOutput, schema.ItemField{
+							Type:      "function_call",
+							ID:        generateID("fc_"),
+							CallID:    &callID,
+							Name:      &funcName,
+							Arguments: &funcArgs,
+							Status:    &completedStatus,
+						})
+						clientSideCalls = append(clientSideCalls, api.ToolCall{
+							ID:   tc.CallID,
 							Type: "function",
 							Function: api.ToolCallFunction{
 								Name:      tc.Name,
 								Arguments: tc.Arguments,
 							},
-						}},
-					})
+						})
+					}
+				}
+
+				if len(clientSideCalls) > 0 {
 					messages = append(messages, api.Message{
-						Role:       "tool",
-						Content:    serverSideOutput,
-						ToolCallID: tc.ID,
+						Role:      "assistant",
+						ToolCalls: clientSideCalls,
+					})
+				}
+
+				if hasServerSide && len(clientSideCalls) == 0 {
+					// All calls were server-side — continue agentic loop
+					continue
+				}
+				// Client-side calls present — break
+				break
+			}
+
+			// No tool calls — collect text output from backend
+			if len(backendOutput) > 0 {
+				backendSchemaOutput := convertOutputItemsToSchema(backendOutput)
+				allOutput = append(allOutput, backendSchemaOutput...)
+
+				textContent, _, _ := parseResponsesOutput(backendOutput)
+				if textContent != "" {
+					messages = append(messages, api.Message{
+						Role:    "assistant",
+						Content: textContent,
 					})
 				}
 			}
 
-			// Check if any tool calls were client-side (not MCP and not file_search)
-			hasClientSide := false
-			var clientSideTCs []api.ToolCall
-			for _, tc := range toolCallAccum {
-				_, isMCP := mcpToolNames[tc.Name]
-				_, isFS := fileSearchConfigs[tc.Name]
-				if !isMCP && !isFS {
-					hasClientSide = true
-					clientSideTCs = append(clientSideTCs, api.ToolCall{
-						ID:   tc.ID,
-						Type: "function",
-						Function: api.ToolCallFunction{
-							Name:      tc.Name,
-							Arguments: tc.Arguments,
-						},
-					})
-				}
-			}
-
-			if hasClientSide {
-				// Append assistant message with client-side calls for storage
-				messages = append(messages, api.Message{
-					Role:      "assistant",
-					ToolCalls: clientSideTCs,
-				})
-			}
-
-			// If all calls were server-side (MCP or file_search), the agentic loop
-			// in streaming doesn't re-iterate here, but we include the results in
-			// the output.
-
-		} else {
-			// Normal text response
-			if messageItemEmitted {
-				// Send text done event
-				events <- &schema.ResponseOutputTextDoneStreamingEvent{
-					Type:           "response.output_text.done",
-					SequenceNumber: seqNum,
-					ItemID:         messageItemID,
-					OutputIndex:    outputIndex,
-					ContentIndex:   contentIndex,
-					Text:           fullText,
-					Logprobs:       make([]interface{}, 0),
-				}
-				seqNum++
-
-				// Emit content_part.done
-				events <- &schema.ResponseContentPartDoneStreamingEvent{
-					Type:           "response.content_part.done",
-					SequenceNumber: seqNum,
-					ItemID:         messageItemID,
-					OutputIndex:    outputIndex,
-					ContentIndex:   contentIndex,
-					Part: schema.ContentPart{
-						Type: "output_text",
-						Text: &fullText,
+			// Set usage from backend
+			if backendUsage != nil {
+				resp.Usage = &schema.UsageField{
+					InputTokens:  backendUsage.InputTokens,
+					OutputTokens: backendUsage.OutputTokens,
+					TotalTokens:  backendUsage.TotalTokens,
+					InputTokensDetails: schema.InputTokensDetails{
+						CachedTokens: 0,
+					},
+					OutputTokensDetails: schema.OutputTokensDetails{
+						ReasoningTokens: 0,
 					},
 				}
-				seqNum++
-
-				// Complete the message item
-				completedStatus := "completed"
-				assistantRole := "assistant"
-				messageItem := schema.ItemField{
-					Type:   "message",
-					ID:     messageItemID,
-					Role:   &assistantRole,
-					Status: &completedStatus,
-					Content: []schema.ContentPart{
-						{
-							Type: "output_text",
-							Text: &fullText,
-						},
-					},
-				}
-
-				// Send output_item.done event
-				events <- &schema.ResponseOutputItemDoneStreamingEvent{
-					Type:           "response.output_item.done",
-					SequenceNumber: seqNum,
-					OutputIndex:    outputIndex,
-					Item:           messageItem,
-				}
-				seqNum++
-
-				allOutput = append(allOutput, messageItem)
-
-				// Append assistant message for storage
-				messages = append(messages, api.Message{
-					Role:    "assistant",
-					Content: fullText,
-				})
 			}
+
+			break
 		}
 
 		// Update response
@@ -1699,25 +1798,12 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 		resp.MarkCompleted()
 
-		// Set usage stats
-		inputLen := 0
-		for _, m := range messages {
-			inputLen += len(m.Content)
-		}
-		outputLen := len(fullText)
-		for _, tc := range toolCallAccum {
-			outputLen += len(tc.Arguments)
-		}
-		resp.Usage = &schema.UsageField{
-			InputTokens:  inputLen / 4,
-			OutputTokens: outputLen / 4,
-			TotalTokens:  (inputLen + outputLen) / 4,
-			InputTokensDetails: schema.InputTokensDetails{
-				CachedTokens: 0,
-			},
-			OutputTokensDetails: schema.OutputTokensDetails{
-				ReasoningTokens: 0,
-			},
+		// Set usage if not already set
+		if resp.Usage == nil {
+			resp.Usage = &schema.UsageField{
+				InputTokensDetails:  schema.InputTokensDetails{},
+				OutputTokensDetails: schema.OutputTokensDetails{},
+			}
 		}
 
 		// Send response.completed event
@@ -1726,7 +1812,6 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			SequenceNumber: seqNum,
 			Response:       *resp,
 		}
-		seqNum++
 
 		// Final save with complete state
 		_ = e.sessions.SaveResponse(ctx, &state.Response{

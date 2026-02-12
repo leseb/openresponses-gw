@@ -164,7 +164,7 @@ func main() {
 	logger.Info("Initialized engine")
 
 	// Initialize services
-	modelsService := services.NewModelsService(eng.LLMClient())
+	modelsService := services.NewModelsService()
 	logger.Info("Initialized models service")
 
 	// Initialize HTTP adapter

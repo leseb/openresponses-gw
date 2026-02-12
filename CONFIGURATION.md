@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide explains how to configure the Open Responses Gateway to connect to real inference backends.
+This guide explains how to configure the Open Responses Gateway. The gateway requires a `/v1/responses`-compatible inference backend (e.g., vLLM, OpenAI).
 
 ## Quick Start: Testing with OpenAI
 
@@ -228,23 +228,24 @@ Run:
 
 ---
 
-## Backend Modes
+## Compatible Backends
 
-The gateway automatically selects the backend mode based on configuration:
+The gateway requires a backend that supports the `/v1/responses` endpoint (the Open Responses API). Compatible backends include:
 
-### Mode 1: Real OpenAI (Production)
+### vLLM (Recommended)
 
-**Triggers when:**
-- `OPENAI_API_KEY` is set **AND**
-- `OPENAI_API_ENDPOINT` is set (or defaults to OpenAI)
+```bash
+# Start vLLM with a model
+python -m vllm.entrypoints.openai.api_server --model <model>
 
-**Behavior:**
-- Makes real API calls to OpenAI
-- Returns actual LLM responses
-- Charges your OpenAI account
-- Full token usage tracking
+# Configure gateway
+export OPENAI_API_KEY=unused
+export OPENAI_API_ENDPOINT=http://localhost:8000/v1
+./bin/openresponses-gw-server
+```
 
-**Example:**
+### OpenAI
+
 ```bash
 export OPENAI_API_KEY=sk-proj-...
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1
@@ -253,106 +254,32 @@ export OPENAI_API_ENDPOINT=https://api.openai.com/v1
 
 ---
 
-### Mode 2: Mock LLM (Development/Testing)
-
-**Triggers when:**
-- `OPENAI_API_KEY` is **NOT** set **OR**
-- `OPENAI_API_ENDPOINT` is **NOT** set
-
-**Behavior:**
-- Returns mock responses
-- No external API calls
-- Free to use
-- Useful for testing gateway features
-
-**Example:**
-```bash
-# No API key set
-./bin/openresponses-gw-server
-```
-
-Mock response format:
-```json
-{
-  "output": [{
-    "content": {
-      "text": "Mock response to: <your input>"
-    }
-  }]
-}
-```
-
----
-
-## OpenAI-Compatible Backends
-
-The gateway works with **any OpenAI-compatible API**:
-
-### Groq
-
-```bash
-export OPENAI_API_KEY=gsk_your_groq_key
-export OPENAI_API_ENDPOINT=https://api.groq.com/openai/v1
-./bin/openresponses-gw-server
-```
-
-Models: `llama3-70b-8192`, `mixtral-8x7b-32768`, etc.
-
----
-
-### Together AI
-
-```bash
-export OPENAI_API_KEY=your_together_key
-export OPENAI_API_ENDPOINT=https://api.together.xyz/v1
-./bin/openresponses-gw-server
-```
-
----
-
-### Ollama (Local)
-
-```bash
-# Start Ollama
-ollama serve
-
-# Pull a model
-ollama pull llama3.2
-
-# Configure gateway
-export OPENAI_API_KEY=unused
-export OPENAI_API_ENDPOINT=http://localhost:11434/v1
-./bin/openresponses-gw-server
-```
-
-**Note:** Ollama doesn't require an API key, but you must set it to any non-empty value.
-
----
-
-### Azure OpenAI
-
-```bash
-export OPENAI_API_KEY=your_azure_key
-export OPENAI_API_ENDPOINT=https://your-resource.openai.azure.com/openai/deployments/your-deployment
-./bin/openresponses-gw-server
-```
-
----
-
-### LM Studio (Local)
-
-```bash
-# Start LM Studio server on port 1234
-export OPENAI_API_KEY=unused
-export OPENAI_API_ENDPOINT=http://localhost:1234/v1
-./bin/openresponses-gw-server
-```
-
----
-
 ## Configuration Examples
 
-### Example 1: Production OpenAI
+### Example 1: vLLM (Local)
+
+```yaml
+# config-vllm.yaml
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeout: 60s
+
+engine:
+  model_endpoint: http://localhost:8000/v1
+  max_tokens: 4096
+  timeout: 60s
+```
+
+```bash
+python -m vllm.entrypoints.openai.api_server --model <model>
+export OPENAI_API_KEY=unused
+./bin/openresponses-gw-server --config config-vllm.yaml
+```
+
+---
+
+### Example 2: Production OpenAI
 
 ```yaml
 # config-production.yaml
@@ -371,52 +298,6 @@ engine:
 ```bash
 export OPENAI_API_KEY=sk-proj-...
 ./bin/openresponses-gw-server --config config-production.yaml
-```
-
----
-
-### Example 2: Development with Ollama
-
-```yaml
-# config-dev.yaml
-server:
-  host: 127.0.0.1
-  port: 8080
-  timeout: 30s
-
-engine:
-  model_endpoint: http://localhost:11434/v1
-  # api_key not needed for Ollama, but must be non-empty
-  max_tokens: 2048
-  timeout: 30s
-```
-
-```bash
-export OPENAI_API_KEY=unused
-ollama serve
-./bin/openresponses-gw-server --config config-dev.yaml
-```
-
----
-
-### Example 3: Groq for Fast Inference
-
-```yaml
-# config-groq.yaml
-server:
-  host: 0.0.0.0
-  port: 8080
-  timeout: 60s
-
-engine:
-  model_endpoint: https://api.groq.com/openai/v1
-  max_tokens: 8192
-  timeout: 60s
-```
-
-```bash
-export OPENAI_API_KEY=gsk_...
-./bin/openresponses-gw-server --config config-groq.yaml
 ```
 
 ---
@@ -463,52 +344,21 @@ curl -X POST http://localhost:8080/v1/responses \
 ./bin/openresponses-gw-server
 
 # Look for:
-# INFO Initialized engine mode=openai  (real backend)
-# INFO Initialized engine mode=mock    (mock backend)
+# INFO Initialized engine
 ```
 
 2. **Make a test request:**
 ```bash
 curl -X POST http://localhost:8080/v1/responses \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o-mini","input":"ping"}' | jq .
-```
-
-3. **Check response format:**
-
-**Real backend** returns actual model output:
-```json
-{
-  "output": [{
-    "content": {
-      "text": "Pong! How can I help you today?"
-    }
-  }],
-  "usage": {
-    "total_tokens": 23  # Real token count
-  }
-}
-```
-
-**Mock backend** returns predictable format:
-```json
-{
-  "output": [{
-    "content": {
-      "text": "Mock response to: ping"
-    }
-  }],
-  "usage": {
-    "total_tokens": 3  # Approximate count
-  }
-}
+  -d '{"model":"<model>","input":"ping"}' | jq .
 ```
 
 ---
 
 ## Troubleshooting
 
-### "Failed to call LLM: API returned status 401"
+### "backend returned status 401"
 
 **Problem:** Invalid API key
 
@@ -524,35 +374,16 @@ curl https://api.openai.com/v1/models \
 
 ---
 
-### "Failed to call LLM: connection refused"
+### "request to backend failed: connection refused"
 
 **Problem:** Backend endpoint not reachable
 
 **Solution:**
 ```bash
-# For Ollama, ensure it's running
-ollama serve
-
-# For other backends, check endpoint
-curl https://api.openai.com/v1/models
-```
-
----
-
-### "Mock response to: ..." (when expecting real responses)
-
-**Problem:** Gateway is in mock mode
-
-**Solution:**
-```bash
-# Ensure API key is set
-export OPENAI_API_KEY=sk-...
-
-# Ensure endpoint is set
-export OPENAI_API_ENDPOINT=https://api.openai.com/v1
-
-# Restart server
-make run
+# Ensure your backend is running and the endpoint is correct
+curl $OPENAI_API_ENDPOINT/responses \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<model>","input":"test"}'
 ```
 
 ---

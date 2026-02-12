@@ -4,26 +4,57 @@
 ![Open Responses Compliant](https://img.shields.io/badge/Open%20Responses-100%25%20Compliant-brightgreen)
 ![OpenAI Compatible](https://img.shields.io/badge/OpenAI%20API-99.5%25%20Schema%20Compatible-blue)
 
-A gateway-agnostic implementation of the [Open Responses API](https://github.com/openresponses/openresponses) — translates the Responses API to Chat Completions against any OpenAI-compatible backend (OpenAI, Ollama, vLLM, etc.).
+The **stateful layer** for the [Open Responses API](https://github.com/openresponses/openresponses) — adds persistence, conversations, file search, MCP tools, and prompts on top of any `/v1/responses`-compatible inference backend.
+
+## Why
+
+Inference servers like vLLM now expose the
+[Open Responses API](https://github.com/openresponses/openresponses)
+natively via `/v1/responses` — but they focus on LLM generation. A
+production deployment also needs:
+
+- **Persistent storage** — responses and conversations survive restarts
+- **Files & Vector Stores** — upload documents, chunk, embed, and search (RAG)
+- **Server-side tool execution** — file_search over vector stores, MCP tool
+  calling via registered connectors
+- **Conversations API** — multi-turn state management across requests
+- **Prompts API** — versioned prompt templates
+
+This gateway sits in front of any `/v1/responses`-compatible backend and
+adds everything above. The inference backend does what it does best (LLM
+generation), and the gateway handles the rest.
+
+```
+                                    ┌──────────────┐
+                                    │  Inference    │
+    Client ──> openresponses-gw ──> │  Backend      │
+               (stateful tier)      │  (vLLM, etc)  │
+               - storage            │               │
+               - conversations      │ /v1/responses  │
+               - files & vectors    └──────────────┘
+               - MCP connectors
+               - file_search
+               - prompts
+```
 
 ## Quick Start
 
-**Prerequisites:** Go 1.24+, Make, and an OpenAI-compatible backend (e.g. [Ollama](https://ollama.com))
+**Prerequisites:** Go 1.24+, Make, and a `/v1/responses`-compatible backend (e.g. [vLLM](https://docs.vllm.ai))
 
 ```bash
-# Install and start Ollama, then pull a model
-ollama pull llama3.2:3b
+# Start vLLM with a model
+python -m vllm.entrypoints.openai.api_server --model <model>
 
 # Clone and run the gateway
 git clone https://github.com/leseb/openresponses-gw && cd openresponses-gw
-export OPENAI_API_ENDPOINT="http://localhost:11434/v1"
+export OPENAI_API_ENDPOINT="http://localhost:8000/v1"
 export OPENAI_API_KEY="unused"
 make run
 
 # In another terminal
 curl -X POST http://localhost:8080/v1/responses \
   -H "Content-Type: application/json" \
-  -d '{"model": "llama3.2:3b", "input": "Hello, world!"}'
+  -d '{"model": "<model>", "input": "Hello, world!"}'
 ```
 
 To use OpenAI instead, set `OPENAI_API_ENDPOINT="https://api.openai.com/v1"` and `OPENAI_API_KEY` to your API key.
@@ -67,7 +98,7 @@ cmd/
   server/              # Standalone HTTP server
   envoy-extproc/       # Envoy External Processor
 pkg/
-  core/                # Gateway-agnostic core (engine, config, schema, API client)
+  core/                # Gateway-agnostic core (engine, config, schema, Responses API client)
   adapters/
     http/              # HTTP server adapter
     envoy/             # Envoy ExtProc adapter
