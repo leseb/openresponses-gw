@@ -1407,6 +1407,190 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	return resp, nil
 }
 
+// PrepareRequest performs the preparation phase for filter chain mode.
+// It validates the request, resolves conversation state, expands tools,
+// and returns a PreparedRequest that can be used to inject state and
+// forward the request to the backend.
+func (e *Engine) PrepareRequest(ctx context.Context, req *schema.ResponseRequest) (*PreparedRequest, error) {
+	// 1. Validate request
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// 2. Generate response ID
+	respID := generateID("resp_")
+
+	// 3. Get model
+	model := ""
+	if req.Model != nil {
+		model = *req.Model
+	}
+
+	// 4. Resolve conversation (auto-create or validate existing)
+	conversationID, err := e.resolveConversation(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve conversation: %w", err)
+	}
+
+	// 5. Build conversation messages (including multi-turn history)
+	var messages []api.Message
+	if req.Conversation != nil && *req.Conversation != "" {
+		messages, err = e.buildConversationMessagesFromConversation(ctx, conversationID, req)
+	} else {
+		messages, err = e.buildConversationMessages(ctx, req)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to build conversation: %w", err)
+	}
+
+	// 6. Expand MCP tools into function tools
+	expandedTools := req.Tools
+	mcpToolNames := map[string]string{}
+	if len(req.Tools) > 0 {
+		var mcpClients map[string]*mcp.Client
+		var expandErr error
+		expandedTools, mcpClients, expandErr = e.expandMCPTools(ctx, req.Tools)
+		if expandErr != nil {
+			return nil, fmt.Errorf("failed to expand MCP tools: %w", expandErr)
+		}
+		// Convert MCP clients to server labels for serialization
+		for toolName, client := range mcpClients {
+			if client != nil {
+				mcpToolNames[toolName] = client.ServerURL()
+			}
+		}
+	}
+
+	// 7. Expand file_search tools into function tools
+	var fileSearchConfigs map[string]FileSearchConfig
+	if len(expandedTools) > 0 {
+		var internalConfigs map[string]fileSearchConfig
+		expandedTools, internalConfigs = e.expandFileSearchTools(expandedTools)
+		if internalConfigs != nil {
+			fileSearchConfigs = make(map[string]FileSearchConfig)
+			for name, cfg := range internalConfigs {
+				fileSearchConfigs[name] = FileSearchConfig{
+					VectorStoreIDs: cfg.VectorStoreIDs,
+					MaxNumResults:  cfg.MaxNumResults,
+				}
+			}
+		}
+	}
+
+	// 8. Build state for injection
+	state := &ConversationState{
+		ConversationID:    conversationID,
+		ResponseID:        respID,
+		Messages:          messages,
+		ExpandedTools:     expandedTools,
+		MCPToolNames:      mcpToolNames,
+		FileSearchConfigs: fileSearchConfigs,
+		OriginalRequest:   req,
+	}
+
+	// 9. Build backend request
+	backendReq := buildResponsesAPIRequest(model, messages, req, expandedTools, false)
+
+	return &PreparedRequest{
+		State:          state,
+		BackendRequest: backendReq,
+		Model:          model,
+	}, nil
+}
+
+// ProcessResponse processes the backend response in filter chain mode.
+// It takes the prepared state and backend response, saves to state store,
+// and returns the final response to send to the client.
+func (e *Engine) ProcessResponse(ctx context.Context, convState *ConversationState, backendResp *api.ResponsesAPIResponse) (*schema.Response, error) {
+	if convState == nil {
+		return nil, fmt.Errorf("state is nil")
+	}
+	if backendResp == nil {
+		return nil, fmt.Errorf("backend response is nil")
+	}
+
+	req := convState.OriginalRequest
+	if req == nil {
+		return nil, fmt.Errorf("original request not found in state")
+	}
+
+	// Create response object with gateway's response ID
+	model := convState.Model()
+	resp := schema.NewResponse(convState.ResponseID, model)
+
+	// Echo request parameters and set conversation
+	echoRequestParams(resp, req)
+	resp.Conversation = &convState.ConversationID
+
+	// Convert backend output to schema
+	allOutput := convertOutputItemsToSchema(backendResp.Output)
+	resp.Output = allOutput
+	if resp.Output == nil {
+		resp.Output = make([]schema.ItemField, 0)
+	}
+
+	// Set usage from backend
+	if backendResp.Usage != nil {
+		resp.Usage = &schema.UsageField{
+			InputTokens:  backendResp.Usage.InputTokens,
+			OutputTokens: backendResp.Usage.OutputTokens,
+			TotalTokens:  backendResp.Usage.TotalTokens,
+			InputTokensDetails: schema.InputTokensDetails{
+				CachedTokens: 0,
+			},
+			OutputTokensDetails: schema.OutputTokensDetails{
+				ReasoningTokens: 0,
+			},
+		}
+	} else {
+		resp.Usage = &schema.UsageField{
+			InputTokensDetails:  schema.InputTokensDetails{},
+			OutputTokensDetails: schema.OutputTokensDetails{},
+		}
+	}
+
+	// Mark as completed
+	resp.MarkCompleted()
+
+	// Save response to state store
+	prevRespID := ""
+	if req.PreviousResponseID != nil {
+		prevRespID = *req.PreviousResponseID
+	}
+
+	// Reconstruct messages for storage
+	messages := convState.Messages
+	textContent, _, _ := parseResponsesOutput(backendResp.Output)
+	if textContent != "" {
+		messages = append(messages, api.Message{
+			Role:    "assistant",
+			Content: textContent,
+		})
+	}
+
+	if err := e.sessions.SaveResponse(ctx, &state.Response{
+		ID:                 resp.ID,
+		ConversationID:     convState.ConversationID,
+		PreviousResponseID: prevRespID,
+		Request:            req,
+		Output:             resp.Output,
+		Status:             resp.Status,
+		Usage:              resp.Usage,
+		Messages:           messagesToConversationMessages(messages),
+		CreatedAt:          time.Unix(resp.CreatedAt, 0),
+		CompletedAt:        timePtr(resp.CompletedAt),
+	}); err != nil {
+		return nil, fmt.Errorf("failed to save response: %w", err)
+	}
+
+	// Append items to conversation for the Conversations API
+	if err := e.appendItemsToConversation(ctx, convState.ConversationID, req, allOutput); err != nil {
+		_ = err
+	}
+
+	return resp, nil
+}
+
 // ProcessRequestStream processes a streaming Responses API request.
 // It streams from the backend's /v1/responses endpoint, forwarding SSE events
 // to the client and intercepting tool calls for server-side execution.
