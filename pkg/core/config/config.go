@@ -23,8 +23,8 @@ type Config struct {
 
 // SessionStoreConfig contains session store backend configuration
 type SessionStoreConfig struct {
-	Type string `yaml:"type"` // "memory" (default) or "sqlite"
-	DSN  string `yaml:"dsn"`  // SQLite file path, e.g. "data/responses.db"
+	Type string `yaml:"type"` // "sqlite" (only supported backend)
+	DSN  string `yaml:"dsn"`  // SQLite DSN: ":memory:" (default) or file path, e.g. "data/responses.db"
 }
 
 // ServerConfig contains HTTP server configuration
@@ -226,6 +226,9 @@ func applyFileStoreDefaults(cfg *FileStoreConfig) {
 
 func applySessionStoreDefaults(cfg *SessionStoreConfig) {
 	if cfg.Type == "" {
-		cfg.Type = "memory"
+		cfg.Type = "sqlite"
+	}
+	if cfg.DSN == "" {
+		cfg.DSN = ":memory:"
 	}
 }

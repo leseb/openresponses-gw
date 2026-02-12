@@ -19,7 +19,7 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/adapters/envoy"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
-	"github.com/leseb/openresponses-gw/pkg/storage/memory"
+	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 )
 
 func main() {
@@ -62,8 +62,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize in-memory session store
-	store := memory.New()
+	// Initialize SQLite session store (in-memory by default)
+	store, err := sqlite.New(cfg.SessionStore.DSN)
+	if err != nil {
+		logger.Error("failed to initialize SQLite session store", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
 
 	// Initialize engine
 	eng, err := engine.New(&cfg.Engine, store, nil, nil)
