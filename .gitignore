@@ -75,4 +75,4 @@ uv.lock
 .conformance-tests/
 .server-test.log
 .server-test.pid
-openai-spec.yaml
+scripts/conformance/openai-spec.yaml

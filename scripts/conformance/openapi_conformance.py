@@ -12,7 +12,7 @@ and generates a coverage report showing:
 - A conformance score that increases as issues are fixed
 
 Usage:
-    python scripts/openapi_conformance.py [--update]
+    python scripts/conformance/openapi_conformance.py [--update]
     make test-openapi-conformance
 """
 
@@ -573,13 +573,14 @@ def main():
     parser.add_argument(
         "--openai-spec",
         type=Path,
-        default=Path("openai-spec.yaml"),
-        help="Path to OpenAI spec (default: openai-spec.yaml - cached locally)",
+        default=Path("scripts/conformance/openai-spec.yaml"),
+        help="Path to OpenAI spec (default: scripts/conformance/openai-spec.yaml)",
     )
     parser.add_argument(
         "--openresponses-spec",
         type=Path,
-        help="Path to OpenResponses spec (optional, for Responses API comparison)",
+        default=Path("scripts/conformance/openresponses-spec.json"),
+        help="Path to OpenResponses spec (default: scripts/conformance/openresponses-spec.json)",
     )
     parser.add_argument(
         "--gateway-spec",
@@ -590,8 +591,8 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("conformance-results.json"),
-        help="Output path for coverage JSON (default: conformance-results.json)",
+        default=Path("scripts/conformance/conformance-results.json"),
+        help="Output path for coverage JSON (default: scripts/conformance/conformance-results.json)",
     )
     parser.add_argument(
         "--update",
