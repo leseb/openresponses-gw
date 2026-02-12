@@ -120,16 +120,16 @@ docker-run: ## Run Docker container
 
 docker-compose-up: ## Start docker-compose stack
 	@echo "$(GREEN)Starting docker-compose stack...$(NC)"
-	docker-compose up -d
+	docker-compose -f deployments/docker-compose.yaml up -d
 	@echo "$(GREEN)✓ Stack started$(NC)"
 
 docker-compose-down: ## Stop docker-compose stack
 	@echo "$(YELLOW)Stopping docker-compose stack...$(NC)"
-	docker-compose down
+	docker-compose -f deployments/docker-compose.yaml down
 	@echo "$(GREEN)✓ Stack stopped$(NC)"
 
 docker-compose-logs: ## Show docker-compose logs
-	docker-compose logs -f
+	docker-compose -f deployments/docker-compose.yaml logs -f
 
 migrate-create: ## Create a new migration (usage: make migrate-create NAME=add_users)
 	@if [ -z "$(NAME)" ]; then echo "$(RED)Error: NAME is required. Usage: make migrate-create NAME=add_users$(NC)"; exit 1; fi
@@ -217,7 +217,7 @@ test-conformance-custom: build-server ## Run conformance tests with custom model
 test-integration-python: ## Run Python integration tests
 	@echo "$(GREEN)Running Python integration tests...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
-	uv run pytest tests/integration/ -v
+	uv run --project tests/integration pytest tests/integration/ -v
 
 test-openapi-conformance: ## Check OpenAPI conformance against OpenAI spec
 	@echo "$(GREEN)Checking OpenAPI conformance...$(NC)"
