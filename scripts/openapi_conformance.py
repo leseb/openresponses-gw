@@ -190,6 +190,7 @@ def _run_oasdiff(openai_spec: Path, gateway_spec: Path) -> dict[str, Any]:
             "json",
             "--strip-prefix-revision",
             "/v1",
+            "--flatten-allof",
         ],
         capture_output=True,
         text=True,
