@@ -93,38 +93,12 @@ func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 	}
 	resp.MaxOutputTokens = req.MaxOutputTokens
 	resp.MaxToolCalls = req.MaxToolCalls
-	if req.ParallelToolCalls != nil {
-		resp.ParallelToolCalls = *req.ParallelToolCalls
-	}
-	if req.Store != nil {
-		resp.Store = *req.Store
-	}
 	if req.FrequencyPenalty != nil {
 		resp.FrequencyPenalty = *req.FrequencyPenalty
 	}
 	if req.PresencePenalty != nil {
 		resp.PresencePenalty = *req.PresencePenalty
 	}
-	if req.Truncation != nil {
-		if req.Truncation.Type == "last_messages" {
-			resp.Truncation = "disabled"
-		} else {
-			resp.Truncation = "auto"
-		}
-	} else {
-		resp.Truncation = "auto"
-	}
-	if req.TopLogprobs != nil {
-		resp.TopLogprobs = *req.TopLogprobs
-	}
-	if req.ServiceTier != nil {
-		resp.ServiceTier = *req.ServiceTier
-	}
-	if req.Background != nil {
-		resp.Background = *req.Background
-	}
-	resp.PromptCacheKey = req.PromptCacheKey
-	resp.SafetyIdentifier = req.SafetyIdentifier
 	resp.Metadata = req.Metadata
 }
 
@@ -344,7 +318,6 @@ func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.
 	apiReq.FrequencyPenalty = req.FrequencyPenalty
 	apiReq.PresencePenalty = req.PresencePenalty
 	apiReq.MaxOutputTokens = req.MaxOutputTokens
-	apiReq.ParallelToolCalls = req.ParallelToolCalls
 
 	// Tool choice
 	apiReq.ToolChoice = req.ToolChoice
@@ -1887,17 +1860,6 @@ func convertReasoningToResponse(reqReasoning *schema.ReasoningParam) *schema.Rea
 	}
 }
 
-// convertTruncationToResponse converts request truncation to response truncation
-func convertTruncationToResponse(reqTruncation *schema.TruncationStrategyParam) *schema.TruncationStrategy {
-	if reqTruncation == nil {
-		return nil
-	}
-	return &schema.TruncationStrategy{
-		Type:         reqTruncation.Type,
-		LastMessages: reqTruncation.LastMessages,
-	}
-}
-
 // GetResponse retrieves a response by ID from the session store
 func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Response, error) {
 	stateResp, err := e.sessions.GetResponse(ctx, responseID)
@@ -1945,9 +1907,6 @@ func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Re
 		}
 
 		schemaResp.MaxOutputTokens = req.MaxOutputTokens
-		if req.Store != nil {
-			schemaResp.Store = *req.Store
-		}
 		schemaResp.Metadata = req.Metadata
 
 		if req.Tools != nil {

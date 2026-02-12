@@ -54,35 +54,11 @@ type ResponseRequest struct {
 	// Maximum number of tool calls
 	MaxToolCalls *int `json:"max_tool_calls,omitempty"`
 
-	// Allow parallel tool calls
-	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"`
-
-	// Store conversation for later retrieval
-	Store *bool `json:"store,omitempty"`
-
 	// Frequency penalty (-2.0 to 2.0)
 	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
 
 	// Presence penalty (-2.0 to 2.0)
 	PresencePenalty *float64 `json:"presence_penalty,omitempty"`
-
-	// Truncation strategy for context
-	Truncation *TruncationStrategyParam `json:"truncation,omitempty"`
-
-	// Number of top log probabilities to return
-	TopLogprobs *int `json:"top_logprobs,omitempty"`
-
-	// Service tier for routing (auto, default)
-	ServiceTier *string `json:"service_tier,omitempty"`
-
-	// Process in background
-	Background *bool `json:"background,omitempty"`
-
-	// Cache key for prompt caching
-	PromptCacheKey *string `json:"prompt_cache_key,omitempty"`
-
-	// Safety identifier for content filtering
-	SafetyIdentifier *string `json:"safety_identifier,omitempty"`
 
 	// Whether to stream the response (HTTP-specific, not in spec but required for SSE)
 	Stream bool `json:"stream,omitempty"`
@@ -124,7 +100,7 @@ type Response struct {
 	// Metadata (echoed from request)
 	Metadata map[string]string `json:"metadata,omitempty"`
 
-	// Echo request parameters (all fields must be present per Open Responses spec)
+	// Echo request parameters
 	PreviousResponseID *string          `json:"previous_response_id"`             // nullable
 	Conversation       *string          `json:"conversation"`                     // nullable
 	Instructions       *string          `json:"instructions"`                     // nullable
@@ -135,19 +111,8 @@ type Response struct {
 	TopP               float64          `json:"top_p"`                            // required number
 	MaxOutputTokens    *int             `json:"max_output_tokens"`                // nullable
 	MaxToolCalls       *int             `json:"max_tool_calls"`                   // nullable
-	ParallelToolCalls  bool             `json:"parallel_tool_calls"`              // required boolean
-	Store              bool             `json:"store"`                            // required boolean
 	FrequencyPenalty   float64          `json:"frequency_penalty"`                // required number
 	PresencePenalty    float64          `json:"presence_penalty"`                 // required number
-	Truncation         string           `json:"truncation"`                       // required: "auto" or "disabled"
-	TopLogprobs        int              `json:"top_logprobs"`                     // required number
-	ServiceTier        string           `json:"service_tier"`                     // required string
-	Background         bool             `json:"background"`                       // required boolean
-	PromptCacheKey     *string          `json:"prompt_cache_key"`                 // nullable
-	SafetyIdentifier   *string          `json:"safety_identifier"`                // nullable
-
-	// Text field: object with format (required)
-	Text *TextField `json:"text"` // nullable
 }
 
 // ItemField represents an output item (discriminated union by type)
@@ -226,16 +191,6 @@ type OutputTokensDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"` // required
 	AudioTokens     int `json:"audio_tokens,omitempty"`
 	TextTokens      int `json:"text_tokens,omitempty"`
-}
-
-// TextField represents the text output format configuration
-type TextField struct {
-	Format TextFormat `json:"format"`
-}
-
-// TextFormat represents the response format type
-type TextFormat struct {
-	Type string `json:"type"` // "text", "json_object", "json_schema"
 }
 
 // ErrorField represents error information
@@ -378,18 +333,6 @@ type ReasoningConfig struct {
 // ReasoningBudget represents reasoning token budget
 type ReasoningBudget struct {
 	TokenBudget *int `json:"token_budget,omitempty"`
-}
-
-// TruncationStrategyParam represents truncation configuration (request)
-type TruncationStrategyParam struct {
-	Type         string `json:"type"` // "auto", "last_messages"
-	LastMessages *int   `json:"last_messages,omitempty"`
-}
-
-// TruncationStrategy represents truncation configuration (response)
-type TruncationStrategy struct {
-	Type         string `json:"type"`
-	LastMessages *int   `json:"last_messages,omitempty"`
 }
 
 // Streaming Event Types (24 event types per Open Responses spec)
@@ -636,24 +579,13 @@ func NewResponse(id, model string) *Response {
 		Model:     model,
 		Status:    "in_progress",
 		Output:    make([]ItemField, 0),
-		// Initialize required fields with defaults (Open Responses spec)
-		Tools:             make([]ResponsesTool, 0), // empty array, not nil
-		ToolChoice:        "none",                   // default to "none" (string enum)
-		Temperature:       0.0,
-		TopP:              0.0,
-		ParallelToolCalls: false,
-		Store:             false,
-		FrequencyPenalty:  0.0,
-		PresencePenalty:   0.0,
-		TopLogprobs:       0,
-		ServiceTier:       "",
-		Background:        false,
-		Truncation:        "auto", // Default: "auto" or "disabled"
-		Text: &TextField{
-			Format: TextFormat{
-				Type: "text",
-			},
-		},
+		// Initialize required fields with defaults
+		Tools:            make([]ResponsesTool, 0), // empty array, not nil
+		ToolChoice:       "none",                   // default to "none" (string enum)
+		Temperature:      0.0,
+		TopP:             0.0,
+		FrequencyPenalty: 0.0,
+		PresencePenalty:  0.0,
 	}
 }
 

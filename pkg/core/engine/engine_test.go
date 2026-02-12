@@ -803,15 +803,8 @@ func TestEchoRequestParams(t *testing.T) {
 		TopP:               float64Ptr(0.9),
 		MaxOutputTokens:    intPtr(100),
 		MaxToolCalls:       intPtr(5),
-		ParallelToolCalls:  boolPtr(true),
-		Store:              boolPtr(true),
 		FrequencyPenalty:   float64Ptr(0.5),
 		PresencePenalty:    float64Ptr(0.3),
-		TopLogprobs:        intPtr(3),
-		ServiceTier:        stringPtr("default"),
-		Background:         boolPtr(true),
-		PromptCacheKey:     stringPtr("cache-1"),
-		SafetyIdentifier:   stringPtr("safe-1"),
 		Metadata:           map[string]string{"k": "v"},
 		Tools: []schema.ResponsesToolParam{
 			{Type: "function", Name: "search"},
@@ -846,32 +839,11 @@ func TestEchoRequestParams(t *testing.T) {
 	if *resp.MaxToolCalls != 5 {
 		t.Errorf("MaxToolCalls: expected 5, got %v", resp.MaxToolCalls)
 	}
-	if !resp.ParallelToolCalls {
-		t.Error("ParallelToolCalls: expected true")
-	}
-	if !resp.Store {
-		t.Error("Store: expected true")
-	}
 	if resp.FrequencyPenalty != 0.5 {
 		t.Errorf("FrequencyPenalty: expected 0.5, got %v", resp.FrequencyPenalty)
 	}
 	if resp.PresencePenalty != 0.3 {
 		t.Errorf("PresencePenalty: expected 0.3, got %v", resp.PresencePenalty)
-	}
-	if resp.TopLogprobs != 3 {
-		t.Errorf("TopLogprobs: expected 3, got %v", resp.TopLogprobs)
-	}
-	if resp.ServiceTier != "default" {
-		t.Errorf("ServiceTier: expected %q, got %q", "default", resp.ServiceTier)
-	}
-	if !resp.Background {
-		t.Error("Background: expected true")
-	}
-	if *resp.PromptCacheKey != "cache-1" {
-		t.Errorf("PromptCacheKey: expected %q, got %v", "cache-1", resp.PromptCacheKey)
-	}
-	if *resp.SafetyIdentifier != "safe-1" {
-		t.Errorf("SafetyIdentifier: expected %q, got %v", "safe-1", resp.SafetyIdentifier)
 	}
 	if resp.Metadata["k"] != "v" {
 		t.Errorf("Metadata: expected k=v, got %v", resp.Metadata)
@@ -881,41 +853,6 @@ func TestEchoRequestParams(t *testing.T) {
 	}
 	if resp.Reasoning == nil || *resp.Reasoning.Effort != "medium" {
 		t.Errorf("Reasoning: expected effort=medium, got %v", resp.Reasoning)
-	}
-}
-
-func TestEchoRequestParams_TruncationLogic(t *testing.T) {
-	tests := []struct {
-		name       string
-		truncation *schema.TruncationStrategyParam
-		want       string
-	}{
-		{
-			name:       "nil truncation defaults to auto",
-			truncation: nil,
-			want:       "auto",
-		},
-		{
-			name:       "last_messages becomes disabled",
-			truncation: &schema.TruncationStrategyParam{Type: "last_messages"},
-			want:       "disabled",
-		},
-		{
-			name:       "auto stays auto",
-			truncation: &schema.TruncationStrategyParam{Type: "auto"},
-			want:       "auto",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := &schema.ResponseRequest{Truncation: tt.truncation}
-			resp := schema.NewResponse("test", "model")
-			echoRequestParams(resp, req)
-			if resp.Truncation != tt.want {
-				t.Errorf("expected truncation=%q, got %q", tt.want, resp.Truncation)
-			}
-		})
 	}
 }
 
@@ -930,8 +867,5 @@ func TestEchoRequestParams_NilOptionals(t *testing.T) {
 	}
 	if resp.TopP != 0 {
 		t.Errorf("expected TopP=0, got %v", resp.TopP)
-	}
-	if resp.Truncation != "auto" {
-		t.Errorf("expected Truncation=auto, got %q", resp.Truncation)
 	}
 }
