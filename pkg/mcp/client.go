@@ -4,12 +4,14 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -120,7 +122,7 @@ func (c *Client) callWithHeaders(ctx context.Context, method string, params any)
 		return nil, nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
 	if c.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
@@ -131,13 +133,24 @@ func (c *Client) callWithHeaders(ctx context.Context, method string, params any)
 	}
 	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read response: %w", err)
+	if httpResp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return nil, nil, fmt.Errorf("http status %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
-	if httpResp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("http status %d: %s", httpResp.StatusCode, string(respBody))
+	// Parse response — may be plain JSON or SSE (text/event-stream)
+	ct := httpResp.Header.Get("Content-Type")
+	var respBody []byte
+	if strings.HasPrefix(ct, "text/event-stream") {
+		respBody, err = extractSSEData(httpResp.Body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse SSE response: %w", err)
+		}
+	} else {
+		respBody, err = io.ReadAll(httpResp.Body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read response: %w", err)
+		}
 	}
 
 	var rpcResp JSONRPCResponse
@@ -149,6 +162,23 @@ func (c *Client) callWithHeaders(ctx context.Context, method string, params any)
 	}
 
 	return rpcResp.Result, httpResp.Header, nil
+}
+
+// extractSSEData reads an SSE stream and returns the data from the first
+// "message" event. The MCP streamable-http transport wraps JSON-RPC
+// responses in SSE format: "event: message\ndata: {json}\n\n".
+func extractSSEData(r io.Reader) ([]byte, error) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			return []byte(strings.TrimPrefix(line, "data: ")), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("no data line found in SSE stream")
 }
 
 // notify sends a JSON-RPC notification (no id, no response expected).
@@ -168,7 +198,7 @@ func (c *Client) notify(ctx context.Context, method string) error {
 		return err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
 	if c.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
 	}

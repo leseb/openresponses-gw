@@ -6,7 +6,10 @@ Requires the ``mcp`` package (``pip install mcp``).
 
 from mcp.server.fastmcp import FastMCP
 
-mcp_server = FastMCP("novatech-mcp")
+import sys
+
+_port = int(sys.argv[1]) if len(sys.argv) > 1 else 9100
+mcp_server = FastMCP("novatech-mcp", host="127.0.0.1", port=_port)
 
 
 @mcp_server.tool()
@@ -36,7 +39,4 @@ def get_company_info(topic: str) -> str:
 
 
 if __name__ == "__main__":
-    import sys
-
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 9100
-    mcp_server.run(transport="streamable-http", host="127.0.0.1", port=port)
+    mcp_server.run(transport="streamable-http")

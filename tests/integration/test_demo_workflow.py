@@ -145,7 +145,10 @@ def mcp_server():
                         "capabilities": {},
                     },
                 },
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                },
                 timeout=2.0,
             )
             if resp.status_code == 200:
