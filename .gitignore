@@ -34,6 +34,7 @@ Thumbs.db
 bin/
 dist/
 build/
+/server
 
 # Config files with secrets
 config.yaml
