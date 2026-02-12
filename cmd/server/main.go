@@ -35,40 +35,40 @@ var (
 	BuildTime = "unknown"
 )
 
-//	@title						Open Responses Gateway API
-//	@version					1.0.0
-//	@description				100% Open Responses Specification Compliant Gateway.
-//	@description				Based on: https://github.com/openresponses/openresponses
-//	@description
-//	@description				This gateway provides:
-//	@description				- **Core API**: Full Open Responses spec compliance (POST /v1/responses)
-//	@description				- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Connectors
-//	@description				- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration
-//	@description
-//	@description				Streaming: All 24 event types from Open Responses spec
-//	@description				Request Echo: All request parameters returned in response
-//	@description				Multimodal: Support for text, images, files, video
+// @title						Open Responses Gateway API
+// @version					1.0.0
+// @description				100% Open Responses Specification Compliant Gateway.
+// @description				Based on: https://github.com/openresponses/openresponses
+// @description
+// @description				This gateway provides:
+// @description				- **Core API**: Full Open Responses spec compliance (POST /v1/responses)
+// @description				- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Connectors
+// @description				- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration
+// @description
+// @description				Streaming: All 24 event types from Open Responses spec
+// @description				Request Echo: All request parameters returned in response
+// @description				Multimodal: Support for text, images, files, video
 //
-//	@contact.name				Open Responses Gateway
-//	@contact.url				https://github.com/leseb/openresponses-gw
+// @contact.name				Open Responses Gateway
+// @contact.url				https://github.com/leseb/openresponses-gw
 //
-//	@servers.url				http://localhost:8080
-//	@servers.description		Local development server
+// @servers.url				http://localhost:8080
+// @servers.description		Local development server
 //
-//	@tag.name					Health
-//	@tag.description			Health check and API documentation
-//	@tag.name					Responses
-//	@tag.description			Open Responses API (100% spec compliant)
-//	@tag.name					Conversations
-//	@tag.description			Extended - Conversation state management
-//	@tag.name					Prompts
-//	@tag.description			Extended - Prompt template management
-//	@tag.name					Files
-//	@tag.description			Extended - File upload and management
-//	@tag.name					Vector Stores
-//	@tag.description			Extended - Vector store and embeddings
-//	@tag.name					Connectors
-//	@tag.description			Extended - MCP connector management
+// @tag.name					Health
+// @tag.description			Health check and API documentation
+// @tag.name					Responses
+// @tag.description			Open Responses API (100% spec compliant)
+// @tag.name					Conversations
+// @tag.description			Extended - Conversation state management
+// @tag.name					Prompts
+// @tag.description			Extended - Prompt template management
+// @tag.name					Files
+// @tag.description			Extended - File upload and management
+// @tag.name					Vector Stores
+// @tag.description			Extended - Vector store and embeddings
+// @tag.name					Connectors
+// @tag.description			Extended - MCP connector management
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
