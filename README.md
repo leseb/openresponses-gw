@@ -59,22 +59,6 @@ To use OpenAI instead, set `OPENAI_API_ENDPOINT="https://api.openai.com/v1"` and
 
 For Envoy deployment, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
-## API Status
-
-| API | Endpoints | Status |
-|-----|-----------|--------|
-| **Responses** | 5 | Working |
-| **Conversations** | 6 | Working |
-| **Prompts** | 5 | Working |
-| **Files** | 5 | Working |
-| **Vector Stores** | 15 | Working (search via Milvus) |
-
-**Vector search / RAG:** File ingestion (chunk, embed, insert) and vector search are supported via a pluggable backend. Milvus is the default vector store. The `file_search` tool in the Responses API is executed server-side when an embedding service and vector backend are configured. See [CONFIGURATION.md](./CONFIGURATION.md#vector-store--embedding-configuration) for setup.
-
-**Not yet implemented:** web_search tool execution, vision/multimodal.
-
-See [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) for details.
-
 ## Development
 
 ```bash
@@ -88,38 +72,16 @@ make test-openapi-conformance    # OpenAI API schema comparison
 make pre-commit-install          # Install pre-commit hooks
 ```
 
-## Project Structure
-
-```
-cmd/
-  server/              # Standalone HTTP server
-  envoy-extproc/       # Envoy External Processor
-pkg/
-  core/                # Gateway-agnostic core (engine, config, schema, Responses API client)
-  adapters/
-    http/              # HTTP server adapter
-    envoy/             # Envoy ExtProc adapter
-  storage/
-    memory/            # In-memory store (sessions, files, vectors)
-  vectorstore/         # Vector store backends (Milvus, memory)
-scripts/               # Utility & validation scripts
-tests/
-  scripts/             # Shell-based test scripts
-  integration/         # Python integration tests
-examples/
-  envoy/               # Envoy docker-compose deployment
-```
-
 ## Documentation
 
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — System design and request flow
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Deployment modes and backend configuration
-- [FUNCTIONAL_CONFORMANCE.md](./FUNCTIONAL_CONFORMANCE.md) — What works and what doesn't
-- [TESTING.md](./TESTING.md) — Test infrastructure guide
-- [CONFORMANCE_STATUS.md](./CONFORMANCE_STATUS.md) — OpenAPI conformance journey
+- [docs/FUNCTIONAL_CONFORMANCE.md](./docs/FUNCTIONAL_CONFORMANCE.md) — What works and what doesn't
+- [docs/TESTING.md](./docs/TESTING.md) — Test infrastructure guide
+- [docs/CONFORMANCE_STATUS.md](./docs/CONFORMANCE_STATUS.md) — OpenAPI conformance journey
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Development guidelines
-- [PROJECT_PLAN.md](./PROJECT_PLAN.md) — Roadmap
-- [openapi.yaml](./openapi.yaml) — Full API specification
+- [docs/PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) — Roadmap
+- [docs/swagger.yaml](./docs/swagger.yaml) — Full API specification
 
 ## License
 
