@@ -135,8 +135,8 @@ type DeleteVectorStoreFileResponse struct {
 
 // SearchVectorStoreRequest represents a request to search a vector store
 type SearchVectorStoreRequest struct {
-	Query  string                 `json:"query"`            // Search query
-	TopK   int                    `json:"top_k,omitempty"`  // Number of results to return (default: 10)
+	Query  string                 `json:"query"`                                 // Search query
+	TopK   int                    `json:"top_k,omitempty"`                       // Number of results to return (default: 10)
 	Filter map[string]interface{} `json:"filter,omitempty" swaggertype:"object"` // Optional filter criteria
 }
 
@@ -148,9 +148,9 @@ type SearchVectorStoreResponse struct {
 
 // VectorStoreSearchResult represents a single search result
 type VectorStoreSearchResult struct {
-	FileID   string                 `json:"file_id"`            // ID of the file
-	Score    float64                `json:"score"`              // Similarity score
-	Content  string                 `json:"content,omitempty"`  // Matched content snippet
+	FileID   string                 `json:"file_id"`                                 // ID of the file
+	Score    float64                `json:"score"`                                   // Similarity score
+	Content  string                 `json:"content,omitempty"`                       // Matched content snippet
 	Metadata map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"` // Optional metadata
 }
 

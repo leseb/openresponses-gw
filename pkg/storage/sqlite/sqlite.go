@@ -176,7 +176,7 @@ func (s *Store) GetSession(ctx context.Context, sessionID string) (*state.Sessio
 		 FROM sessions WHERE id = ?`, sessionID)
 
 	var (
-		sess            state.Session
+		sess              state.Session
 		stateStr, metaStr string
 	)
 	err := row.Scan(&sess.ID, &sess.ConversationID, &stateStr, &metaStr,
@@ -455,7 +455,7 @@ func (s *Store) ListConversationItems(ctx context.Context, conversationID string
 	var msgs []state.Message
 	for rows.Next() {
 		var (
-			msg                    state.Message
+			msg                 state.Message
 			contentStr, metaStr string
 		)
 		if err := rows.Scan(&msg.ID, &msg.Role, &contentStr, &metaStr, &msg.CreatedAt); err != nil {
@@ -682,7 +682,7 @@ func (s *Store) loadMessages(ctx context.Context, conversationID string) ([]stat
 	var msgs []state.Message
 	for rows.Next() {
 		var (
-			msg                    state.Message
+			msg                 state.Message
 			contentStr, metaStr string
 		)
 		if err := rows.Scan(&msg.ID, &msg.Role, &contentStr, &metaStr, &msg.CreatedAt); err != nil {
@@ -707,9 +707,9 @@ type scannable interface {
 
 func (s *Store) scanResponse(row scannable) (*state.Response, error) {
 	var (
-		resp                                                        state.Response
+		resp                                                   state.Response
 		requestStr, outputStr, errorStr, usageStr, messagesStr string
-		completedAt                                                 sql.NullTime
+		completedAt                                            sql.NullTime
 	)
 	err := row.Scan(&resp.ID, &resp.ConversationID, &resp.PreviousResponseID,
 		&requestStr, &outputStr, &resp.Status, &errorStr, &usageStr, &messagesStr,

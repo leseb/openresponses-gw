@@ -125,26 +125,26 @@ type Response struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 
 	// Echo request parameters (all fields must be present per Open Responses spec)
-	PreviousResponseID *string          `json:"previous_response_id"` // nullable
-	Conversation       *string          `json:"conversation"`         // nullable
-	Instructions       *string          `json:"instructions"`         // nullable
-	Tools              []ResponsesTool  `json:"tools"`                // required array (empty if no tools)
-	ToolChoice         interface{}      `json:"tool_choice" swaggertype:"object"`          // string enum ("none", "auto", "required") or object
-	Reasoning          *ReasoningConfig `json:"reasoning"`            // nullable
-	Temperature        float64          `json:"temperature"`          // required number
-	TopP               float64          `json:"top_p"`                // required number
-	MaxOutputTokens    *int             `json:"max_output_tokens"`    // nullable
-	MaxToolCalls       *int             `json:"max_tool_calls"`       // nullable
-	ParallelToolCalls  bool             `json:"parallel_tool_calls"`  // required boolean
-	Store              bool             `json:"store"`                // required boolean
-	FrequencyPenalty   float64          `json:"frequency_penalty"`    // required number
-	PresencePenalty    float64          `json:"presence_penalty"`     // required number
-	Truncation         string           `json:"truncation"`           // required: "auto" or "disabled"
-	TopLogprobs        int              `json:"top_logprobs"`         // required number
-	ServiceTier        string           `json:"service_tier"`         // required string
-	Background         bool             `json:"background"`           // required boolean
-	PromptCacheKey     *string          `json:"prompt_cache_key"`     // nullable
-	SafetyIdentifier   *string          `json:"safety_identifier"`    // nullable
+	PreviousResponseID *string          `json:"previous_response_id"`             // nullable
+	Conversation       *string          `json:"conversation"`                     // nullable
+	Instructions       *string          `json:"instructions"`                     // nullable
+	Tools              []ResponsesTool  `json:"tools"`                            // required array (empty if no tools)
+	ToolChoice         interface{}      `json:"tool_choice" swaggertype:"object"` // string enum ("none", "auto", "required") or object
+	Reasoning          *ReasoningConfig `json:"reasoning"`                        // nullable
+	Temperature        float64          `json:"temperature"`                      // required number
+	TopP               float64          `json:"top_p"`                            // required number
+	MaxOutputTokens    *int             `json:"max_output_tokens"`                // nullable
+	MaxToolCalls       *int             `json:"max_tool_calls"`                   // nullable
+	ParallelToolCalls  bool             `json:"parallel_tool_calls"`              // required boolean
+	Store              bool             `json:"store"`                            // required boolean
+	FrequencyPenalty   float64          `json:"frequency_penalty"`                // required number
+	PresencePenalty    float64          `json:"presence_penalty"`                 // required number
+	Truncation         string           `json:"truncation"`                       // required: "auto" or "disabled"
+	TopLogprobs        int              `json:"top_logprobs"`                     // required number
+	ServiceTier        string           `json:"service_tier"`                     // required string
+	Background         bool             `json:"background"`                       // required boolean
+	PromptCacheKey     *string          `json:"prompt_cache_key"`                 // nullable
+	SafetyIdentifier   *string          `json:"safety_identifier"`                // nullable
 
 	// Text field: object with format (required)
 	Text *TextField `json:"text"` // nullable
@@ -343,9 +343,9 @@ func (t *ResponsesToolParam) UnmarshalJSON(data []byte) error {
 type ResponsesTool struct {
 	Type        string                 `json:"type"`
 	Name        string                 `json:"name"`
-	Description *string                `json:"description"` // nullable
-	Parameters  map[string]interface{} `json:"parameters" swaggertype:"object"`  // nullable
-	Strict      *bool                  `json:"strict"`      // nullable
+	Description *string                `json:"description"`                     // nullable
+	Parameters  map[string]interface{} `json:"parameters" swaggertype:"object"` // nullable
+	Strict      *bool                  `json:"strict"`                          // nullable
 
 	// MCP fields
 	ServerLabel string `json:"server_label,omitempty"`
