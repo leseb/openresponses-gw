@@ -57,10 +57,13 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Validate purpose
 	validPurposes := map[string]bool{
-		"assistants": true,
-		"vision":     true,
-		"batch":      true,
-		"fine-tune":  true,
+		"assistants":        true,
+		"assistants_output": true,
+		"batch":             true,
+		"batch_output":      true,
+		"fine-tune":         true,
+		"fine-tune-results": true,
+		"vision":            true,
 	}
 	if !validPurposes[purpose] {
 		h.writeError(w, http.StatusBadRequest, "invalid_request", "Invalid purpose")
@@ -315,7 +318,7 @@ func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	// Return deletion confirmation
 	deleteResp := schema.DeleteFileResponse{
 		ID:      fileID,
-		Object:  "file.deleted",
+		Object:  "file",
 		Deleted: true,
 	}
 

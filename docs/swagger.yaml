@@ -188,7 +188,9 @@ components:
           description: File ID
           type: string
         object:
-          description: Always "file.deleted"
+          description: Always "file"
+          enum:
+          - file
           type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.DeletePromptResponse:
@@ -259,6 +261,9 @@ components:
         created_at:
           description: Unix timestamp
           type: integer
+        expires_at:
+          description: Unix timestamp for file expiration (nullable)
+          type: integer
         filename:
           description: Original filename
           type: string
@@ -270,12 +275,29 @@ components:
           type: string
         object:
           description: Always "file"
+          enum:
+          - file
           type: string
         purpose:
-          description: 'Purpose: "assistants", "vision", "batch", "fine-tune"'
+          description: File purpose
+          enum:
+          - assistants
+          - assistants_output
+          - batch
+          - batch_output
+          - fine-tune
+          - fine-tune-results
+          - vision
           type: string
         status:
-          description: 'Status: "uploaded", "processed", "error"'
+          description: Processing status
+          enum:
+          - uploaded
+          - processed
+          - error
+          type: string
+        status_details:
+          description: Details about status (nullable, e.g. validation failure info)
           type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ImageURL:
