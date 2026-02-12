@@ -8,12 +8,12 @@ type Conversation struct {
 	ID        string                 `json:"id"`         // Format: "conv_{uuid}"
 	Object    string                 `json:"object"`     // Always "conversation"
 	CreatedAt int64                  `json:"created_at"` // Unix timestamp
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // CreateConversationRequest represents a request to create a conversation
 type CreateConversationRequest struct {
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // ListConversationsRequest represents a request to list conversations
@@ -46,9 +46,9 @@ type ConversationItem struct {
 	Object    string                 `json:"object"`     // Item type (message, function_call, etc.)
 	Type      string                 `json:"type"`       // Item type
 	CreatedAt int64                  `json:"created_at"` // Unix timestamp
-	Content   interface{}            `json:"content,omitempty"`
+	Content   interface{}            `json:"content,omitempty" swaggertype:"object"`
 	Role      string                 `json:"role,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // AddConversationItemsRequest represents a request to add items to a conversation

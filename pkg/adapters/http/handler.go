@@ -122,6 +122,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHealth handles health check requests
+//
+//	@Summary	Health check
+//	@Tags		Health
+//	@Produce	json
+//	@Success	200	{object}	map[string]string
+//	@Router		/health [get]
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -131,6 +137,17 @@ func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleResponses handles /v1/responses requests
+//
+//	@Summary		Create response
+//	@Description	Create a response with streaming or non-streaming output. Set stream=true for SSE streaming with 24 granular event types. Supports multi-turn conversations, tool/function calling, reasoning models, and multimodal input.
+//	@Tags			Responses
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		schema.ResponseRequest	true	"Response request"
+//	@Success		200		{object}	schema.Response
+//	@Failure		400		{object}	map[string]interface{}
+//	@Failure		500		{object}	map[string]interface{}
+//	@Router			/v1/responses [post]
 func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req schema.ResponseRequest
@@ -176,6 +193,15 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetResponse handles GET /v1/responses/{id}
+//
+//	@Summary	Get response
+//	@Tags		Responses
+//	@Produce	json
+//	@Param		id	path		string	true	"Response ID"
+//	@Success	200	{object}	schema.Response
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/responses/{id} [get]
 func (h *Handler) handleGetResponse(w http.ResponseWriter, r *http.Request) {
 	// Extract response ID from path
 	responseID := r.PathValue("id")
@@ -205,6 +231,18 @@ func (h *Handler) handleGetResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListResponses handles GET /v1/responses
+//
+//	@Summary	List responses
+//	@Tags		Responses
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 20)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Param		model	query		string	false	"Filter by model"
+//	@Success	200		{object}	schema.ListResponsesResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/responses [get]
 func (h *Handler) handleListResponses(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	after := r.URL.Query().Get("after")
@@ -261,6 +299,15 @@ func (h *Handler) handleListResponses(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeleteResponse handles DELETE /v1/responses/{id}
+//
+//	@Summary	Delete response
+//	@Tags		Responses
+//	@Produce	json
+//	@Param		id	path		string	true	"Response ID"
+//	@Success	200	{object}	schema.DeleteResponseResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	500	{object}	map[string]interface{}
+//	@Router		/v1/responses/{id} [delete]
 func (h *Handler) handleDeleteResponse(w http.ResponseWriter, r *http.Request) {
 	// Extract response ID from path
 	responseID := r.PathValue("id")
@@ -291,6 +338,15 @@ func (h *Handler) handleDeleteResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetResponseInputItems handles GET /v1/responses/{id}/input_items
+//
+//	@Summary	List response input items
+//	@Tags		Responses
+//	@Produce	json
+//	@Param		id	path		string	true	"Response ID"
+//	@Success	200	{object}	schema.ListInputItemsResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/responses/{id}/input_items [get]
 func (h *Handler) handleGetResponseInputItems(w http.ResponseWriter, r *http.Request) {
 	// Extract response ID from path
 	responseID := r.PathValue("id")

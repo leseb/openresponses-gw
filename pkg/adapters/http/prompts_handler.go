@@ -32,6 +32,16 @@ func toSchemaPrompt(p *memory.Prompt) schema.Prompt {
 }
 
 // handleCreatePrompt handles POST /v1/prompts
+//
+//	@Summary	Create prompt
+//	@Tags		Prompts
+//	@Accept		json
+//	@Produce	json
+//	@Param		request	body		schema.CreatePromptRequest	true	"Create prompt request"
+//	@Success	200		{object}	schema.Prompt
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/prompts [post]
 func (h *Handler) handleCreatePrompt(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req schema.CreatePromptRequest
@@ -80,6 +90,17 @@ func (h *Handler) handleCreatePrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListPrompts handles GET /v1/prompts
+//
+//	@Summary	List prompts
+//	@Tags		Prompts
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 50)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Success	200		{object}	schema.ListPromptsResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/prompts [get]
 func (h *Handler) handleListPrompts(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -133,6 +154,16 @@ func (h *Handler) handleListPrompts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetPrompt handles GET /v1/prompts/{id}
+//
+//	@Summary	Get prompt
+//	@Tags		Prompts
+//	@Produce	json
+//	@Param		id		path		string	true	"Prompt ID"
+//	@Param		version	query		int		false	"Specific version number"
+//	@Success	200		{object}	schema.Prompt
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/prompts/{id} [get]
 func (h *Handler) handleGetPrompt(w http.ResponseWriter, r *http.Request) {
 	// Extract prompt ID from path
 	promptID := r.PathValue("id")
@@ -170,6 +201,18 @@ func (h *Handler) handleGetPrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdatePrompt handles PUT /v1/prompts/{id}
+//
+//	@Summary	Update prompt
+//	@Tags		Prompts
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string						true	"Prompt ID"
+//	@Param		request	body		schema.UpdatePromptRequest	true	"Update prompt request"
+//	@Success	200		{object}	schema.Prompt
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Failure	409		{object}	map[string]interface{}
+//	@Router		/v1/prompts/{id} [put]
 func (h *Handler) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	// Extract prompt ID from path
 	promptID := r.PathValue("id")
@@ -229,6 +272,15 @@ func (h *Handler) handleUpdatePrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeletePrompt handles DELETE /v1/prompts/{id}
+//
+//	@Summary	Delete prompt
+//	@Tags		Prompts
+//	@Produce	json
+//	@Param		id	path		string	true	"Prompt ID"
+//	@Success	200	{object}	schema.DeletePromptResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/prompts/{id} [delete]
 func (h *Handler) handleDeletePrompt(w http.ResponseWriter, r *http.Request) {
 	// Extract prompt ID from path
 	promptID := r.PathValue("id")
@@ -260,6 +312,15 @@ func (h *Handler) handleDeletePrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListPromptVersions handles GET /v1/prompts/{id}/versions
+//
+//	@Summary	List prompt versions
+//	@Tags		Prompts
+//	@Produce	json
+//	@Param		id	path		string	true	"Prompt ID"
+//	@Success	200	{object}	schema.ListPromptsResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/prompts/{id}/versions [get]
 func (h *Handler) handleListPromptVersions(w http.ResponseWriter, r *http.Request) {
 	promptID := r.PathValue("id")
 	if promptID == "" {
@@ -298,6 +359,17 @@ func (h *Handler) handleListPromptVersions(w http.ResponseWriter, r *http.Reques
 }
 
 // handleSetDefaultVersion handles POST /v1/prompts/{id}/default_version
+//
+//	@Summary	Set default prompt version
+//	@Tags		Prompts
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string								true	"Prompt ID"
+//	@Param		request	body		schema.SetDefaultVersionRequest		true	"Set default version request"
+//	@Success	200		{object}	schema.Prompt
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/prompts/{id}/default_version [post]
 func (h *Handler) handleSetDefaultVersion(w http.ResponseWriter, r *http.Request) {
 	promptID := r.PathValue("id")
 	if promptID == "" {

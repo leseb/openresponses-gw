@@ -16,6 +16,16 @@ import (
 )
 
 // handleCreateVectorStore handles POST /v1/vector_stores
+//
+//	@Summary	Create vector store
+//	@Tags		Vector Stores
+//	@Accept		json
+//	@Produce	json
+//	@Param		request	body		schema.CreateVectorStoreRequest	true	"Create vector store request"
+//	@Success	200		{object}	schema.VectorStore
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores [post]
 func (h *Handler) handleCreateVectorStore(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req schema.CreateVectorStoreRequest
@@ -93,6 +103,17 @@ func (h *Handler) handleCreateVectorStore(w http.ResponseWriter, r *http.Request
 }
 
 // handleListVectorStores handles GET /v1/vector_stores
+//
+//	@Summary	List vector stores
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 20)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Success	200		{object}	schema.ListVectorStoresResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores [get]
 func (h *Handler) handleListVectorStores(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -146,6 +167,15 @@ func (h *Handler) handleListVectorStores(w http.ResponseWriter, r *http.Request)
 }
 
 // handleGetVectorStore handles GET /v1/vector_stores/{id}
+//
+//	@Summary	Get vector store
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id	path		string	true	"Vector store ID"
+//	@Success	200	{object}	schema.VectorStore
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id} [get]
 func (h *Handler) handleGetVectorStore(w http.ResponseWriter, r *http.Request) {
 	// Extract vector store ID from path
 	vsID := r.PathValue("id")
@@ -173,6 +203,18 @@ func (h *Handler) handleGetVectorStore(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUpdateVectorStore handles PUT /v1/vector_stores/{id}
+//
+//	@Summary	Update vector store
+//	@Tags		Vector Stores
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string								true	"Vector store ID"
+//	@Param		request	body		schema.UpdateVectorStoreRequest		true	"Update vector store request"
+//	@Success	200		{object}	schema.VectorStore
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id} [put]
 func (h *Handler) handleUpdateVectorStore(w http.ResponseWriter, r *http.Request) {
 	// Extract vector store ID from path
 	vsID := r.PathValue("id")
@@ -230,6 +272,15 @@ func (h *Handler) handleUpdateVectorStore(w http.ResponseWriter, r *http.Request
 }
 
 // handleDeleteVectorStore handles DELETE /v1/vector_stores/{id}
+//
+//	@Summary	Delete vector store
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id	path		string	true	"Vector store ID"
+//	@Success	200	{object}	schema.DeleteVectorStoreResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id} [delete]
 func (h *Handler) handleDeleteVectorStore(w http.ResponseWriter, r *http.Request) {
 	// Extract vector store ID from path
 	vsID := r.PathValue("id")
@@ -268,6 +319,17 @@ func (h *Handler) handleDeleteVectorStore(w http.ResponseWriter, r *http.Request
 }
 
 // handleAddVectorStoreFile handles POST /v1/vector_stores/{id}/files
+//
+//	@Summary	Add file to vector store
+//	@Tags		Vector Stores
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string								true	"Vector store ID"
+//	@Param		request	body		schema.AddVectorStoreFileRequest	true	"Add file request"
+//	@Success	200		{object}	schema.VectorStoreFile
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/files [post]
 func (h *Handler) handleAddVectorStoreFile(w http.ResponseWriter, r *http.Request) {
 	// Extract vector store ID from path
 	vsID := r.PathValue("id")
@@ -341,6 +403,20 @@ func (h *Handler) handleAddVectorStoreFile(w http.ResponseWriter, r *http.Reques
 }
 
 // handleListVectorStoreFiles handles GET /v1/vector_stores/{id}/files
+//
+//	@Summary	List vector store files
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id		path		string	true	"Vector store ID"
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 20)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Param		filter	query		string	false	"Filter by status: in_progress, completed, failed, cancelled"
+//	@Success	200		{object}	schema.ListVectorStoreFilesResponse
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/files [get]
 func (h *Handler) handleListVectorStoreFiles(w http.ResponseWriter, r *http.Request) {
 	// Extract vector store ID from path
 	vsID := r.PathValue("id")
@@ -480,6 +556,16 @@ func convertToSchemaVectorStoreFile(vsFile *memory.VectorStoreFile) schema.Vecto
 }
 
 // handleGetVectorStoreFile handles GET /v1/vector_stores/{id}/files/{file_id}
+//
+//	@Summary	Get vector store file
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id		path		string	true	"Vector store ID"
+//	@Param		file_id	path		string	true	"File ID"
+//	@Success	200		{object}	schema.VectorStoreFile
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/files/{file_id} [get]
 func (h *Handler) handleGetVectorStoreFile(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	fileID := r.PathValue("file_id")
@@ -506,6 +592,16 @@ func (h *Handler) handleGetVectorStoreFile(w http.ResponseWriter, r *http.Reques
 }
 
 // handleDeleteVectorStoreFile handles DELETE /v1/vector_stores/{id}/files/{file_id}
+//
+//	@Summary	Delete vector store file
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id		path		string	true	"Vector store ID"
+//	@Param		file_id	path		string	true	"File ID"
+//	@Success	200		{object}	schema.DeleteVectorStoreFileResponse
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/files/{file_id} [delete]
 func (h *Handler) handleDeleteVectorStoreFile(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	fileID := r.PathValue("file_id")
@@ -543,6 +639,17 @@ func (h *Handler) handleDeleteVectorStoreFile(w http.ResponseWriter, r *http.Req
 }
 
 // handleGetVectorStoreFileContent handles GET /v1/vector_stores/{id}/files/{file_id}/content
+//
+//	@Summary	Get vector store file content
+//	@Tags		Vector Stores
+//	@Produce	octet-stream
+//	@Param		id		path		string	true	"Vector store ID"
+//	@Param		file_id	path		string	true	"File ID"
+//	@Success	200		{file}		binary
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/files/{file_id}/content [get]
 func (h *Handler) handleGetVectorStoreFileContent(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	fileID := r.PathValue("file_id")
@@ -581,6 +688,17 @@ func (h *Handler) handleGetVectorStoreFileContent(w http.ResponseWriter, r *http
 }
 
 // handleSearchVectorStore handles POST /v1/vector_stores/{id}/search
+//
+//	@Summary	Search vector store
+//	@Tags		Vector Stores
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string									true	"Vector store ID"
+//	@Param		request	body		schema.SearchVectorStoreRequest			true	"Search request"
+//	@Success	200		{object}	schema.SearchVectorStoreResponse
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/search [post]
 func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 
@@ -636,6 +754,17 @@ func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request
 }
 
 // handleCreateVectorStoreFileBatch handles POST /v1/vector_stores/{id}/file_batches
+//
+//	@Summary	Create vector store file batch
+//	@Tags		Vector Stores
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string										true	"Vector store ID"
+//	@Param		request	body		schema.CreateVectorStoreFileBatchRequest		true	"File batch request"
+//	@Success	200		{object}	schema.VectorStoreFileBatch
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/file_batches [post]
 func (h *Handler) handleCreateVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 
@@ -697,6 +826,16 @@ func (h *Handler) handleCreateVectorStoreFileBatch(w http.ResponseWriter, r *htt
 }
 
 // handleGetVectorStoreFileBatch handles GET /v1/vector_stores/{id}/file_batches/{batch_id}
+//
+//	@Summary	Get vector store file batch
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id			path		string	true	"Vector store ID"
+//	@Param		batch_id	path		string	true	"Batch ID"
+//	@Success	200			{object}	schema.VectorStoreFileBatch
+//	@Failure	400			{object}	map[string]interface{}
+//	@Failure	404			{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/file_batches/{batch_id} [get]
 func (h *Handler) handleGetVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	batchID := r.PathValue("batch_id")
@@ -723,6 +862,21 @@ func (h *Handler) handleGetVectorStoreFileBatch(w http.ResponseWriter, r *http.R
 }
 
 // handleListVectorStoreFileBatchFiles handles GET /v1/vector_stores/{id}/file_batches/{batch_id}/files
+//
+//	@Summary	List vector store file batch files
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id			path		string	true	"Vector store ID"
+//	@Param		batch_id	path		string	true	"Batch ID"
+//	@Param		after		query		string	false	"Cursor for pagination"
+//	@Param		before		query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit		query		int		false	"Number of items (1-100, default 20)"
+//	@Param		order		query		string	false	"Sort order: asc or desc (default desc)"
+//	@Param		filter		query		string	false	"Filter by status"
+//	@Success	200			{object}	schema.ListVectorStoreFilesResponse
+//	@Failure	400			{object}	map[string]interface{}
+//	@Failure	500			{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/file_batches/{batch_id}/files [get]
 func (h *Handler) handleListVectorStoreFileBatchFiles(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	batchID := r.PathValue("batch_id")
@@ -785,6 +939,17 @@ func (h *Handler) handleListVectorStoreFileBatchFiles(w http.ResponseWriter, r *
 }
 
 // handleCancelVectorStoreFileBatch handles POST /v1/vector_stores/{id}/file_batches/{batch_id}/cancel
+//
+//	@Summary	Cancel vector store file batch
+//	@Tags		Vector Stores
+//	@Produce	json
+//	@Param		id			path		string	true	"Vector store ID"
+//	@Param		batch_id	path		string	true	"Batch ID"
+//	@Success	200			{object}	schema.VectorStoreFileBatch
+//	@Failure	400			{object}	map[string]interface{}
+//	@Failure	404			{object}	map[string]interface{}
+//	@Failure	500			{object}	map[string]interface{}
+//	@Router		/v1/vector_stores/{id}/file_batches/{batch_id}/cancel [post]
 func (h *Handler) handleCancelVectorStoreFileBatch(w http.ResponseWriter, r *http.Request) {
 	vsID := r.PathValue("id")
 	batchID := r.PathValue("batch_id")

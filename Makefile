@@ -9,6 +9,8 @@ LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
 # Go parameters
 GOCMD=go
+GOBIN=$(shell go env GOPATH)/bin
+SWAG=$(GOBIN)/swag
 GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
@@ -157,12 +159,31 @@ deps: ## Download dependencies
 	$(GOMOD) tidy
 	@echo "$(GREEN)✓ Dependencies downloaded$(NC)"
 
-tools: ## Install development tools
+tools: install-swag ## Install development tools
 	@echo "$(GREEN)Installing development tools...$(NC)"
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install github.com/air-verse/air@latest
 	go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 	@echo "$(GREEN)✓ Tools installed$(NC)"
+
+install-swag: ## Install swag CLI for OpenAPI generation
+	@echo "$(GREEN)Installing swag v2...$(NC)"
+	go install github.com/swaggo/swag/v2/cmd/swag@latest
+	@echo "$(GREEN)✓ swag installed$(NC)"
+
+gen-openapi: ## Generate OpenAPI spec from Go annotations
+	@test -x $(SWAG) || $(MAKE) install-swag
+	$(SWAG) init --v3.1 --generalInfo cmd/server/main.go --dir ./ --output docs --outputTypes yaml --parseDependency --parseInternal
+	@cp docs/swagger.yaml openapi.yaml
+	@echo "$(GREEN)✓ OpenAPI spec generated$(NC)"
+
+check-openapi: ## Check generated OpenAPI spec is up to date
+	@echo "$(GREEN)Checking OpenAPI spec is up to date...$(NC)"
+	@test -x $(SWAG) || $(MAKE) install-swag
+	$(SWAG) init --v3.1 --generalInfo cmd/server/main.go --dir ./ --output docs --outputTypes yaml --parseDependency --parseInternal
+	@cp docs/swagger.yaml openapi.yaml
+	@git diff --exit-code openapi.yaml docs/swagger.yaml || (echo "$(RED)OpenAPI spec is out of date. Run 'make gen-openapi' and commit.$(NC)" && exit 1)
+	@echo "$(GREEN)✓ OpenAPI spec is up to date$(NC)"
 
 # Pre-commit and Conformance Testing
 
@@ -215,8 +236,6 @@ test-openapi-conformance-json: ## Check OpenAPI conformance and save JSON report
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
 	uv run --with pyyaml ./scripts/openapi_conformance.py --output conformance-results.json
 
-validate-openapi: ## Validate OpenAPI spec consistency
-	@echo "$(GREEN)Validating OpenAPI spec...$(NC)"
-	./scripts/validate-openapi-sync.sh
+validate-openapi: check-openapi ## Validate OpenAPI spec consistency
 
 .DEFAULT_GOAL := help

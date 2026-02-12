@@ -40,7 +40,7 @@ type ListInputItemsRequest struct {
 // ListInputItemsResponse represents a list of input items
 type ListInputItemsResponse struct {
 	Object  string        `json:"object"`             // Always "list"
-	Data    []interface{} `json:"data"`               // Input items (messages/files/etc)
+	Data    []interface{} `json:"data" swaggertype:"object"`               // Input items (messages/files/etc)
 	FirstID string        `json:"first_id,omitempty"` // ID of first item
 	LastID  string        `json:"last_id,omitempty"`  // ID of last item
 	HasMore bool          `json:"has_more"`           // Whether there are more results

@@ -14,6 +14,16 @@ import (
 )
 
 // handleRegisterConnector handles POST /v1/connectors
+//
+//	@Summary	Register connector
+//	@Tags		Connectors
+//	@Accept		json
+//	@Produce	json
+//	@Param		request	body		schema.RegisterConnectorRequest	true	"Register connector request"
+//	@Success	200		{object}	schema.Connector
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/connectors [post]
 func (h *Handler) handleRegisterConnector(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req schema.RegisterConnectorRequest
@@ -78,6 +88,17 @@ func (h *Handler) handleRegisterConnector(w http.ResponseWriter, r *http.Request
 }
 
 // handleListConnectors handles GET /v1/connectors
+//
+//	@Summary	List connectors
+//	@Tags		Connectors
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 50)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Success	200		{object}	schema.ListConnectorsResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/connectors [get]
 func (h *Handler) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -140,6 +161,15 @@ func (h *Handler) handleListConnectors(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetConnector handles GET /v1/connectors/{connector_id}
+//
+//	@Summary	Get connector
+//	@Tags		Connectors
+//	@Produce	json
+//	@Param		connector_id	path		string	true	"Connector ID"
+//	@Success	200				{object}	schema.Connector
+//	@Failure	400				{object}	map[string]interface{}
+//	@Failure	404				{object}	map[string]interface{}
+//	@Router		/v1/connectors/{connector_id} [get]
 func (h *Handler) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 	// Extract connector ID from path
 	connectorID := r.PathValue("connector_id")
@@ -175,6 +205,15 @@ func (h *Handler) handleGetConnector(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeleteConnector handles DELETE /v1/connectors/{connector_id}
+//
+//	@Summary	Delete connector
+//	@Tags		Connectors
+//	@Produce	json
+//	@Param		connector_id	path		string	true	"Connector ID"
+//	@Success	200				{object}	schema.DeleteConnectorResponse
+//	@Failure	400				{object}	map[string]interface{}
+//	@Failure	404				{object}	map[string]interface{}
+//	@Router		/v1/connectors/{connector_id} [delete]
 func (h *Handler) handleDeleteConnector(w http.ResponseWriter, r *http.Request) {
 	// Extract connector ID from path
 	connectorID := r.PathValue("connector_id")

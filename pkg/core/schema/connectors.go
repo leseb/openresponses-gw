@@ -11,7 +11,7 @@ type Connector struct {
 	URL           string                 `json:"url"`                    // MCP server URL
 	ServerLabel   string                 `json:"server_label,omitempty"` // Display label
 	CreatedAt     int64                  `json:"created_at"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // RegisterConnectorRequest represents a request to register a connector
@@ -20,7 +20,7 @@ type RegisterConnectorRequest struct {
 	ConnectorType string                 `json:"connector_type"` // Required, must be "mcp"
 	URL           string                 `json:"url"`            // Required
 	ServerLabel   string                 `json:"server_label,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // ListConnectorsResponse represents a list of connectors

@@ -15,6 +15,16 @@ import (
 )
 
 // handleCreateConversation handles POST /v1/conversations
+//
+//	@Summary	Create conversation
+//	@Tags		Conversations
+//	@Accept		json
+//	@Produce	json
+//	@Param		request	body		schema.CreateConversationRequest	true	"Create conversation request"
+//	@Success	200		{object}	schema.Conversation
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/conversations [post]
 func (h *Handler) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req schema.CreateConversationRequest
@@ -60,6 +70,17 @@ func (h *Handler) handleCreateConversation(w http.ResponseWriter, r *http.Reques
 }
 
 // handleListConversations handles GET /v1/conversations
+//
+//	@Summary	List conversations
+//	@Tags		Conversations
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 50)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Success	200		{object}	schema.ListConversationsResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/conversations [get]
 func (h *Handler) handleListConversations(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -119,6 +140,15 @@ func (h *Handler) handleListConversations(w http.ResponseWriter, r *http.Request
 }
 
 // handleGetConversation handles GET /v1/conversations/{id}
+//
+//	@Summary	Get conversation
+//	@Tags		Conversations
+//	@Produce	json
+//	@Param		id	path		string	true	"Conversation ID"
+//	@Success	200	{object}	schema.Conversation
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/conversations/{id} [get]
 func (h *Handler) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 	// Extract conversation ID from path
 	conversationID := r.PathValue("id")
@@ -151,6 +181,15 @@ func (h *Handler) handleGetConversation(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleDeleteConversation handles DELETE /v1/conversations/{id}
+//
+//	@Summary	Delete conversation
+//	@Tags		Conversations
+//	@Produce	json
+//	@Param		id	path		string	true	"Conversation ID"
+//	@Success	200	{object}	schema.DeleteConversationResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/conversations/{id} [delete]
 func (h *Handler) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	// Extract conversation ID from path
 	conversationID := r.PathValue("id")
@@ -182,6 +221,17 @@ func (h *Handler) handleDeleteConversation(w http.ResponseWriter, r *http.Reques
 }
 
 // handleAddConversationItems handles POST /v1/conversations/{id}/items
+//
+//	@Summary	Add conversation items
+//	@Tags		Conversations
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string									true	"Conversation ID"
+//	@Param		request	body		schema.AddConversationItemsRequest		true	"Items to add (max 20)"
+//	@Success	200		{object}	schema.AddConversationItemsResponse
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/conversations/{id}/items [post]
 func (h *Handler) handleAddConversationItems(w http.ResponseWriter, r *http.Request) {
 	// Extract conversation ID from path
 	conversationID := r.PathValue("id")
@@ -260,6 +310,19 @@ func (h *Handler) handleAddConversationItems(w http.ResponseWriter, r *http.Requ
 }
 
 // handleListConversationItems handles GET /v1/conversations/{id}/items
+//
+//	@Summary	List conversation items
+//	@Tags		Conversations
+//	@Produce	json
+//	@Param		id		path		string	true	"Conversation ID"
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 50)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Success	200		{object}	schema.ListConversationItemsResponse
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	404		{object}	map[string]interface{}
+//	@Router		/v1/conversations/{id}/items [get]
 func (h *Handler) handleListConversationItems(w http.ResponseWriter, r *http.Request) {
 	// Extract conversation ID from path
 	conversationID := r.PathValue("id")

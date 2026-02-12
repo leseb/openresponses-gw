@@ -15,7 +15,7 @@ type VectorStore struct {
 	ExpiresAt    *int64                 `json:"expires_at,omitempty"`     // Unix timestamp
 	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`  // Expiration policy
 	LastActiveAt *int64                 `json:"last_active_at,omitempty"` // Unix timestamp
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // VectorStoreFileCounts represents file count statistics
@@ -38,14 +38,14 @@ type CreateVectorStoreRequest struct {
 	Name         string                 `json:"name,omitempty"`
 	FileIDs      []string               `json:"file_ids,omitempty"` // Up to 500 files
 	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // UpdateVectorStoreRequest represents a request to update a vector store
 type UpdateVectorStoreRequest struct {
 	Name         *string                `json:"name,omitempty"`
 	ExpiresAfter *VectorStoreExpiration `json:"expires_after,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // ListVectorStoresRequest represents a request to list vector stores
@@ -137,7 +137,7 @@ type DeleteVectorStoreFileResponse struct {
 type SearchVectorStoreRequest struct {
 	Query  string                 `json:"query"`            // Search query
 	TopK   int                    `json:"top_k,omitempty"`  // Number of results to return (default: 10)
-	Filter map[string]interface{} `json:"filter,omitempty"` // Optional filter criteria
+	Filter map[string]interface{} `json:"filter,omitempty" swaggertype:"object"` // Optional filter criteria
 }
 
 // SearchVectorStoreResponse represents search results from a vector store
@@ -151,7 +151,7 @@ type VectorStoreSearchResult struct {
 	FileID   string                 `json:"file_id"`            // ID of the file
 	Score    float64                `json:"score"`              // Similarity score
 	Content  string                 `json:"content,omitempty"`  // Matched content snippet
-	Metadata map[string]interface{} `json:"metadata,omitempty"` // Optional metadata
+	Metadata map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"` // Optional metadata
 }
 
 // VectorStoreFileBatch represents a batch of files being processed

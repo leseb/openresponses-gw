@@ -15,7 +15,7 @@ type Prompt struct {
 	IsDefault   bool                   `json:"is_default"`           // Whether this is the default version
 	CreatedAt   int64                  `json:"created_at"`           // Unix timestamp
 	UpdatedAt   int64                  `json:"updated_at,omitempty"` // Unix timestamp
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // CreatePromptRequest represents a request to create a prompt
@@ -23,7 +23,7 @@ type CreatePromptRequest struct {
 	Name        string                 `json:"name"` // Required
 	Description string                 `json:"description,omitempty"`
 	Template    string                 `json:"template"` // Required
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // UpdatePromptRequest represents a request to update a prompt
@@ -33,7 +33,7 @@ type UpdatePromptRequest struct {
 	Template     *string                `json:"template,omitempty"`
 	Version      int                    `json:"version"`                  // Required: current version being updated
 	SetAsDefault *bool                  `json:"set_as_default,omitempty"` // Default true
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty" swaggertype:"object"`
 }
 
 // SetDefaultVersionRequest represents a request to set the default version of a prompt

@@ -16,7 +16,7 @@ type ResponseRequest struct {
 	Model *string `json:"model,omitempty"`
 
 	// Input can be a string or array of items
-	Input interface{} `json:"input,omitempty"` // string | []ItemParam
+	Input interface{} `json:"input,omitempty" swaggertype:"object"` // string | []ItemParam
 
 	// Previous response ID for multi-turn conversations
 	PreviousResponseID *string `json:"previous_response_id,omitempty"`
@@ -31,7 +31,7 @@ type ResponseRequest struct {
 	Tools []ResponsesToolParam `json:"tools,omitempty"`
 
 	// Controls which tool the model should use
-	ToolChoice interface{} `json:"tool_choice,omitempty"` // ToolChoiceParam
+	ToolChoice interface{} `json:"tool_choice,omitempty" swaggertype:"object"` // ToolChoiceParam
 
 	// Metadata key-value pairs (max 16, 512 chars per value)
 	Metadata map[string]string `json:"metadata,omitempty"`
@@ -129,7 +129,7 @@ type Response struct {
 	Conversation       *string          `json:"conversation"`         // nullable
 	Instructions       *string          `json:"instructions"`         // nullable
 	Tools              []ResponsesTool  `json:"tools"`                // required array (empty if no tools)
-	ToolChoice         interface{}      `json:"tool_choice"`          // string enum ("none", "auto", "required") or object
+	ToolChoice         interface{}      `json:"tool_choice" swaggertype:"object"`          // string enum ("none", "auto", "required") or object
 	Reasoning          *ReasoningConfig `json:"reasoning"`            // nullable
 	Temperature        float64          `json:"temperature"`          // required number
 	TopP               float64          `json:"top_p"`                // required number
@@ -256,7 +256,7 @@ type ResponsesToolParam struct {
 	Type        string                 `json:"type"` // "function", "file_search", "web_search", "mcp"
 	Name        string                 `json:"name,omitempty"`
 	Description *string                `json:"description,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters,omitempty"` // JSON Schema
+	Parameters  map[string]interface{} `json:"parameters,omitempty" swaggertype:"object"` // JSON Schema
 	Strict      *bool                  `json:"strict,omitempty"`
 
 	// MCP fields (type="mcp")
@@ -264,13 +264,13 @@ type ResponsesToolParam struct {
 
 	// Web search fields (type="web_search")
 	SearchContextSize *string                `json:"search_context_size,omitempty"`
-	UserLocation      map[string]interface{} `json:"user_location,omitempty"`
+	UserLocation      map[string]interface{} `json:"user_location,omitempty" swaggertype:"object"`
 
 	// File search fields (type="file_search")
 	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
 	MaxNumResults  *int                   `json:"max_num_results,omitempty"`
-	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
-	Filters        interface{}            `json:"filters,omitempty"`
+	RankingOptions map[string]interface{} `json:"ranking_options,omitempty" swaggertype:"object"`
+	Filters        interface{}            `json:"filters,omitempty" swaggertype:"object"`
 }
 
 // UnmarshalJSON handles both the flat format used by the Open Responses spec
@@ -344,7 +344,7 @@ type ResponsesTool struct {
 	Type        string                 `json:"type"`
 	Name        string                 `json:"name"`
 	Description *string                `json:"description"` // nullable
-	Parameters  map[string]interface{} `json:"parameters"`  // nullable
+	Parameters  map[string]interface{} `json:"parameters" swaggertype:"object"`  // nullable
 	Strict      *bool                  `json:"strict"`      // nullable
 
 	// MCP fields
@@ -352,13 +352,13 @@ type ResponsesTool struct {
 
 	// Web search fields
 	SearchContextSize *string                `json:"search_context_size,omitempty"`
-	UserLocation      map[string]interface{} `json:"user_location,omitempty"`
+	UserLocation      map[string]interface{} `json:"user_location,omitempty" swaggertype:"object"`
 
 	// File search fields
 	VectorStoreIDs []string               `json:"vector_store_ids,omitempty"`
 	MaxNumResults  *int                   `json:"max_num_results,omitempty"`
-	RankingOptions map[string]interface{} `json:"ranking_options,omitempty"`
-	Filters        interface{}            `json:"filters,omitempty"`
+	RankingOptions map[string]interface{} `json:"ranking_options,omitempty" swaggertype:"object"`
+	Filters        interface{}            `json:"filters,omitempty" swaggertype:"object"`
 }
 
 // ReasoningParam represents reasoning configuration (request)
@@ -485,7 +485,7 @@ type ResponseOutputTextDeltaStreamingEvent struct {
 	OutputIndex    int           `json:"output_index"`
 	ContentIndex   int           `json:"content_index"`
 	Delta          string        `json:"delta"`
-	Logprobs       []interface{} `json:"logprobs"` // required array of log prob objects
+	Logprobs       []interface{} `json:"logprobs" swaggertype:"object"` // required array of log prob objects
 }
 
 // ResponseOutputTextDoneStreamingEvent - response.output_text.done
@@ -496,7 +496,7 @@ type ResponseOutputTextDoneStreamingEvent struct {
 	OutputIndex    int           `json:"output_index"`
 	ContentIndex   int           `json:"content_index"`
 	Text           string        `json:"text"`
-	Logprobs       []interface{} `json:"logprobs"` // required array of log prob objects
+	Logprobs       []interface{} `json:"logprobs" swaggertype:"object"` // required array of log prob objects
 }
 
 // ResponseRefusalDeltaStreamingEvent - response.refusal.delta
@@ -600,6 +600,7 @@ type ErrorStreamingEvent struct {
 
 // RawStreamingEvent wraps a pre-serialized SSE event from the backend.
 // It implements json.Marshaler so the HTTP adapter can forward it as-is.
+// @swaggerignore
 type RawStreamingEvent struct {
 	EventType string          // SSE event type (e.g. "response.output_text.delta")
 	RawData   json.RawMessage // Pre-serialized JSON payload

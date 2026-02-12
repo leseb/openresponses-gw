@@ -19,6 +19,17 @@ const (
 )
 
 // handleUploadFile handles POST /v1/files
+//
+//	@Summary	Upload file
+//	@Tags		Files
+//	@Accept		multipart/form-data
+//	@Produce	json
+//	@Param		file	formData	file	true	"File to upload"
+//	@Param		purpose	formData	string	true	"Purpose: assistants, vision, batch, or fine-tune"
+//	@Success	200		{object}	schema.File
+//	@Failure	400		{object}	map[string]interface{}
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/files [post]
 func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	// Parse multipart form
 	err := r.ParseMultipartForm(maxFileSize)
@@ -106,6 +117,18 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListFiles handles GET /v1/files
+//
+//	@Summary	List files
+//	@Tags		Files
+//	@Produce	json
+//	@Param		after	query		string	false	"Cursor for pagination"
+//	@Param		before	query		string	false	"Cursor for pagination (backwards)"
+//	@Param		limit	query		int		false	"Number of items (1-100, default 50)"
+//	@Param		order	query		string	false	"Sort order: asc or desc (default desc)"
+//	@Param		purpose	query		string	false	"Filter by purpose"
+//	@Success	200		{object}	schema.ListFilesResponse
+//	@Failure	500		{object}	map[string]interface{}
+//	@Router		/v1/files [get]
 func (h *Handler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
@@ -170,6 +193,15 @@ func (h *Handler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetFile handles GET /v1/files/{id}
+//
+//	@Summary	Get file
+//	@Tags		Files
+//	@Produce	json
+//	@Param		id	path		string	true	"File ID"
+//	@Success	200	{object}	schema.File
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/files/{id} [get]
 func (h *Handler) handleGetFile(w http.ResponseWriter, r *http.Request) {
 	// Extract file ID from path
 	fileID := r.PathValue("id")
@@ -206,6 +238,16 @@ func (h *Handler) handleGetFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetFileContent handles GET /v1/files/{id}/content
+//
+//	@Summary	Get file content
+//	@Tags		Files
+//	@Produce	octet-stream
+//	@Param		id	path		string	true	"File ID"
+//	@Success	200	{file}		binary
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Failure	500	{object}	map[string]interface{}
+//	@Router		/v1/files/{id}/content [get]
 func (h *Handler) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 	// Extract file ID from path
 	fileID := r.PathValue("id")
@@ -243,6 +285,15 @@ func (h *Handler) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeleteFile handles DELETE /v1/files/{id}
+//
+//	@Summary	Delete file
+//	@Tags		Files
+//	@Produce	json
+//	@Param		id	path		string	true	"File ID"
+//	@Success	200	{object}	schema.DeleteFileResponse
+//	@Failure	400	{object}	map[string]interface{}
+//	@Failure	404	{object}	map[string]interface{}
+//	@Router		/v1/files/{id} [delete]
 func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	// Extract file ID from path
 	fileID := r.PathValue("id")
