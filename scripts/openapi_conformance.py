@@ -367,10 +367,21 @@ def calculate_coverage(
     deleted_paths = paths_diff.get("deleted", [])
     modified_paths = paths_diff.get("modified", {})
 
-    # Filter to relevant categories (endpoints that exist in OpenAI spec)
-    missing_endpoints = sorted([p for p in deleted_paths if _categorize_path(p, endpoint_categories) != "Other"])
+    # Determine which endpoints are implemented (present in both specs)
     implemented_endpoints = sorted(
         [p for p in modified_paths.keys() if _categorize_path(p, endpoint_categories) != "Other"]
+    )
+
+    # Derive which categories our gateway actually implements
+    implemented_categories: set[str] = set()
+    for p in implemented_endpoints:
+        cat = _categorize_path(p, endpoint_categories)
+        if cat != "Other":
+            implemented_categories.add(cat)
+
+    # Only report missing endpoints from categories we implement
+    missing_endpoints = sorted(
+        [p for p in deleted_paths if _categorize_path(p, endpoint_categories) in implemented_categories]
     )
 
     # Analyze each endpoint
@@ -526,11 +537,10 @@ def print_summary(report: dict[str, Any]) -> None:
 
     # Endpoints
     ep = summary["endpoints"]
-    print(f"📡 Endpoints: {ep['implemented']}/{ep['total']} implemented")
+    num_categories = len(report["categories"])
+    print(f"📡 Endpoints: {ep['implemented']}/{ep['total']} implemented ({num_categories} categories)")
     if ep["missing"]:
-        print(f"   Missing: {', '.join(ep['missing'][:3])}")
-        if len(ep["missing"]) > 3:
-            print(f"            ... and {len(ep['missing']) - 3} more")
+        print(f"   Missing: {', '.join(ep['missing'])}")
     print()
 
     # Conformance issues
