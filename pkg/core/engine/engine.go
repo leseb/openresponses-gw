@@ -306,6 +306,23 @@ func convertToToolParams(tools []schema.ResponsesToolParam) []api.ToolParam {
 	return result
 }
 
+// outputToItemFields converts a stored Output (which may be []interface{} after
+// JSON round-tripping through the database) back into []schema.ItemField.
+func outputToItemFields(output interface{}) []schema.ItemField {
+	if items, ok := output.([]schema.ItemField); ok {
+		return items
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return nil
+	}
+	var items []schema.ItemField
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil
+	}
+	return items
+}
+
 // buildResponsesAPIRequest constructs a ResponsesAPIRequest from conversation
 // messages and the original request parameters.
 func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.ResponseRequest, tools []schema.ResponsesToolParam, stream bool) *api.ResponsesAPIRequest {
@@ -602,64 +619,62 @@ func (e *Engine) buildConversationMessages(ctx context.Context, req *schema.Resp
 		}
 
 		// Append previous response output as context
-		if output, ok := prevResp.Output.([]schema.ItemField); ok {
-			for _, item := range output {
-				switch item.Type {
-				case "message":
-					role := "assistant"
-					if item.Role != nil {
-						role = *item.Role
+		for _, item := range outputToItemFields(prevResp.Output) {
+			switch item.Type {
+			case "message":
+				role := "assistant"
+				if item.Role != nil {
+					role = *item.Role
+				}
+				content := ""
+				for _, part := range item.Content {
+					if part.Text != nil {
+						content += *part.Text
 					}
-					content := ""
-					for _, part := range item.Content {
-						if part.Text != nil {
-							content += *part.Text
-						}
-					}
-					if content != "" {
-						messages = append(messages, api.Message{Role: role, Content: content})
-					}
-				case "function_call":
-					name := ""
-					if item.Name != nil {
-						name = *item.Name
-					}
-					args := ""
-					if item.Arguments != nil {
-						args = *item.Arguments
-					}
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					messages = append(messages, api.Message{
-						Role: "assistant",
-						ToolCalls: []api.ToolCall{
-							{
-								ID:   callID,
-								Type: "function",
-								Function: api.ToolCallFunction{
-									Name:      name,
-									Arguments: args,
-								},
+				}
+				if content != "" {
+					messages = append(messages, api.Message{Role: role, Content: content})
+				}
+			case "function_call":
+				name := ""
+				if item.Name != nil {
+					name = *item.Name
+				}
+				args := ""
+				if item.Arguments != nil {
+					args = *item.Arguments
+				}
+				callID := ""
+				if item.CallID != nil {
+					callID = *item.CallID
+				}
+				messages = append(messages, api.Message{
+					Role: "assistant",
+					ToolCalls: []api.ToolCall{
+						{
+							ID:   callID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      name,
+								Arguments: args,
 							},
 						},
-					})
-				case "function_call_output":
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					output := ""
-					if item.Output != nil {
-						output = *item.Output
-					}
-					messages = append(messages, api.Message{
-						Role:       "tool",
-						Content:    output,
-						ToolCallID: callID,
-					})
+					},
+				})
+			case "function_call_output":
+				callID := ""
+				if item.CallID != nil {
+					callID = *item.CallID
 				}
+				outputStr := ""
+				if item.Output != nil {
+					outputStr = *item.Output
+				}
+				messages = append(messages, api.Message{
+					Role:       "tool",
+					Content:    outputStr,
+					ToolCallID: callID,
+				})
 			}
 		}
 	}
@@ -862,64 +877,62 @@ func (e *Engine) buildConversationMessagesFromConversation(ctx context.Context, 
 		}
 
 		// Append the latest response's output as context
-		if output, ok := latestResp.Output.([]schema.ItemField); ok {
-			for _, item := range output {
-				switch item.Type {
-				case "message":
-					role := "assistant"
-					if item.Role != nil {
-						role = *item.Role
+		for _, item := range outputToItemFields(latestResp.Output) {
+			switch item.Type {
+			case "message":
+				role := "assistant"
+				if item.Role != nil {
+					role = *item.Role
+				}
+				content := ""
+				for _, part := range item.Content {
+					if part.Text != nil {
+						content += *part.Text
 					}
-					content := ""
-					for _, part := range item.Content {
-						if part.Text != nil {
-							content += *part.Text
-						}
-					}
-					if content != "" {
-						messages = append(messages, api.Message{Role: role, Content: content})
-					}
-				case "function_call":
-					name := ""
-					if item.Name != nil {
-						name = *item.Name
-					}
-					args := ""
-					if item.Arguments != nil {
-						args = *item.Arguments
-					}
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					messages = append(messages, api.Message{
-						Role: "assistant",
-						ToolCalls: []api.ToolCall{
-							{
-								ID:   callID,
-								Type: "function",
-								Function: api.ToolCallFunction{
-									Name:      name,
-									Arguments: args,
-								},
+				}
+				if content != "" {
+					messages = append(messages, api.Message{Role: role, Content: content})
+				}
+			case "function_call":
+				name := ""
+				if item.Name != nil {
+					name = *item.Name
+				}
+				args := ""
+				if item.Arguments != nil {
+					args = *item.Arguments
+				}
+				callID := ""
+				if item.CallID != nil {
+					callID = *item.CallID
+				}
+				messages = append(messages, api.Message{
+					Role: "assistant",
+					ToolCalls: []api.ToolCall{
+						{
+							ID:   callID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      name,
+								Arguments: args,
 							},
 						},
-					})
-				case "function_call_output":
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					output := ""
-					if item.Output != nil {
-						output = *item.Output
-					}
-					messages = append(messages, api.Message{
-						Role:       "tool",
-						Content:    output,
-						ToolCallID: callID,
-					})
+					},
+				})
+			case "function_call_output":
+				callID := ""
+				if item.CallID != nil {
+					callID = *item.CallID
 				}
+				outputStr := ""
+				if item.Output != nil {
+					outputStr = *item.Output
+				}
+				messages = append(messages, api.Message{
+					Role:       "tool",
+					Content:    outputStr,
+					ToolCallID: callID,
+				})
 			}
 		}
 	}

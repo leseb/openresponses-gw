@@ -962,6 +962,65 @@ func TestConvertOutputItemsToSchema_NonOutputTextNoAnnotations(t *testing.T) {
 	}
 }
 
+func TestOutputToItemFields_FromTypedSlice(t *testing.T) {
+	role := "assistant"
+	text := "hello"
+	input := []schema.ItemField{
+		{Type: "message", ID: "msg-1", Role: &role, Content: []schema.ContentPart{{Type: "output_text", Text: &text}}},
+	}
+	result := outputToItemFields(input)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(result))
+	}
+	if result[0].Type != "message" {
+		t.Errorf("expected type=message, got %q", result[0].Type)
+	}
+}
+
+func TestOutputToItemFields_FromDeserializedJSON(t *testing.T) {
+	// Simulate what happens after JSON round-trip through the database:
+	// []schema.ItemField → json.Marshal → json.Unmarshal into interface{} → []interface{}
+	role := "assistant"
+	text := "hello"
+	original := []schema.ItemField{
+		{Type: "message", ID: "msg-1", Role: &role, Content: []schema.ContentPart{{Type: "output_text", Text: &text}}},
+	}
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var deserialized interface{}
+	if err := json.Unmarshal(data, &deserialized); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// deserialized is now []interface{}, not []schema.ItemField
+	if _, ok := deserialized.([]schema.ItemField); ok {
+		t.Fatal("expected deserialized NOT to be []schema.ItemField")
+	}
+
+	result := outputToItemFields(deserialized)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(result))
+	}
+	if result[0].Type != "message" {
+		t.Errorf("expected type=message, got %q", result[0].Type)
+	}
+	if *result[0].Role != "assistant" {
+		t.Errorf("expected role=assistant, got %q", *result[0].Role)
+	}
+	if len(result[0].Content) != 1 || *result[0].Content[0].Text != "hello" {
+		t.Errorf("expected content text=hello, got %v", result[0].Content)
+	}
+}
+
+func TestOutputToItemFields_NilInput(t *testing.T) {
+	result := outputToItemFields(nil)
+	if result != nil {
+		t.Errorf("expected nil, got %v", result)
+	}
+}
+
 func TestEchoRequestParams_NilOptionals(t *testing.T) {
 	req := &schema.ResponseRequest{}
 	resp := schema.NewResponse("test", "model")
