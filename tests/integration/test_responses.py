@@ -128,6 +128,84 @@ class TestToolCalling:
         assert len(call.arguments) > 0
 
 
+class TestToolChoice:
+    """Tests for the tool_choice parameter."""
+
+    WEATHER_TOOL = {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Get the current weather for a location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "City name"},
+            },
+            "required": ["location"],
+        },
+    }
+
+    def test_tool_choice_auto(self, httpx_client, model):
+        """tool_choice='auto' should be echoed in the response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "What is the weather in Paris?",
+                "tools": [self.WEATHER_TOOL],
+                "tool_choice": "auto",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tool_choice"] == "auto"
+
+    def test_tool_choice_none(self, httpx_client, model):
+        """tool_choice='none' should be echoed in the response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "What is the weather in Paris?",
+                "tools": [self.WEATHER_TOOL],
+                "tool_choice": "none",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tool_choice"] == "none"
+
+    def test_tool_choice_required(self, httpx_client, model):
+        """tool_choice='required' should be echoed in the response."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "What is the weather in Paris?",
+                "tools": [self.WEATHER_TOOL],
+                "tool_choice": "required",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tool_choice"] == "required"
+
+    def test_tool_choice_specific_function(self, httpx_client, model):
+        """tool_choice as object should force a specific function."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "Hello",
+                "tools": [self.WEATHER_TOOL],
+                "tool_choice": {"type": "function", "name": "get_weather"},
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["tool_choice"], dict)
+        assert data["tool_choice"]["name"] == "get_weather"
+
+
 class TestConversationIntegration:
     """Tests for the conversation field integration with the Responses API."""
 
@@ -364,6 +442,23 @@ class TestInputModes:
         )
         assert resp.status_code == 200
         data = resp.json()
+        tools = data.get("tools", [])
+        assert any(t["type"] == "web_search" for t in tools)
+
+    def test_web_search_tool_with_tool_choice_auto(self, httpx_client, model):
+        """Web search tool with tool_choice='auto' should be accepted."""
+        resp = httpx_client.post(
+            "/responses",
+            json={
+                "model": model,
+                "input": "Hello",
+                "tools": [{"type": "web_search"}],
+                "tool_choice": "auto",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["tool_choice"] == "auto"
         tools = data.get("tools", [])
         assert any(t["type"] == "web_search" for t in tools)
 
