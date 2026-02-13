@@ -20,7 +20,9 @@ production deployment also needs:
 
 This gateway sits in front of any `/v1/responses`-compatible backend and
 adds everything above. The inference backend does what it does best (LLM
-generation), and the gateway handles the rest.
+generation), and the gateway handles the rest. For a detailed breakdown of
+which API fields are handled by the inference backend versus the gateway,
+see [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md).
 
 ```
                                     ┌────────────────┐
@@ -74,6 +76,7 @@ make pre-commit-install          # Install pre-commit hooks
 
 ## Documentation
 
+- [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md) — vLLM vs gateway field responsibility
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — System design and request flow
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Deployment modes and backend configuration
 - [docs/FUNCTIONAL_CONFORMANCE.md](./docs/FUNCTIONAL_CONFORMANCE.md) — What works and what doesn't

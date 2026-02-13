@@ -100,6 +100,24 @@ func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 		resp.PresencePenalty = *req.PresencePenalty
 	}
 	resp.Metadata = req.Metadata
+
+	// Inference parameters (forwarded to and handled by vLLM)
+	if req.Truncation != nil {
+		resp.Truncation = *req.Truncation
+	}
+	if req.ParallelToolCalls != nil {
+		resp.ParallelToolCalls = *req.ParallelToolCalls
+	}
+	if req.Text != nil {
+		resp.Text = *req.Text
+	}
+	if req.TopLogprobs != nil {
+		resp.TopLogprobs = *req.TopLogprobs
+	}
+	// Gateway-managed persistence flag
+	if req.Store != nil {
+		resp.Store = *req.Store
+	}
 }
 
 // extractInputMessages parses the Responses API input field into chat messages
@@ -322,6 +340,13 @@ func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.
 	// Tool choice
 	apiReq.ToolChoice = req.ToolChoice
 
+	// Inference parameters forwarded to vLLM
+	apiReq.Truncation = req.Truncation
+	apiReq.ParallelToolCalls = req.ParallelToolCalls
+	if req.Text != nil {
+		apiReq.Text = req.Text
+	}
+
 	// Reasoning
 	if req.Reasoning != nil && req.Reasoning.Effort != nil {
 		apiReq.Reasoning = &api.ReasoningParam{
@@ -477,10 +502,15 @@ func convertOutputItemsToSchema(items []api.OutputItem) []schema.ItemField {
 			var content []schema.ContentPart
 			for _, c := range item.Content {
 				text := c.Text
-				content = append(content, schema.ContentPart{
+				cp := schema.ContentPart{
 					Type: c.Type,
 					Text: &text,
-				})
+				}
+				if c.Type == "output_text" {
+					cp.Annotations = make([]schema.Annotation, 0)
+					cp.Logprobs = make([]interface{}, 0)
+				}
+				content = append(content, cp)
 			}
 			result = append(result, schema.ItemField{
 				Type:    "message",

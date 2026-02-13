@@ -856,6 +856,112 @@ func TestEchoRequestParams(t *testing.T) {
 	}
 }
 
+func TestEchoRequestParams_InferenceAndStoreFields(t *testing.T) {
+	req := &schema.ResponseRequest{
+		Truncation:        stringPtr("auto"),
+		ParallelToolCalls: boolPtr(false),
+		Text:              &schema.TextField{Format: schema.TextFormat{Type: "json_object"}},
+		TopLogprobs:       intPtr(5),
+		Store:             boolPtr(false),
+	}
+
+	resp := schema.NewResponse("resp-test", "test-model")
+	echoRequestParams(resp, req)
+
+	if resp.Truncation != "auto" {
+		t.Errorf("Truncation: expected %q, got %q", "auto", resp.Truncation)
+	}
+	if resp.ParallelToolCalls != false {
+		t.Errorf("ParallelToolCalls: expected false, got %v", resp.ParallelToolCalls)
+	}
+	if resp.Text.Format.Type != "json_object" {
+		t.Errorf("Text.Format.Type: expected %q, got %q", "json_object", resp.Text.Format.Type)
+	}
+	if resp.TopLogprobs != 5 {
+		t.Errorf("TopLogprobs: expected 5, got %d", resp.TopLogprobs)
+	}
+	if resp.Store != false {
+		t.Errorf("Store: expected false, got %v", resp.Store)
+	}
+}
+
+func TestEchoRequestParams_InferenceAndStoreDefaults(t *testing.T) {
+	req := &schema.ResponseRequest{}
+	resp := schema.NewResponse("test", "model")
+	echoRequestParams(resp, req)
+
+	// Defaults from NewResponse should remain when request fields are nil
+	if resp.Truncation != "disabled" {
+		t.Errorf("expected Truncation=%q, got %q", "disabled", resp.Truncation)
+	}
+	if resp.ParallelToolCalls != true {
+		t.Errorf("expected ParallelToolCalls=true, got %v", resp.ParallelToolCalls)
+	}
+	if resp.Text.Format.Type != "text" {
+		t.Errorf("expected Text.Format.Type=%q, got %q", "text", resp.Text.Format.Type)
+	}
+	if resp.TopLogprobs != 0 {
+		t.Errorf("expected TopLogprobs=0, got %d", resp.TopLogprobs)
+	}
+	if resp.Store != true {
+		t.Errorf("expected Store=true, got %v", resp.Store)
+	}
+}
+
+func TestConvertOutputItemsToSchema_OutputTextAnnotationsAndLogprobs(t *testing.T) {
+	items := []api.OutputItem{
+		{
+			Type: "message",
+			ID:   "msg-1",
+			Role: "assistant",
+			Content: []api.ContentItem{
+				{Type: "output_text", Text: "hello"},
+			},
+		},
+	}
+	result := convertOutputItemsToSchema(items)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(result))
+	}
+	if len(result[0].Content) != 1 {
+		t.Fatalf("expected 1 content part, got %d", len(result[0].Content))
+	}
+	cp := result[0].Content[0]
+	if cp.Annotations == nil {
+		t.Fatal("expected non-nil Annotations on output_text")
+	}
+	if len(cp.Annotations) != 0 {
+		t.Errorf("expected empty Annotations, got %d", len(cp.Annotations))
+	}
+	if cp.Logprobs == nil {
+		t.Fatal("expected non-nil Logprobs on output_text")
+	}
+	if len(cp.Logprobs) != 0 {
+		t.Errorf("expected empty Logprobs, got %d", len(cp.Logprobs))
+	}
+}
+
+func TestConvertOutputItemsToSchema_NonOutputTextNoAnnotations(t *testing.T) {
+	items := []api.OutputItem{
+		{
+			Type: "message",
+			ID:   "msg-1",
+			Role: "assistant",
+			Content: []api.ContentItem{
+				{Type: "text", Text: "hello"},
+			},
+		},
+	}
+	result := convertOutputItemsToSchema(items)
+	cp := result[0].Content[0]
+	if cp.Annotations != nil {
+		t.Errorf("expected nil Annotations on non-output_text, got %v", cp.Annotations)
+	}
+	if cp.Logprobs != nil {
+		t.Errorf("expected nil Logprobs on non-output_text, got %v", cp.Logprobs)
+	}
+}
+
 func TestEchoRequestParams_NilOptionals(t *testing.T) {
 	req := &schema.ResponseRequest{}
 	resp := schema.NewResponse("test", "model")

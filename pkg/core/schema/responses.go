@@ -60,6 +60,15 @@ type ResponseRequest struct {
 	// Presence penalty (-2.0 to 2.0)
 	PresencePenalty *float64 `json:"presence_penalty,omitempty"`
 
+	// Inference parameters forwarded to the backend (vLLM)
+	Truncation        *string    `json:"truncation,omitempty"`
+	ParallelToolCalls *bool      `json:"parallel_tool_calls,omitempty"`
+	Text              *TextField `json:"text,omitempty"`
+	TopLogprobs       *int       `json:"top_logprobs,omitempty"`
+
+	// Whether the gateway should persist the response (gateway-managed)
+	Store *bool `json:"store,omitempty"`
+
 	// Whether to stream the response (HTTP-specific, not in spec but required for SSE)
 	Stream bool `json:"stream,omitempty"`
 }
@@ -113,6 +122,15 @@ type Response struct {
 	MaxToolCalls       *int             `json:"max_tool_calls"`                   // nullable
 	FrequencyPenalty   float64          `json:"frequency_penalty"`                // required number
 	PresencePenalty    float64          `json:"presence_penalty"`                 // required number
+
+	// Inference parameters echoed from the backend (vLLM)
+	Truncation        string    `json:"truncation"`          // required, default "disabled"
+	ParallelToolCalls bool      `json:"parallel_tool_calls"` // required, default true
+	Text              TextField `json:"text"`                // required, default {format:{type:"text"}}
+	TopLogprobs       int       `json:"top_logprobs"`        // required, default 0
+
+	// Gateway-managed persistence flag
+	Store bool `json:"store"` // required, default true
 }
 
 // ItemField represents an output item (discriminated union by type)
@@ -156,6 +174,10 @@ type ContentPart struct {
 	// Annotation fields
 	StartIndex *int `json:"start_index,omitempty"`
 	EndIndex   *int `json:"end_index,omitempty"`
+
+	// Annotations from tool results (web/file search citations); Logprobs from vLLM.
+	Annotations []Annotation  `json:"annotations,omitempty"`
+	Logprobs    []interface{} `json:"logprobs,omitempty"`
 }
 
 // ImageURL represents an image URL
@@ -333,6 +355,25 @@ type ReasoningConfig struct {
 // ReasoningBudget represents reasoning token budget
 type ReasoningBudget struct {
 	TokenBudget *int `json:"token_budget,omitempty"`
+}
+
+// TextFormat specifies the output text format. Forwarded to vLLM for structured output enforcement.
+type TextFormat struct {
+	Type string `json:"type"` // "text", "json_object", "json_schema"
+}
+
+// TextField wraps TextFormat for the text response configuration.
+type TextField struct {
+	Format TextFormat `json:"format"`
+}
+
+// Annotation represents a citation produced by tool execution (web search, file search).
+type Annotation struct {
+	Type       string `json:"type"`
+	StartIndex int    `json:"start_index"`
+	EndIndex   int    `json:"end_index"`
+	URL        string `json:"url"`
+	Title      string `json:"title"`
 }
 
 // Streaming Event Types (24 event types per Open Responses spec)
@@ -586,6 +627,13 @@ func NewResponse(id, model string) *Response {
 		TopP:             0.0,
 		FrequencyPenalty: 0.0,
 		PresencePenalty:  0.0,
+		// Inference defaults (echoed from vLLM)
+		Truncation:        "disabled",
+		ParallelToolCalls: true,
+		Text:              TextField{Format: TextFormat{Type: "text"}},
+		TopLogprobs:       0,
+		// Gateway-managed
+		Store: true,
 	}
 }
 
