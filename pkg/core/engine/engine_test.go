@@ -184,25 +184,11 @@ func TestConvertMessagesToResponsesInput_UserMessage(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected map[string]interface{}, got %T", input[0])
 	}
-	if item["type"] != "message" {
-		t.Errorf("expected type=message, got %v", item["type"])
-	}
 	if item["role"] != "user" {
 		t.Errorf("expected role=user, got %v", item["role"])
 	}
-
-	content, ok := item["content"].([]map[string]interface{})
-	if !ok {
-		t.Fatalf("expected content as []map, got %T", item["content"])
-	}
-	if len(content) != 1 {
-		t.Fatalf("expected 1 content part, got %d", len(content))
-	}
-	if content[0]["type"] != "input_text" {
-		t.Errorf("expected content type=input_text, got %v", content[0]["type"])
-	}
-	if content[0]["text"] != "hello" {
-		t.Errorf("expected text=hello, got %v", content[0]["text"])
+	if item["content"] != "hello" {
+		t.Errorf("expected content=hello, got %v", item["content"])
 	}
 }
 
@@ -322,17 +308,25 @@ func TestConvertMessagesToResponsesInput_MixedMessages(t *testing.T) {
 		t.Fatalf("expected 4 input items, got %d", len(input))
 	}
 
-	// Verify ordering: user, function_call, assistant message, function_call_output
-	types := make([]string, len(input))
-	for i, item := range input {
-		m := item.(map[string]interface{})
-		types[i] = m["type"].(string)
+	// Item 0: user message (simple format, no "type" key)
+	m0 := input[0].(map[string]interface{})
+	if m0["role"] != "user" {
+		t.Errorf("item[0] role: expected user, got %v", m0["role"])
 	}
-	expected := []string{"message", "function_call", "message", "function_call_output"}
-	for i, want := range expected {
-		if types[i] != want {
-			t.Errorf("item[%d] type: expected %q, got %q", i, want, types[i])
-		}
+	// Item 1: function_call (structured)
+	m1 := input[1].(map[string]interface{})
+	if m1["type"] != "function_call" {
+		t.Errorf("item[1] type: expected function_call, got %v", m1["type"])
+	}
+	// Item 2: assistant message (simple format, no "type" key)
+	m2 := input[2].(map[string]interface{})
+	if m2["role"] != "assistant" {
+		t.Errorf("item[2] role: expected assistant, got %v", m2["role"])
+	}
+	// Item 3: function_call_output (structured)
+	m3 := input[3].(map[string]interface{})
+	if m3["type"] != "function_call_output" {
+		t.Errorf("item[3] type: expected function_call_output, got %v", m3["type"])
 	}
 }
 
