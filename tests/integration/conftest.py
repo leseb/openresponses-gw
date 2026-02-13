@@ -36,4 +36,5 @@ def httpx_client():
     return httpx.Client(
         base_url=BASE_URL,
         headers={"Authorization": f"Bearer {API_KEY}"},
+        timeout=httpx.Timeout(120.0),
     )
