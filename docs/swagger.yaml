@@ -29,6 +29,19 @@ components:
           description: Required
           type: string
       type: object
+    github_com_leseb_openresponses-gw_pkg_core_schema.Annotation:
+      properties:
+        end_index:
+          type: integer
+        start_index:
+          type: integer
+        title:
+          type: string
+        type:
+          type: string
+        url:
+          type: string
+      type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ChunkingStrategy:
       properties:
         static:
@@ -60,6 +73,13 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ContentPart:
       properties:
+        annotations:
+          description: Annotations from tool results (web/file search citations);
+            Logprobs from vLLM.
+          items:
+            $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.Annotation'
+          type: array
+          uniqueItems: false
         end_index:
           type: integer
         file_id:
@@ -67,6 +87,10 @@ components:
           type: string
         image_url:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ImageURL'
+        logprobs:
+          items: {}
+          type: array
+          uniqueItems: false
         start_index:
           description: Annotation fields
           type: integer
@@ -688,6 +712,9 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ItemField'
           type: array
           uniqueItems: false
+        parallel_tool_calls:
+          description: required, default true
+          type: boolean
         presence_penalty:
           description: required number
           type: number
@@ -699,9 +726,14 @@ components:
         status:
           description: 'Status: "queued", "in_progress", "completed", "failed", "incomplete"'
           type: string
+        store:
+          description: Gateway-managed persistence flag
+          type: boolean
         temperature:
           description: required number
           type: number
+        text:
+          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TextField'
         tool_choice:
           description: string enum ("none", "auto", "required") or object
           type: object
@@ -711,9 +743,15 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesTool'
           type: array
           uniqueItems: false
+        top_logprobs:
+          description: required, default 0
+          type: integer
         top_p:
           description: required number
           type: number
+        truncation:
+          description: Inference parameters echoed from the backend (vLLM)
+          type: string
         usage:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UsageField'
       type: object
@@ -752,6 +790,8 @@ components:
         model:
           description: Model ID used to generate the response
           type: string
+        parallel_tool_calls:
+          type: boolean
         presence_penalty:
           description: Presence penalty (-2.0 to 2.0)
           type: number
@@ -760,6 +800,9 @@ components:
           type: string
         reasoning:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningParam'
+        store:
+          description: Whether the gateway should persist the response (gateway-managed)
+          type: boolean
         stream:
           description: Whether to stream the response (HTTP-specific, not in spec
             but required for SSE)
@@ -767,6 +810,8 @@ components:
         temperature:
           description: Temperature for sampling (0-2)
           type: number
+        text:
+          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TextField'
         tool_choice:
           description: Controls which tool the model should use
           type: object
@@ -776,9 +821,14 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesToolParam'
           type: array
           uniqueItems: false
+        top_logprobs:
+          type: integer
         top_p:
           description: Top P for nucleus sampling
           type: number
+        truncation:
+          description: Inference parameters forwarded to the backend (vLLM)
+          type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ResponsesTool:
       properties:
@@ -889,6 +939,18 @@ components:
         max_chunk_size_tokens:
           description: Max tokens per chunk
           type: integer
+      type: object
+    github_com_leseb_openresponses-gw_pkg_core_schema.TextField:
+      description: required, default {format:{type:"text"}}
+      properties:
+        format:
+          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.TextFormat'
+      type: object
+    github_com_leseb_openresponses-gw_pkg_core_schema.TextFormat:
+      properties:
+        type:
+          description: '"text", "json_object", "json_schema"'
+          type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.UpdatePromptRequest:
       properties:
