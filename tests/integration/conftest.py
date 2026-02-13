@@ -8,7 +8,7 @@ import pytest
 
 BASE_URL = os.environ.get("OPENRESPONSES_BASE_URL", "http://localhost:8080/v1")
 API_KEY = os.environ.get("OPENRESPONSES_API_KEY", "unused")
-MODEL = os.environ.get("OPENRESPONSES_MODEL", "llama3.2:3b")
+MODEL = os.environ.get("OPENRESPONSES_MODEL", "Qwen/Qwen3-0.6B")
 
 
 @pytest.fixture(scope="session")
