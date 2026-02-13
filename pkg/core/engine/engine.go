@@ -306,6 +306,23 @@ func convertToToolParams(tools []schema.ResponsesToolParam) []api.ToolParam {
 	return result
 }
 
+// outputToItemFields converts a stored Output (which may be []interface{} after
+// JSON round-tripping through the database) back into []schema.ItemField.
+func outputToItemFields(output interface{}) []schema.ItemField {
+	if items, ok := output.([]schema.ItemField); ok {
+		return items
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return nil
+	}
+	var items []schema.ItemField
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil
+	}
+	return items
+}
+
 // buildResponsesAPIRequest constructs a ResponsesAPIRequest from conversation
 // messages and the original request parameters.
 func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.ResponseRequest, tools []schema.ResponsesToolParam, stream bool) *api.ResponsesAPIRequest {
@@ -359,6 +376,15 @@ func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.
 
 // convertMessagesToResponsesInput converts internal Messages to the Responses
 // API input format. System messages are skipped (handled by the Instructions field).
+//
+// vLLM compatibility: vLLM's /v1/responses endpoint only accepts the simple
+// {role, content} format for user and assistant text messages. The structured
+// Responses API format ({type:"message", role:"user", content:[{type:"input_text",
+// text:"..."}]}) causes vLLM to return 400 errors with Pydantic validation
+// failures in multi-turn conversations. We therefore use the simple chat-style
+// format for plain text messages, and only use the structured format for
+// multimodal content (images, files) and tool calls (function_call,
+// function_call_output) which require it.
 func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
 	var input []interface{}
 	for _, msg := range messages {
@@ -368,7 +394,7 @@ func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
 			continue
 		case "user":
 			if len(msg.ContentParts) > 0 {
-				// Multimodal content
+				// Multimodal content — use structured format
 				var parts []map[string]interface{}
 				for _, cp := range msg.ContentParts {
 					switch cp.Type {
@@ -409,12 +435,10 @@ func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
 					"content": parts,
 				})
 			} else {
+				// Simple format: vLLM expects {role, content} for plain text
 				input = append(input, map[string]interface{}{
-					"type": "message",
-					"role": "user",
-					"content": []map[string]interface{}{
-						{"type": "input_text", "text": msg.Content},
-					},
+					"role":    "user",
+					"content": msg.Content,
 				})
 			}
 		case "assistant":
@@ -430,12 +454,10 @@ func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
 				}
 			}
 			if msg.Content != "" {
+				// Simple format: vLLM expects {role, content} for plain text
 				input = append(input, map[string]interface{}{
-					"type": "message",
-					"role": "assistant",
-					"content": []map[string]interface{}{
-						{"type": "output_text", "text": msg.Content},
-					},
+					"role":    "assistant",
+					"content": msg.Content,
 				})
 			}
 		case "tool":
@@ -446,11 +468,8 @@ func convertMessagesToResponsesInput(messages []api.Message) []interface{} {
 			})
 		case "developer":
 			input = append(input, map[string]interface{}{
-				"type": "message",
-				"role": "developer",
-				"content": []map[string]interface{}{
-					{"type": "input_text", "text": msg.Content},
-				},
+				"role":    "developer",
+				"content": msg.Content,
 			})
 		}
 	}
@@ -568,6 +587,83 @@ func patchResponseID(data json.RawMessage, newResponseID string) json.RawMessage
 	return data
 }
 
+// emitOutputItemAddedIfNeeded emits a response.output_item.added event if
+// the given output_index hasn't been announced yet. The OpenAI Python SDK
+// expects this event before any delta events for that output index.
+func emitOutputItemAddedIfNeeded(
+	events chan<- interface{},
+	announced map[int]string,
+	outputIndex int,
+	itemID string,
+	itemType string,
+	seqNum int,
+) int {
+	if _, ok := announced[outputIndex]; ok {
+		return seqNum
+	}
+	if itemID == "" {
+		if itemType == "function_call" {
+			itemID = generateID("fc_")
+		} else {
+			itemID = generateID("msg_")
+		}
+	}
+	announced[outputIndex] = itemID
+
+	role := "assistant"
+	status := "in_progress"
+	item := schema.ItemField{
+		Type:    itemType,
+		ID:      itemID,
+		Content: make([]schema.ContentPart, 0),
+	}
+	if itemType == "message" {
+		item.Role = &role
+		item.Status = &status
+	}
+
+	events <- &schema.ResponseOutputItemAddedStreamingEvent{
+		Type:           "response.output_item.added",
+		SequenceNumber: seqNum,
+		OutputIndex:    outputIndex,
+		Item:           item,
+	}
+	return seqNum + 1
+}
+
+// emitContentPartAddedIfNeeded emits a response.content_part.added event if
+// the given output_index:content_index pair hasn't been announced yet.
+func emitContentPartAddedIfNeeded(
+	events chan<- interface{},
+	announcedParts map[string]bool,
+	announcedOutputs map[int]string,
+	outputIndex int,
+	contentIndex int,
+	seqNum int,
+) int {
+	key := fmt.Sprintf("%d:%d", outputIndex, contentIndex)
+	if announcedParts[key] {
+		return seqNum
+	}
+	announcedParts[key] = true
+	itemID := announcedOutputs[outputIndex]
+	emptyText := ""
+
+	events <- &schema.ResponseContentPartAddedStreamingEvent{
+		Type:           "response.content_part.added",
+		SequenceNumber: seqNum,
+		ItemID:         itemID,
+		OutputIndex:    outputIndex,
+		ContentIndex:   contentIndex,
+		Part: schema.ContentPart{
+			Type:        "output_text",
+			Text:        &emptyText,
+			Annotations: make([]schema.Annotation, 0),
+		},
+	}
+	return seqNum + 1
+}
+
 // buildConversationMessages reconstructs conversation history for multi-turn
 func (e *Engine) buildConversationMessages(ctx context.Context, req *schema.ResponseRequest) ([]api.Message, error) {
 	var messages []api.Message
@@ -601,67 +697,9 @@ func (e *Engine) buildConversationMessages(ctx context.Context, req *schema.Resp
 			messages = append(messages, msg)
 		}
 
-		// Append previous response output as context
-		if output, ok := prevResp.Output.([]schema.ItemField); ok {
-			for _, item := range output {
-				switch item.Type {
-				case "message":
-					role := "assistant"
-					if item.Role != nil {
-						role = *item.Role
-					}
-					content := ""
-					for _, part := range item.Content {
-						if part.Text != nil {
-							content += *part.Text
-						}
-					}
-					if content != "" {
-						messages = append(messages, api.Message{Role: role, Content: content})
-					}
-				case "function_call":
-					name := ""
-					if item.Name != nil {
-						name = *item.Name
-					}
-					args := ""
-					if item.Arguments != nil {
-						args = *item.Arguments
-					}
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					messages = append(messages, api.Message{
-						Role: "assistant",
-						ToolCalls: []api.ToolCall{
-							{
-								ID:   callID,
-								Type: "function",
-								Function: api.ToolCallFunction{
-									Name:      name,
-									Arguments: args,
-								},
-							},
-						},
-					})
-				case "function_call_output":
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					output := ""
-					if item.Output != nil {
-						output = *item.Output
-					}
-					messages = append(messages, api.Message{
-						Role:       "tool",
-						Content:    output,
-						ToolCallID: callID,
-					})
-				}
-			}
-		}
+		// NOTE: stored messages already include the assistant response
+		// (appended during ProcessRequest before save), so we do NOT
+		// re-process prevResp.Output here to avoid duplicates.
 	}
 
 	// Add instructions as system message
@@ -861,67 +899,9 @@ func (e *Engine) buildConversationMessagesFromConversation(ctx context.Context, 
 			messages = append(messages, msg)
 		}
 
-		// Append the latest response's output as context
-		if output, ok := latestResp.Output.([]schema.ItemField); ok {
-			for _, item := range output {
-				switch item.Type {
-				case "message":
-					role := "assistant"
-					if item.Role != nil {
-						role = *item.Role
-					}
-					content := ""
-					for _, part := range item.Content {
-						if part.Text != nil {
-							content += *part.Text
-						}
-					}
-					if content != "" {
-						messages = append(messages, api.Message{Role: role, Content: content})
-					}
-				case "function_call":
-					name := ""
-					if item.Name != nil {
-						name = *item.Name
-					}
-					args := ""
-					if item.Arguments != nil {
-						args = *item.Arguments
-					}
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					messages = append(messages, api.Message{
-						Role: "assistant",
-						ToolCalls: []api.ToolCall{
-							{
-								ID:   callID,
-								Type: "function",
-								Function: api.ToolCallFunction{
-									Name:      name,
-									Arguments: args,
-								},
-							},
-						},
-					})
-				case "function_call_output":
-					callID := ""
-					if item.CallID != nil {
-						callID = *item.CallID
-					}
-					output := ""
-					if item.Output != nil {
-						output = *item.Output
-					}
-					messages = append(messages, api.Message{
-						Role:       "tool",
-						Content:    output,
-						ToolCallID: callID,
-					})
-				}
-			}
-		}
+		// NOTE: stored messages already include the assistant response
+		// (appended during ProcessRequest before save), so we do NOT
+		// re-process latestResp.Output here to avoid duplicates.
 	}
 
 	// Add instructions as system message
@@ -1548,6 +1528,17 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			var backendOutput []api.OutputItem
 			var backendUsage *api.UsageInfo
 
+			// Track announced items for proper SSE event sequencing.
+			// The OpenAI SDK expects response.output_item.added and
+			// response.content_part.added before any delta events.
+			// vLLM uses a per-token content_index (0, 1, 2, ...) instead of
+			// the standard content_index=0 for all deltas in one content part.
+			// We normalise: emit our own lifecycle events, rewrite delta
+			// content_index to 0, and skip vLLM's lifecycle events.
+			announcedOutputs := make(map[int]string) // output_index → item_id
+			announcedContent := make(map[int]bool)   // output_index → content_part announced
+			accumulatedText := make(map[int]string)  // output_index → accumulated text
+
 			// Forward backend events to client, skipping lifecycle events
 			for evt := range streamChan {
 				switch evt.Type {
@@ -1567,20 +1558,119 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 					continue
 
 				case "response.failed":
-					// Forward error from backend
 					events <- &schema.RawStreamingEvent{
 						EventType: evt.Type,
 						RawData:   patchResponseID(evt.Data, respID),
 					}
 					continue
 
+				case "response.output_item.added",
+					"response.output_item.done",
+					"response.content_part.added",
+					"response.content_part.done",
+					"response.output_text.done":
+					// Skip — the gateway emits its own normalised versions
+					continue
+
+				case "response.output_text.delta":
+					var fields struct {
+						OutputIndex int    `json:"output_index"`
+						ItemID      string `json:"item_id"`
+						Delta       string `json:"delta"`
+					}
+					if err := json.Unmarshal(evt.Data, &fields); err == nil {
+						// Emit output_item.added + content_part.added on first delta
+						seqNum = emitOutputItemAddedIfNeeded(events, announcedOutputs, fields.OutputIndex, fields.ItemID, "message", seqNum)
+						if !announcedContent[fields.OutputIndex] {
+							announcedContent[fields.OutputIndex] = true
+							seqNum = emitContentPartAddedIfNeeded(events, make(map[string]bool), announcedOutputs, fields.OutputIndex, 0, seqNum)
+						}
+						accumulatedText[fields.OutputIndex] += fields.Delta
+					}
+
+					// Re-emit delta with normalised content_index=0 and correct sequence_number
+					var m map[string]json.RawMessage
+					if err := json.Unmarshal(evt.Data, &m); err == nil {
+						m["content_index"], _ = json.Marshal(0)
+						m["sequence_number"], _ = json.Marshal(seqNum)
+						seqNum++
+						patched, _ := json.Marshal(m)
+						events <- &schema.RawStreamingEvent{
+							EventType: evt.Type,
+							RawData:   patchResponseID(json.RawMessage(patched), respID),
+						}
+					}
+
+				case "response.function_call_arguments.delta":
+					var fields struct {
+						OutputIndex int    `json:"output_index"`
+						ItemID      string `json:"item_id"`
+					}
+					if err := json.Unmarshal(evt.Data, &fields); err == nil {
+						seqNum = emitOutputItemAddedIfNeeded(events, announcedOutputs, fields.OutputIndex, fields.ItemID, "function_call", seqNum)
+					}
+					events <- &schema.RawStreamingEvent{
+						EventType: evt.Type,
+						RawData:   patchResponseID(evt.Data, respID),
+					}
+
 				default:
-					// Forward all other events (deltas, items, etc.) with patched response_id
 					events <- &schema.RawStreamingEvent{
 						EventType: evt.Type,
 						RawData:   patchResponseID(evt.Data, respID),
 					}
 				}
+			}
+
+			// Emit done events for text content parts
+			for outputIdx, text := range accumulatedText {
+				itemID := announcedOutputs[outputIdx]
+
+				events <- &schema.ResponseOutputTextDoneStreamingEvent{
+					Type:           "response.output_text.done",
+					SequenceNumber: seqNum,
+					ItemID:         itemID,
+					OutputIndex:    outputIdx,
+					ContentIndex:   0,
+					Text:           text,
+					Logprobs:       make([]interface{}, 0),
+				}
+				seqNum++
+
+				events <- &schema.ResponseContentPartDoneStreamingEvent{
+					Type:           "response.content_part.done",
+					SequenceNumber: seqNum,
+					ItemID:         itemID,
+					OutputIndex:    outputIdx,
+					ContentIndex:   0,
+					Part: schema.ContentPart{
+						Type:        "output_text",
+						Text:        &text,
+						Annotations: make([]schema.Annotation, 0),
+					},
+				}
+				seqNum++
+
+				completedStatus := "completed"
+				role := "assistant"
+				t := text
+				events <- &schema.ResponseOutputItemDoneStreamingEvent{
+					Type:           "response.output_item.done",
+					SequenceNumber: seqNum,
+					OutputIndex:    outputIdx,
+					Item: schema.ItemField{
+						Type: "message",
+						ID:   itemID,
+						Role: &role,
+						Content: []schema.ContentPart{{
+							Type:        "output_text",
+							Text:        &t,
+							Annotations: make([]schema.Annotation, 0),
+						}},
+						Status: &completedStatus,
+					},
+				}
+				seqNum++
 			}
 
 			// Check for server-side tool calls in the completed output
