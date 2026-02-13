@@ -84,34 +84,15 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Ollama
-        run: curl -fsSL https://ollama.com/install.sh | sh
-
-      - name: Start Ollama
-        run: ollama serve &
-
-      - name: Wait for Ollama
-        run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
-              echo "Ollama is ready"
-              exit 0
-            fi
-            echo "Waiting for Ollama... ($i/30)"
-            sleep 2
-          done
-          echo "Ollama failed to start"
-          exit 1
-
-      - name: Pull model
-        run: ollama pull llama3.2:3b
+      - name: Start vLLM
+        uses: ./.github/actions/setup-vllm
 
       - name: Build server
         run: make build-server
 
       - name: Start server
         env:
-          OPENAI_API_ENDPOINT: http://localhost:11434/v1
+          OPENAI_API_ENDPOINT: http://localhost:8000/v1
           OPENAI_API_KEY: unused
         run: |
           ./bin/openresponses-gw-server > /tmp/server.log 2>&1 &
@@ -132,7 +113,7 @@ jobs:
           exit 1
 
       - name: Run conformance tests
-        run: ./tests/scripts/test-conformance.sh llama3.2:3b
+        run: ./tests/scripts/test-conformance.sh Qwen/Qwen3-0.6B
 
       - name: Upload server log
         if: failure()
@@ -140,3 +121,14 @@ jobs:
         with:
           name: server-log
           path: /tmp/server.log
+
+      - name: Upload vLLM log
+        if: failure()
+        run: docker logs vllm > /tmp/vllm.log 2>&1 || true
+
+      - name: Upload vLLM log artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vllm-log
+          path: /tmp/vllm.log

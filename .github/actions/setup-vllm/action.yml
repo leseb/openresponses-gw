@@ -1,0 +1,27 @@
+name: Setup vLLM
+description: Start vLLM inference server with Qwen3-0.6B model
+runs:
+  using: "composite"
+  steps:
+    - name: Start vLLM
+      shell: bash
+      run: |
+        docker run -d \
+          --name vllm \
+          --privileged=true \
+          --net=host \
+          quay.io/higginsd/vllm-cpu:65393ee064-qwen3 \
+          --host 0.0.0.0 \
+          --port 8000 \
+          --enable-auto-tool-choice \
+          --tool-call-parser hermes \
+          --model /root/.cache/Qwen3-0.6B \
+          --served-model-name Qwen/Qwen3-0.6B \
+          --max-model-len 8192
+
+        echo "Waiting for vLLM to be ready..."
+        timeout 900 bash -c 'until curl -fsS http://localhost:8000/health >/dev/null; do
+          echo "Waiting for vLLM..."
+          sleep 5
+        done'
+        echo "vLLM is ready"
