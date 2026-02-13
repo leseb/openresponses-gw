@@ -23,13 +23,13 @@ adds everything above. The inference backend does what it does best (LLM
 generation), and the gateway handles the rest.
 
 ```
-                                    ┌──────────────┐
-                                    │  Inference    │
-    Client ──> openresponses-gw ──> │  Backend      │
-               (stateful tier)      │  (vLLM, etc)  │
-               - storage            │               │
+                                    ┌────────────────┐
+                                    │  Inference     │
+    Client ──> openresponses-gw ──> │  Backend       │
+               (stateful tier)      │  (vLLM, etc)   │
+               - storage            │                │
                - conversations      │ /v1/responses  │
-               - files & vectors    └──────────────┘
+               - files & vectors    └────────────────┘
                - MCP connectors
                - file_search
                - prompts
