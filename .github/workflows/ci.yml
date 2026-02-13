@@ -112,6 +112,20 @@ jobs:
           cat /tmp/server.log
           exit 1
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run integration tests
+        env:
+          OPENRESPONSES_BASE_URL: http://localhost:8080/v1
+          OPENRESPONSES_MODEL: Qwen/Qwen3-0.6B
+        run: make test-integration-python
+
       - name: Run conformance tests
         run: ./tests/scripts/test-conformance.sh Qwen/Qwen3-0.6B
 
