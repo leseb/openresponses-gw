@@ -1,14 +1,14 @@
 # Envoy configuration for ExtProc integration with OpenAI Responses Gateway
 #
-# Architecture:
-#   Client → Envoy:8080 → ExtProc:10000 (gRPC)
-#                              ↓
-#                          Core Engine
-#                              ↓
-#                          Backend (Ollama/OpenAI)
+# Architecture (Filter Chain Mode):
+#   Client → Envoy:8080 → ExtProc (inject state) → Backend (Ollama)
+#                                                        ↓
+#                              ExtProc (process response) ← Backend Response
+#                                                        ↓
+#                                                    Client
 #
-# Note: The ExtProc service returns ImmediateResponse, so the backend_cluster
-# defined below is not actually used. It's kept for configuration validity.
+# The ExtProc injects conversation state into request headers, forwards to
+# backend, then processes the response to save state before returning to client.
 
 admin:
   address:
@@ -39,15 +39,15 @@ static_resources:
               - match:
                   prefix: "/v1/responses"
                 route:
-                  cluster: extproc_passthrough
+                  cluster: backend_cluster
                   timeout: 300s
               - match:
                   prefix: "/"
                 route:
-                  cluster: extproc_passthrough
+                  cluster: backend_cluster
                   timeout: 300s
           http_filters:
-          # ExtProc filter - processes all requests
+          # ExtProc filter - processes request and response
           - name: envoy.filters.http.ext_proc
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
@@ -58,13 +58,12 @@ static_resources:
               # Fail closed if ExtProc is unavailable
               failure_mode_allow: false
               processing_mode:
-                # Send headers so ExtProc can extract method, path, and HTTP headers
+                # Process headers to inject state
                 request_header_mode: SEND
-                response_header_mode: SKIP
-                # Process request body in buffered mode
+                response_header_mode: SEND
+                # Process body for state injection and response processing
                 request_body_mode: BUFFERED
-                # Response body mode is NONE since we use ImmediateResponse
-                response_body_mode: BUFFERED_PARTIAL
+                response_body_mode: BUFFERED
                 request_trailer_mode: SKIP
                 response_trailer_mode: SKIP
               # Timeout for each processing phase (must cover LLM inference time)
@@ -103,18 +102,17 @@ static_resources:
       healthy_threshold: 2
       grpc_health_check: {}
 
-  # Passthrough cluster - not actually used since ExtProc returns ImmediateResponse
-  # Kept for configuration validity
-  - name: extproc_passthrough
-    type: STATIC
+  # Backend cluster - Ollama server
+  - name: backend_cluster
+    type: STRICT_DNS
     lb_policy: ROUND_ROBIN
     load_assignment:
-      cluster_name: extproc_passthrough
+      cluster_name: backend_cluster
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: 127.0.0.1
-                port_value: 1  # Invalid port - should never be reached
-    connect_timeout: 1s
+                address: ollama
+                port_value: 11434
+    connect_timeout: 5s
