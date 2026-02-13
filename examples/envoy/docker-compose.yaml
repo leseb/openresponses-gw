@@ -24,7 +24,7 @@ services:
     ports:
       - "10000:10000"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - ./extproc-config.yaml:/app/config.yaml:ro
     command: ["-config", "/app/config.yaml", "-port", "10000", "-log-level", "debug"]
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:10000"]

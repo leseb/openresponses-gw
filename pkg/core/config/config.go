@@ -184,18 +184,20 @@ func Default() *Config {
 	}
 	applySessionStoreDefaults(&ssCfg)
 
+	engCfg := EngineConfig{
+		ModelEndpoint: os.Getenv("OPENAI_API_ENDPOINT"),
+		APIKey:        os.Getenv("OPENAI_API_KEY"),
+		MaxTokens:     4096,
+		Timeout:       60 * time.Second,
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
 			Port:    8080,
 			Timeout: 60 * time.Second,
 		},
-		Engine: EngineConfig{
-			ModelEndpoint: os.Getenv("OPENAI_API_ENDPOINT"),
-			APIKey:        os.Getenv("OPENAI_API_KEY"),
-			MaxTokens:     4096,
-			Timeout:       60 * time.Second,
-		},
+		Engine:       engCfg,
 		Embedding:    embCfg,
 		VectorStore:  vsCfg,
 		FileStore:    fsCfg,
