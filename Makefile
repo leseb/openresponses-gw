@@ -219,6 +219,13 @@ test-integration-python: ## Run Python integration tests
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
 	uv run --project tests/integration pytest tests/integration/ -v
 
+test-integration-envoy: ## Run Python integration tests through Envoy ExtProc
+	@echo "$(GREEN)Running Python integration tests (Envoy ExtProc)...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	OPENRESPONSES_BASE_URL=http://localhost:8081/v1 \
+	OPENRESPONSES_ADAPTER=envoy \
+	uv run --project tests/integration pytest tests/integration/ -v
+
 test-openapi-conformance: ## Check OpenAPI conformance against OpenAI spec
 	@echo "$(GREEN)Checking OpenAPI conformance...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
