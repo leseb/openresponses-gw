@@ -149,16 +149,21 @@ func main() {
 		slogLogger.Info("received shutdown signal", "signal", sig)
 	}
 
-	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	slogLogger.Info("shutting down gracefully")
 
-	// Stop accepting new connections
-	grpcServer.GracefulStop()
+	// GracefulStop stops accepting new RPCs and blocks until all pending RPCs
+	// complete. If it hangs (e.g. a long-running stream), force-stop after 5s.
+	done := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(done)
+	}()
 
-	// Wait for shutdown or timeout
-	<-ctx.Done()
-	slogLogger.Info("server stopped")
+	select {
+	case <-done:
+		slogLogger.Info("server stopped")
+	case <-time.After(5 * time.Second):
+		slogLogger.Warn("graceful stop timed out, forcing shutdown")
+		grpcServer.Stop()
+	}
 }
