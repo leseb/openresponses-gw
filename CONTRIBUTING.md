@@ -6,29 +6,20 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- Go 1.23 or later
-- Docker and Docker Compose
+- Go 1.24 or later
 - Make
-- PostgreSQL 16+ (optional, for local development)
-- Redis 7+ (optional, for local development)
 
 ### Initial Setup
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/leseb/openresponses-gw
-cd openai-openresponses-gw
+cd openresponses-gw
 
-# 2. Install dependencies
-make deps
+# 2. Download dependencies
+make init
 
-# 3. Install development tools
-make tools
-
-# 4. Start development dependencies
-docker-compose up -d postgres redis
-
-# 5. Run tests
+# 3. Run tests
 make test
 ```
 
@@ -64,11 +55,11 @@ make test
 # Run with coverage
 make test-coverage
 
-# Run integration tests
-make test-integration
+# Run Python integration tests (requires uv and a running server)
+make test-integration-python
 
-# Run end-to-end tests
-make test-e2e
+# Run integration tests through Envoy ExtProc
+make test-integration-envoy
 ```
 
 ### Code Quality
@@ -142,12 +133,6 @@ func TestEngine_ProcessRequest(t *testing.T) {
 }
 ```
 
-### Integration Tests
-
-- Use `testcontainers-go` for database/redis
-- Tag with `//go:build integration`
-- Clean up resources after tests
-
 ## Commit Message Format
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
@@ -200,35 +185,6 @@ Fixes #456
 5. **Run the linter**: `make lint`
 6. **Update documentation** if needed
 
-### PR Template
-
-```markdown
-## Description
-Brief description of changes
-
-## Related Issue
-Closes #123
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Testing
-- [ ] Unit tests added/updated
-- [ ] Integration tests added/updated
-- [ ] Manual testing performed
-
-## Checklist
-- [ ] Code follows style guidelines
-- [ ] Self-review completed
-- [ ] Comments added for complex logic
-- [ ] Documentation updated
-- [ ] No new warnings generated
-- [ ] Tests pass locally
-```
-
 ### Review Process
 
 1. Automated checks must pass (CI/CD)
@@ -238,28 +194,35 @@ Closes #123
 
 ## Project Structure
 
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed architecture.
+See [ARCHITECTURE.md](./docs/ARCHITECTURE.md) for detailed architecture.
 
 ```
 pkg/
 ├── core/              # Gateway-agnostic core (NO gateway dependencies)
 │   ├── engine/        # Main orchestration
 │   ├── schema/        # API schemas
-│   ├── state/         # State management interfaces
-│   └── tools/         # Tool execution framework
+│   ├── config/        # Configuration loading
+│   ├── api/           # Backend API clients
+│   ├── services/      # Vector store service
+│   └── state/         # State management interfaces
 ├── adapters/          # Gateway-specific adapters
-│   ├── http/          # Standard HTTP
-│   └── envoy/         # Envoy ExtProc
-└── storage/           # Storage implementations
-    ├── postgres/      # PostgreSQL
-    ├── redis/         # Redis
-    └── memory/        # In-memory (dev/test)
+│   ├── http/          # Standard HTTP server
+│   └── envoy/         # Envoy ExtProc (delegates to HTTP handler)
+├── storage/           # Storage implementations
+│   ├── sqlite/        # SQLite session store
+│   └── memory/        # In-memory stores (prompts, connectors, vector stores)
+├── filestore/         # File storage backends
+│   ├── memory/        # In-memory file store
+│   ├── filesystem/    # Local filesystem
+│   └── s3/            # AWS S3
+└── vectorstore/       # Vector store backends
+    └── milvus/        # Milvus backend
 ```
 
 ### Adding a New Adapter
 
 1. Create package in `pkg/adapters/`
-2. Implement `Adapter` interface
+2. Implement `http.Handler` interface
 3. Add tests
 4. Add example in `examples/`
 5. Update documentation
@@ -272,35 +235,10 @@ pkg/
 4. Add tests
 5. Update configuration
 
-### Adding a New Tool
-
-1. Create file in `pkg/core/tools/builtin/` or `pkg/core/tools/custom/`
-2. Implement `Tool` interface
-3. Register in tool registry
-4. Add tests
-5. Update documentation
-
-## Release Process
-
-1. Update version in code
-2. Update CHANGELOG.md
-3. Create release PR
-4. Tag release: `git tag -a v0.x.0 -m "Release v0.x.0"`
-5. Push tag: `git push origin v0.x.0`
-6. GitHub Actions will build and publish
-
 ## Getting Help
 
 - **Questions**: Open a GitHub Discussion
 - **Bugs**: Open a GitHub Issue
-- **Security**: Email security@example.com
-
-## Code of Conduct
-
-- Be respectful and inclusive
-- Welcome newcomers
-- Focus on constructive feedback
-- Follow the [Contributor Covenant](https://www.contributor-covenant.org/)
 
 ## License
 
