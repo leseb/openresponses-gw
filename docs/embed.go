@@ -5,5 +5,5 @@ package docs
 
 import _ "embed"
 
-//go:embed swagger.yaml
+//go:embed openapi.yaml
 var OpenAPISpec []byte

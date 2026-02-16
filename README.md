@@ -81,7 +81,7 @@ make pre-commit-install          # Install pre-commit hooks
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Deployment modes and backend configuration
 - [docs/TESTING.md](./docs/TESTING.md) — Test infrastructure guide
 - [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md) — vLLM vs gateway field responsibility
-- [docs/swagger.yaml](./docs/swagger.yaml) — Full API specification
+- [docs/openapi.yaml](./docs/openapi.yaml) — Full API specification
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Development guidelines
 
 ## License

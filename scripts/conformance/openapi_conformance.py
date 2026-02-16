@@ -585,8 +585,8 @@ def main():
     parser.add_argument(
         "--gateway-spec",
         type=Path,
-        default=Path("docs/swagger.yaml"),
-        help="Path to Gateway spec (default: docs/swagger.yaml)",
+        default=Path("docs/openapi.yaml"),
+        help="Path to Gateway spec (default: docs/openapi.yaml)",
     )
     parser.add_argument(
         "--output",

@@ -87,6 +87,21 @@ run: build-server ## Build and run server
 	@echo "$(GREEN)Starting server...$(NC)"
 	./$(BIN_DIR)/$(BINARY_NAME)
 
+gen-openapi: ## Generate OpenAPI spec from Go annotations
+	@echo "$(GREEN)Generating OpenAPI spec...$(NC)"
+	@which swag > /dev/null || (echo "$(RED)swag not installed. Run: make install-swag$(NC)" && exit 1)
+	swag init --v3.1 --generalInfo cmd/server/main.go --dir ./ --output docs --outputTypes yaml --parseDependency --parseInternal
+	@mv docs/swagger.yaml docs/openapi.yaml
+	@echo "$(GREEN)Post-processing nullable fields...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	uv run --with pyyaml python scripts/fix-openapi-nullable.py docs/openapi.yaml
+	@echo "$(GREEN)✓ Generated docs/openapi.yaml$(NC)"
+
+install-swag: ## Install swag OpenAPI generator
+	@echo "$(GREEN)Installing swag v2...$(NC)"
+	go install github.com/swaggo/swag/v2/cmd/swag@latest
+	@echo "$(GREEN)✓ swag installed$(NC)"
+
 run-dev: ## Run server in development mode with live reload
 	@echo "$(GREEN)Starting server in dev mode...$(NC)"
 	@which air > /dev/null || (echo "$(YELLOW)air not installed. Run: go install github.com/air-verse/air@latest$(NC)")
