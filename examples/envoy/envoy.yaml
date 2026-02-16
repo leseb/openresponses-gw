@@ -54,7 +54,7 @@ static_resources:
               grpc_service:
                 envoy_grpc:
                   cluster_name: extproc_cluster
-                timeout: 30s
+                timeout: 120s
               # Fail closed if ExtProc is unavailable
               failure_mode_allow: false
               processing_mode:
@@ -67,8 +67,8 @@ static_resources:
                 response_body_mode: BUFFERED_PARTIAL
                 request_trailer_mode: SKIP
                 response_trailer_mode: SKIP
-              # Timeout for each processing phase
-              message_timeout: 30s
+              # Timeout for each processing phase (must cover LLM inference time)
+              message_timeout: 120s
               # Maximum timeout across all phases
               max_message_timeout: 300s
           # Router filter - must be last

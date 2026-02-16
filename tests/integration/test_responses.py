@@ -226,10 +226,16 @@ class TestConversationIntegration:
 
     def test_continue_conversation(self, httpx_client, model):
         """Sending conversation=<id> should continue in the same conversation."""
+        instructions = "Be brief and direct. Answer in one short sentence."
+
         # First request: auto-creates a conversation
         resp1 = httpx_client.post(
             "/responses",
-            json={"model": model, "input": "My name is Bob. Remember this."},
+            json={
+                "model": model,
+                "input": "My name is Bob.",
+                "instructions": instructions,
+            },
         )
         assert resp1.status_code == 200
         data1 = resp1.json()
@@ -241,8 +247,9 @@ class TestConversationIntegration:
             "/responses",
             json={
                 "model": model,
-                "input": "What is my name?",
+                "input": "Repeat my name from our previous message.",
                 "conversation": conv_id,
+                "instructions": instructions,
             },
         )
         assert resp2.status_code == 200
@@ -256,7 +263,10 @@ class TestConversationIntegration:
                 for part in item.get("content", []):
                     if part.get("text"):
                         output_text += part["text"]
-        assert "bob" in output_text.lower()
+        assert "bob" in output_text.lower(), (
+            f"Model failed to recall 'Bob' from conversation history. "
+            f"This may be a model quality issue with small models. Output: {output_text[:200]}"
+        )
 
     def test_conversation_items_populated(self, httpx_client, model):
         """After a response, conversation items should be available via the Conversations API."""
