@@ -159,13 +159,8 @@ test-integration-envoy: ## Run Python integration tests through Envoy ExtProc
 	OPENRESPONSES_ADAPTER=envoy \
 	uv run --project tests/integration pytest tests/integration/ -v
 
-vllm-field-tracking: ## Show vLLM vs gateway field tracking for /v1/responses
+vllm-field-tracking: ## Show and save vLLM vs gateway field tracking for /v1/responses
 	@echo "$(GREEN)Running vLLM field tracking...$(NC)"
-	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
-	uv run --with pyyaml ./scripts/vllm/vllm_field_tracking.py
-
-vllm-field-tracking-json: ## Generate vLLM field tracking JSON report
-	@echo "$(GREEN)Generating vLLM field tracking report...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
 	uv run --with pyyaml ./scripts/vllm/vllm_field_tracking.py --update
 

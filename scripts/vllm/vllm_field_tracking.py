@@ -192,32 +192,34 @@ def build_report(
     return report
 
 
-def print_summary(report: dict) -> None:
-    """Print a human-readable summary."""
+def format_summary(report: dict) -> str:
+    """Format a human-readable summary."""
     s = report["summary"]
+    lines: list[str] = []
+    w = lines.append
 
-    print()
-    print("=" * 60)
-    print("vLLM Field Tracking Report — POST /v1/responses")
-    print("=" * 60)
-    print()
-    print(f"Total unique fields across all specs: {s['total_fields']}")
-    print()
-    print(f"  Forwarded to vLLM:      {s['forwarded']:>3}")
-    print(f"  Not yet forwarded:      {s['not_forwarded']:>3}")
-    print(f"  Accepted, not forwarded:{s['accepted_not_forwarded']:>3}")
-    print(f"  vLLM-only extensions:   {s['vllm_only']:>3}")
-    print(f"  Not implemented:        {s['not_implemented']:>3}")
-    print()
+    w("")
+    w("=" * 60)
+    w("vLLM Field Tracking Report — POST /v1/responses")
+    w("=" * 60)
+    w("")
+    w(f"Total unique fields across all specs: {s['total_fields']}")
+    w("")
+    w(f"  Forwarded to vLLM:      {s['forwarded']:>3}")
+    w(f"  Not yet forwarded:      {s['not_forwarded']:>3}")
+    w(f"  Accepted, not forwarded:{s['accepted_not_forwarded']:>3}")
+    w(f"  vLLM-only extensions:   {s['vllm_only']:>3}")
+    w(f"  Not implemented:        {s['not_implemented']:>3}")
+    w("")
 
     for category in ("forwarded", "not_forwarded", "accepted_not_forwarded", "vllm_only", "not_implemented"):
         data = report[category]
         fields = data["fields"]
         if not fields:
             continue
-        print(f"{'—' * 50}")
-        print(f"{category.upper()} ({len(fields)}): {data['description']}")
-        print(f"{'—' * 50}")
+        w(f"{'—' * 50}")
+        w(f"{category.upper()} ({len(fields)}): {data['description']}")
+        w(f"{'—' * 50}")
         for f in fields:
             markers = []
             if f["in_openai_spec"]:
@@ -228,8 +230,10 @@ def print_summary(report: dict) -> None:
                 markers.append("gw-req")
             if f["forwarded_to_vllm"]:
                 markers.append("fwd")
-            print(f"  {f['field']:<30} [{', '.join(markers)}]")
-        print()
+            w(f"  {f['field']:<30} [{', '.join(markers)}]")
+        w("")
+
+    return "\n".join(lines)
 
 
 def main():
@@ -283,16 +287,23 @@ def main():
             sys.exit(1)
 
     report = build_report(args.vllm_spec, args.gateway_spec, args.openai_spec, args.go_client)
+    summary = format_summary(report)
 
     if not args.quiet:
-        print_summary(report)
+        print(summary)
 
     if args.update:
         with open(args.output, "w") as f:
             json.dump(report, f, indent=2)
             f.write("\n")
+
+        txt_path = args.output.with_suffix(".txt")
+        with open(txt_path, "w") as f:
+            f.write(summary.lstrip("\n"))
+            f.write("\n")
+
         if not args.quiet:
-            print(f"Report written to {args.output}")
+            print(f"Written to {args.output} and {txt_path}")
 
 
 if __name__ == "__main__":
