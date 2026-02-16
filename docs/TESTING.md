@@ -46,6 +46,9 @@ make test-conformance
 
 # Run with custom model via environment variable
 MODEL="gpt-4" PORT=8080 API_KEY="none" make test-conformance-custom
+
+# Run conformance tests through Envoy ExtProc (starts ExtProc + Envoy automatically)
+make test-conformance-envoy
 ```
 
 ## Example: Testing with Ollama
@@ -660,17 +663,20 @@ make test-openapi-conformance
 go test ./...
 
 # 2. Conformance tests (HTTP adapter)
-./tests/scripts/test-conformance.sh llama3.2:3b
+make test-conformance-auto
 
-# 3. Python integration tests (HTTP adapter)
+# 3. Conformance tests (Envoy ExtProc adapter)
+make test-conformance-envoy
+
+# 4. Python integration tests (HTTP adapter)
 make test-integration-python
 
-# 4. Python integration tests (Envoy adapter)
+# 5. Python integration tests (Envoy adapter)
 make test-integration-envoy
 
-# 5. OpenAPI conformance (spec compatibility)
+# 6. OpenAPI conformance (spec compatibility)
 make test-openapi-conformance
 
-# 6. Pre-commit hooks
+# 7. Pre-commit hooks
 pre-commit run --all-files
 ```

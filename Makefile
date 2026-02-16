@@ -125,6 +125,13 @@ test-conformance-custom: build-server ## Run conformance tests with custom model
 	API_KEY="${API_KEY:-none}"; \
 	./tests/scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
 
+test-conformance-envoy: build-extproc ## Run conformance tests through Envoy ExtProc
+	@echo "$(GREEN)Running conformance tests through Envoy...$(NC)"
+	@which envoy > /dev/null || (echo "$(RED)envoy not installed. See: https://www.envoyproxy.io/docs/envoy/latest/start/install$(NC)" && exit 1)
+	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
+	API_KEY="${API_KEY:-none}"; \
+	./tests/scripts/test-conformance-with-envoy.sh "$$MODEL" "$$API_KEY"
+
 test-integration-python: ## Run Python integration tests
 	@echo "$(GREEN)Running Python integration tests...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
