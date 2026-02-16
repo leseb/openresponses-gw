@@ -2,6 +2,7 @@ package envoy
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,8 @@ import (
 	"strings"
 
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 )
 
 // Processor implements the ExternalProcessorServer interface
@@ -47,11 +50,17 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 
 	for {
 		req, err := stream.Recv()
-		if err == io.EOF {
-			p.logger.Debug("stream closed by client")
-			return nil
-		}
 		if err != nil {
+			// EOF and context cancellation are normal — Envoy closes the stream
+			// after receiving an ImmediateResponse.
+			if err == io.EOF || err == context.Canceled {
+				p.logger.Debug("stream closed")
+				return nil
+			}
+			if s, ok := grpcstatus.FromError(err); ok && s.Code() == codes.Canceled {
+				p.logger.Debug("stream canceled by envoy")
+				return nil
+			}
 			p.logger.Error("error receiving request", "error", err)
 			return err
 		}
