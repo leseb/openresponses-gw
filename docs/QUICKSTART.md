@@ -261,7 +261,7 @@ make lint
 │   └── observability/      # Logging, metrics
 ├── examples/               # Usage examples
 ├── tests/                  # Tests
-└── deployments/           # Docker, Helm
+└── deployments/           # Docker
 ```
 
 ## Current Limitations
@@ -270,8 +270,6 @@ The following are areas with ongoing development:
 
 - ❌ Tool execution (file search, web search, etc.) — partially implemented
 - ❌ Advanced RAG pipelines
-
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the roadmap.
 
 ## What Works Now
 
@@ -289,16 +287,14 @@ See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the roadmap.
 
 ### For Users
 
-1. **Test the API** - Use the examples above or `test-requests.sh`
-2. **Read the docs** - See [README.md](./README.md) and [PROJECT_PLAN.md](./PROJECT_PLAN.md)
-3. **Star on GitHub** - If you find it useful!
+1. **Test the API** - Use the examples above
+2. **Read the docs** - See [ARCHITECTURE.md](./ARCHITECTURE.md) and [CONFIGURATION.md](./CONFIGURATION.md)
 
 ### For Contributors
 
-1. **Read** [CONTRIBUTING.md](./CONTRIBUTING.md)
-2. **Pick a Phase 2 task** - See PROJECT_PLAN.md Phase 2 milestones
-3. **Open an issue** - Discuss your contribution
-4. **Submit a PR** - We welcome contributions!
+1. **Read** [CONTRIBUTING.md](../CONTRIBUTING.md)
+2. **Open an issue** - Discuss your contribution
+3. **Submit a PR** - We welcome contributions!
 
 ### Upcoming
 
@@ -341,7 +337,7 @@ go test -v ./...
 
 - **Questions**: Open a GitHub Discussion
 - **Bugs**: Open a GitHub Issue
-- **Contributing**: See [CONTRIBUTING.md](./CONTRIBUTING.md)
+- **Contributing**: See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ## Useful Commands
 
@@ -362,19 +358,11 @@ make test-coverage      # Generate coverage report
 make lint               # Run linter
 make fmt                # Format code
 
-# Docker
-make docker-build       # Build Docker image
-docker-compose up -d    # Start dependencies
-
 # Clean
 make clean              # Remove build artifacts
 ```
 
 ## What's Next?
 
-Check out the [PROJECT_PLAN.md](./PROJECT_PLAN.md) for the full 14-week implementation roadmap!
-
----
-
 **Storage:** In-memory (default) or SQLite (persistent)
-**Contributors Welcome:** See open issues and [CONTRIBUTING.md](./CONTRIBUTING.md)
+**Contributors Welcome:** See open issues and [CONTRIBUTING.md](../CONTRIBUTING.md)

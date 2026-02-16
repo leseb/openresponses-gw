@@ -76,15 +76,13 @@ make pre-commit-install          # Install pre-commit hooks
 
 ## Documentation
 
-- [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md) — vLLM vs gateway field responsibility
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — System design and request flow
+- [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) — Configuration guide
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Deployment modes and backend configuration
-- [docs/FUNCTIONAL_CONFORMANCE.md](./docs/FUNCTIONAL_CONFORMANCE.md) — What works and what doesn't
 - [docs/TESTING.md](./docs/TESTING.md) — Test infrastructure guide
-- [docs/CONFORMANCE_STATUS.md](./docs/CONFORMANCE_STATUS.md) — OpenAPI conformance journey
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Development guidelines
-- [docs/PROJECT_PLAN.md](./docs/PROJECT_PLAN.md) — Roadmap
+- [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md) — vLLM vs gateway field responsibility
 - [docs/swagger.yaml](./docs/swagger.yaml) — Full API specification
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Development guidelines
 
 ## License
 

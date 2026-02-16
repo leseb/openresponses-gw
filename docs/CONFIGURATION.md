@@ -522,5 +522,4 @@ OPENAI_API_KEY=sk-... docker-compose up
 ## Next Steps
 
 - See [QUICKSTART.md](./QUICKSTART.md) for testing examples
-- See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for upcoming features
-- See [CONTRIBUTING.md](./CONTRIBUTING.md) to add new backends
+- See [CONTRIBUTING.md](../CONTRIBUTING.md) to add new backends

@@ -502,56 +502,43 @@ func TestExtractResponseRequest(t *testing.T) {
 }
 ```
 
-### 2. Integration Tests (End-to-End with Docker)
+### 2. Integration Tests (End-to-End via Envoy)
 
 Test the full stack: Client → Envoy → ExtProc → Core Engine:
 
 ```bash
-# Run integration tests
-./tests/scripts/test-envoy-extproc.sh
-
-# Run with custom model
-MODEL=gpt-4 ./tests/scripts/test-envoy-extproc.sh
+# Run Python integration tests through Envoy
+make test-integration-envoy
 ```
 
+This runs the same Python integration test suite used for the HTTP adapter, but routes
+requests through Envoy's ExtProc filter. Only streaming tests are skipped (ExtProc uses
+`ImmediateResponse` which buffers the full response).
+
 **What's tested:**
+- ✅ All API endpoints (responses, conversations, files, prompts, vector stores, connectors)
 - ✅ Request flows through Envoy to ExtProc
-- ✅ ExtProc processes request via core engine
+- ✅ ExtProc delegates to the HTTP handler via `httptest.ResponseRecorder`
 - ✅ Response returns through Envoy to client
 - ✅ Error handling at each boundary
-- ✅ Envoy filter statistics
-
-**Test scenarios:**
-1. Basic non-streaming request
-2. Request with system instructions
-3. Request with tools
-4. Invalid request handling
-5. Response structure validation
-6. ExtProc filter metrics
 
 ### 3. Debugging Integration Tests
 
 ```bash
-# Start the stack manually
-cd examples/envoy
-docker-compose up
+# Start the ExtProc server
+OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
+  ./bin/openresponses-gw-extproc -port 10000 &
 
-# In another terminal, make requests
-curl -X POST http://localhost:8080/v1/responses \
+# Start Envoy with the test config
+envoy -c tests/envoy/envoy.yaml &
+
+# Make requests through Envoy
+curl -X POST http://localhost:8081/v1/responses \
   -H "Content-Type: application/json" \
-  -d '{"model":"llama3.2:3b","input":"Hello"}'
-
-# Check ExtProc logs
-docker-compose logs -f envoy-extproc
-
-# Check Envoy logs
-docker-compose logs -f envoy
+  -d '{"model":"gpt-4","input":"Hello"}'
 
 # Check Envoy stats
 curl http://localhost:9901/stats | grep ext_proc
-
-# Stop the stack
-docker-compose down
 ```
 
 ---
@@ -615,7 +602,7 @@ For each category, it identifies:
 - Responses API: 25% (missing GET endpoint)
 - **Overall: 8.3%**
 
-See [OPENAPI_CONFORMANCE.md](./OPENAPI_CONFORMANCE.md) for detailed gap analysis and implementation roadmap.
+See `conformance-results.json` in the project root for the latest results.
 
 ### Adding to CI/CD
 
@@ -675,24 +662,15 @@ go test ./...
 # 2. Conformance tests (HTTP adapter)
 ./tests/scripts/test-conformance.sh llama3.2:3b
 
-# 3. Smoke tests (critical path validation)
-./tests/scripts/test-smoke.sh
+# 3. Python integration tests (HTTP adapter)
+make test-integration-python
 
-# 4. OpenAPI conformance (spec compatibility)
-./scripts/openapi_conformance.py
+# 4. Python integration tests (Envoy adapter)
+make test-integration-envoy
 
-# 5. Integration tests (Envoy adapter)
-./tests/scripts/test-envoy-extproc.sh
+# 5. OpenAPI conformance (spec compatibility)
+make test-openapi-conformance
 
 # 6. Pre-commit hooks
 pre-commit run --all-files
 ```
-
----
-
-## Resources
-
-- [Open Responses Specification](https://github.com/openresponses/openresponses)
-- [Conformance Test Suite](https://github.com/openresponses/openresponses/pull/17)
-- [CONFORMANCE.md](./CONFORMANCE.md) - Detailed conformance documentation
-- [scripts/README.md](./scripts/README.md) - Script documentation

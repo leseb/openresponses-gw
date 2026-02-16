@@ -18,7 +18,7 @@ Or with a config file:
 
 ## Envoy External Processor
 
-Works as an Envoy ExtProc filter. See `examples/envoy/` for a complete docker-compose setup.
+Works as an Envoy ExtProc filter. See `examples/envoy/` for configuration examples.
 
 ```yaml
 # envoy.yaml
@@ -33,20 +33,23 @@ http_filters:
 Quick start with Envoy:
 
 ```bash
-cd examples/envoy
-docker-compose up -d
+# Build and start the ExtProc server
+make build-extproc
+OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
+  ./bin/openresponses-gw-extproc -port 10000 &
 
-curl -X POST http://localhost:8080/v1/responses \
+# Start Envoy with the example config
+envoy -c examples/envoy/envoy.yaml &
+
+# Make requests through Envoy
+curl -X POST http://localhost:8081/v1/responses \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4","input":"Hello"}'
 ```
 
 ## Docker
 
-```bash
-make docker-build       # Build Docker image
-make docker-run         # Run in Docker
-```
+A Dockerfile for the ExtProc binary is available at `deployments/docker/Dockerfile.envoy-extproc`.
 
 ## Extensibility
 
