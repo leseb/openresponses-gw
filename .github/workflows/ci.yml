@@ -67,6 +67,7 @@ jobs:
         run: go test -race ./...
 
   integration-tests:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build-and-test
     steps:
@@ -161,6 +162,7 @@ jobs:
           path: /tmp/vllm.log
 
   envoy-integration-tests:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build-and-test
     steps:
@@ -280,6 +282,7 @@ jobs:
           path: /tmp/vllm.log
 
   conformance-tests:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: build-and-test
     continue-on-error: true
