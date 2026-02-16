@@ -22,7 +22,7 @@ This gateway sits in front of any `/v1/responses`-compatible backend and
 adds everything above. The inference backend does what it does best (LLM
 generation), and the gateway handles the rest. For a detailed breakdown of
 which API fields are handled by the inference backend versus the gateway,
-see [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md).
+run `make vllm-field-tracking` to see the full report.
 
 ```
                                     ┌────────────────┐
@@ -80,7 +80,7 @@ make pre-commit-install          # Install pre-commit hooks
 - [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) — Configuration guide
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Deployment modes and backend configuration
 - [docs/TESTING.md](./docs/TESTING.md) — Test infrastructure guide
-- [docs/VLLM_FIELD_TRACKING.md](./docs/VLLM_FIELD_TRACKING.md) — vLLM vs gateway field responsibility
+- `make vllm-field-tracking` — vLLM vs gateway field tracking report
 - [docs/openapi.yaml](./docs/openapi.yaml) — Full API specification
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — Development guidelines
 

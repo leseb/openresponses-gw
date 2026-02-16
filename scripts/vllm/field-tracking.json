@@ -1,0 +1,346 @@
+{
+  "vllm_spec": "scripts/vllm/vllm_0.16.0+cpu_openapi.json",
+  "gateway_spec": "docs/openapi.yaml",
+  "openai_spec": "scripts/conformance/openresponses-spec.json",
+  "summary": {
+    "forwarded": 16,
+    "not_forwarded": 3,
+    "accepted_not_forwarded": 6,
+    "vllm_only": 17,
+    "not_implemented": 2,
+    "total_fields": 44
+  },
+  "forwarded": {
+    "description": "Fields accepted by gateway AND forwarded to vLLM",
+    "fields": [
+      {
+        "field": "frequency_penalty",
+        "in_openai_spec": true,
+        "in_vllm": false,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "input",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "instructions",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "max_output_tokens",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "model",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "parallel_tool_calls",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "presence_penalty",
+        "in_openai_spec": true,
+        "in_vllm": false,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "reasoning",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "store",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "stream",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "temperature",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "text",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "tool_choice",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "tools",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "top_p",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "truncation",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      }
+    ]
+  },
+  "not_forwarded": {
+    "description": "Fields vLLM supports (and in OpenAI spec) but gateway does not forward yet",
+    "fields": [
+      {
+        "field": "background",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "prompt_cache_key",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "service_tier",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      }
+    ]
+  },
+  "accepted_not_forwarded": {
+    "description": "Fields gateway accepts but does not forward to vLLM (handled by gateway or not yet wired)",
+    "fields": [
+      {
+        "field": "conversation",
+        "in_openai_spec": false,
+        "in_vllm": false,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "include",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "max_tool_calls",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "metadata",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "previous_response_id",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "top_logprobs",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": false
+      }
+    ]
+  },
+  "vllm_only": {
+    "description": "vLLM-specific extensions not in the OpenAI spec",
+    "fields": [
+      {
+        "field": "cache_salt",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "enable_response_messages",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "ignore_eos",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "include_stop_str_in_output",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "logit_bias",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "mm_processor_kwargs",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "previous_input_messages",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "priority",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "prompt",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "repetition_penalty",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "request_id",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "seed",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "skip_special_tokens",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "stop",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "top_k",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "user",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "vllm_xargs",
+        "in_openai_spec": false,
+        "in_vllm": true,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      }
+    ]
+  },
+  "not_implemented": {
+    "description": "Fields in OpenAI spec not yet accepted by gateway or forwarded to vLLM",
+    "fields": [
+      {
+        "field": "safety_identifier",
+        "in_openai_spec": true,
+        "in_vllm": false,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      },
+      {
+        "field": "stream_options",
+        "in_openai_spec": true,
+        "in_vllm": false,
+        "in_gateway_request": false,
+        "forwarded_to_vllm": false
+      }
+    ]
+  }
+}
