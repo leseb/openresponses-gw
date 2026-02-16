@@ -45,6 +45,10 @@ func NewProcessor(handler http.Handler, logger *slog.Logger) *Processor {
 func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) error {
 	p.logger.Debug("new extproc stream started")
 
+	// Derive a context from the gRPC stream so that cancellation propagates
+	// to any in-flight HTTP handler / LLM calls.
+	ctx := stream.Context()
+
 	// Per-stream request context: populated in RequestHeaders, consumed in RequestBody.
 	var reqCtx *requestContext
 
@@ -70,11 +74,11 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 		switch v := req.Request.(type) {
 		case *extproc.ProcessingRequest_RequestHeaders:
 			p.logger.Debug("processing request headers")
-			resp, reqCtx = p.processRequestHeaders(v)
+			resp, reqCtx = p.processRequestHeaders(ctx, v)
 
 		case *extproc.ProcessingRequest_RequestBody:
 			p.logger.Debug("processing request body")
-			resp = p.processRequestBody(reqCtx, v)
+			resp = p.processRequestBody(ctx, reqCtx, v)
 			reqCtx = nil // consumed
 
 		case *extproc.ProcessingRequest_ResponseHeaders:
@@ -108,7 +112,7 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 // processRequestHeaders extracts method, path, and headers from the RequestHeaders phase.
 // For bodyless methods (GET, DELETE, HEAD, OPTIONS) it delegates immediately.
 // For methods with a body (POST, PUT, PATCH) it stores context and returns Continue.
-func (p *Processor) processRequestHeaders(v *extproc.ProcessingRequest_RequestHeaders) (*extproc.ProcessingResponse, *requestContext) {
+func (p *Processor) processRequestHeaders(ctx context.Context, v *extproc.ProcessingRequest_RequestHeaders) (*extproc.ProcessingResponse, *requestContext) {
 	hdrs := v.RequestHeaders.GetHeaders()
 
 	method := "GET"
@@ -139,42 +143,43 @@ func (p *Processor) processRequestHeaders(v *extproc.ProcessingRequest_RequestHe
 	// Bodyless methods: delegate immediately
 	upper := strings.ToUpper(method)
 	if upper == "GET" || upper == "DELETE" || upper == "HEAD" || upper == "OPTIONS" {
-		return p.delegateToHandler(method, path, httpHeaders, nil), nil
+		return p.delegateToHandler(ctx, method, path, httpHeaders, nil), nil
 	}
 
 	// Methods with body: store context, continue to RequestBody phase
-	ctx := &requestContext{
+	rctx := &requestContext{
 		method:  method,
 		path:    path,
 		headers: httpHeaders,
 	}
 
 	// Return continue with request_body_mode override to ensure we receive the body
-	return CreateContinueResponse(), ctx
+	return CreateContinueResponse(), rctx
 }
 
 // processRequestBody combines stored request context with the body and delegates to the HTTP handler.
-func (p *Processor) processRequestBody(reqCtx *requestContext, v *extproc.ProcessingRequest_RequestBody) *extproc.ProcessingResponse {
+func (p *Processor) processRequestBody(ctx context.Context, reqCtx *requestContext, v *extproc.ProcessingRequest_RequestBody) *extproc.ProcessingResponse {
 	body := v.RequestBody.GetBody()
 
 	if reqCtx == nil {
 		// No context from headers phase — fall back to POST /v1/responses for backwards compat
 		p.logger.Warn("no request context from headers phase, using defaults")
-		return p.delegateToHandler("POST", "/v1/responses", make(http.Header), body)
+		return p.delegateToHandler(ctx, "POST", "/v1/responses", make(http.Header), body)
 	}
 
-	return p.delegateToHandler(reqCtx.method, reqCtx.path, reqCtx.headers, body)
+	return p.delegateToHandler(ctx, reqCtx.method, reqCtx.path, reqCtx.headers, body)
 }
 
 // delegateToHandler constructs an http.Request from the ExtProc data, dispatches
 // it through the existing HTTP handler, and converts the result to an ImmediateResponse.
-func (p *Processor) delegateToHandler(method, rawPath string, headers http.Header, body []byte) *extproc.ProcessingResponse {
+// The context is derived from the gRPC stream so cancellation propagates to the handler.
+func (p *Processor) delegateToHandler(ctx context.Context, method, rawPath string, headers http.Header, body []byte) *extproc.ProcessingResponse {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
 
-	req, err := http.NewRequest(method, rawPath, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, rawPath, bodyReader)
 	if err != nil {
 		p.logger.Error("failed to create http request", "error", err)
 		return CreateInternalError("failed to construct request")
