@@ -4,16 +4,17 @@ vLLM Field Tracking Report — POST /v1/responses
 
 Total unique fields across all specs: 44
 
-  Forwarded to vLLM:       16
+  Forwarded to vLLM:       18
   Not yet forwarded:        3
-  Accepted, not forwarded:  6
+  Accepted, not forwarded:  4
   vLLM-only extensions:    17
   Not implemented:          2
 
 ——————————————————————————————————————————————————
-FORWARDED (16): Fields accepted by gateway AND forwarded to vLLM
+FORWARDED (18): Fields accepted by gateway AND forwarded to vLLM
 ——————————————————————————————————————————————————
   frequency_penalty              [openai, gw-req, fwd]
+  include                        [openai, vllm, gw-req, fwd]
   input                          [openai, vllm, gw-req, fwd]
   instructions                   [openai, vllm, gw-req, fwd]
   max_output_tokens              [openai, vllm, gw-req, fwd]
@@ -27,6 +28,7 @@ FORWARDED (16): Fields accepted by gateway AND forwarded to vLLM
   text                           [openai, vllm, gw-req, fwd]
   tool_choice                    [openai, vllm, gw-req, fwd]
   tools                          [openai, vllm, gw-req, fwd]
+  top_logprobs                   [openai, vllm, gw-req, fwd]
   top_p                          [openai, vllm, gw-req, fwd]
   truncation                     [openai, vllm, gw-req, fwd]
 
@@ -38,14 +40,12 @@ NOT_FORWARDED (3): Fields vLLM supports (and in OpenAI spec) but gateway does no
   service_tier                   [openai, vllm]
 
 ——————————————————————————————————————————————————
-ACCEPTED_NOT_FORWARDED (6): Fields gateway accepts but does not forward to vLLM (handled by gateway or not yet wired)
+ACCEPTED_NOT_FORWARDED (4): Fields gateway accepts but does not forward to vLLM (handled by gateway or not yet wired)
 ——————————————————————————————————————————————————
   conversation                   [gw-req]
-  include                        [openai, vllm, gw-req]
   max_tool_calls                 [openai, vllm, gw-req]
   metadata                       [openai, vllm, gw-req]
   previous_response_id           [openai, vllm, gw-req]
-  top_logprobs                   [openai, vllm, gw-req]
 
 ——————————————————————————————————————————————————
 VLLM_ONLY (17): vLLM-specific extensions not in the OpenAI spec
@@ -73,4 +73,3 @@ NOT_IMPLEMENTED (2): Fields in OpenAI spec not yet accepted by gateway or forwar
 ——————————————————————————————————————————————————
   safety_identifier              [openai]
   stream_options                 [openai]
-

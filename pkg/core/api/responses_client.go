@@ -35,6 +35,8 @@ type ResponsesAPIRequest struct {
 	Truncation        *string         `json:"truncation,omitempty"`
 	Text              interface{}     `json:"text,omitempty"`
 	Store             *bool           `json:"store,omitempty"`
+	Include           []string        `json:"include,omitempty"`
+	TopLogprobs       *int            `json:"top_logprobs,omitempty"`
 }
 
 // ToolParam defines a function tool sent to the backend.
@@ -80,8 +82,9 @@ type OutputItem struct {
 
 // ContentItem represents a content element within an output item.
 type ContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type     string        `json:"type"`
+	Text     string        `json:"text,omitempty"`
+	Logprobs []interface{} `json:"logprobs,omitempty"`
 }
 
 // UsageInfo represents token usage from the backend.

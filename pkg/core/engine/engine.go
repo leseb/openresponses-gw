@@ -363,6 +363,8 @@ func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.
 	if req.Text != nil {
 		apiReq.Text = req.Text
 	}
+	apiReq.Include = req.Include
+	apiReq.TopLogprobs = req.TopLogprobs
 
 	// Reasoning
 	if req.Reasoning != nil && req.Reasoning.Effort != nil {
@@ -527,7 +529,11 @@ func convertOutputItemsToSchema(items []api.OutputItem) []schema.ItemField {
 				}
 				if c.Type == "output_text" {
 					cp.Annotations = make([]schema.Annotation, 0)
-					cp.Logprobs = make([]interface{}, 0)
+					if len(c.Logprobs) > 0 {
+						cp.Logprobs = c.Logprobs
+					} else {
+						cp.Logprobs = make([]interface{}, 0)
+					}
 				}
 				content = append(content, cp)
 			}

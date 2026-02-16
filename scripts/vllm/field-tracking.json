@@ -3,9 +3,9 @@
   "gateway_spec": "docs/openapi.yaml",
   "openai_spec": "scripts/conformance/openresponses-spec.json",
   "summary": {
-    "forwarded": 16,
+    "forwarded": 18,
     "not_forwarded": 3,
-    "accepted_not_forwarded": 6,
+    "accepted_not_forwarded": 4,
     "vllm_only": 17,
     "not_implemented": 2,
     "total_fields": 44
@@ -17,6 +17,13 @@
         "field": "frequency_penalty",
         "in_openai_spec": true,
         "in_vllm": false,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
+        "field": "include",
+        "in_openai_spec": true,
+        "in_vllm": true,
         "in_gateway_request": true,
         "forwarded_to_vllm": true
       },
@@ -112,6 +119,13 @@
         "forwarded_to_vllm": true
       },
       {
+        "field": "top_logprobs",
+        "in_openai_spec": true,
+        "in_vllm": true,
+        "in_gateway_request": true,
+        "forwarded_to_vllm": true
+      },
+      {
         "field": "top_p",
         "in_openai_spec": true,
         "in_vllm": true,
@@ -164,13 +178,6 @@
         "forwarded_to_vllm": false
       },
       {
-        "field": "include",
-        "in_openai_spec": true,
-        "in_vllm": true,
-        "in_gateway_request": true,
-        "forwarded_to_vllm": false
-      },
-      {
         "field": "max_tool_calls",
         "in_openai_spec": true,
         "in_vllm": true,
@@ -186,13 +193,6 @@
       },
       {
         "field": "previous_response_id",
-        "in_openai_spec": true,
-        "in_vllm": true,
-        "in_gateway_request": true,
-        "forwarded_to_vllm": false
-      },
-      {
-        "field": "top_logprobs",
         "in_openai_spec": true,
         "in_vllm": true,
         "in_gateway_request": true,
