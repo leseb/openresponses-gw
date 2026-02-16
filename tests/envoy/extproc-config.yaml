@@ -1,0 +1,4 @@
+# Minimal ExtProc config for integration tests.
+# OPENAI_API_ENDPOINT env var overrides model_endpoint at runtime.
+engine:
+  model_endpoint: "http://localhost:8000/v1"

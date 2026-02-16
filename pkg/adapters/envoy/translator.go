@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 
 	"github.com/andybalholm/brotli"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -209,6 +211,51 @@ func DecodeContent(body []byte, contentEncoding string) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unsupported content encoding: %s", contentEncoding)
 	}
+}
+
+// CreateImmediateResponseFromRecorder converts an httptest.ResponseRecorder into
+// an ExtProc ImmediateResponse, mapping HTTP status codes and copying headers/body.
+func CreateImmediateResponseFromRecorder(recorder *httptest.ResponseRecorder) *extproc.ProcessingResponse {
+	result := recorder.Result()
+	defer result.Body.Close()
+
+	body, _ := io.ReadAll(result.Body)
+
+	// Build response headers from the recorder
+	var headers []*corev3.HeaderValueOption
+	for key, values := range result.Header {
+		for _, val := range values {
+			headers = append(headers, &corev3.HeaderValueOption{
+				Header: &corev3.HeaderValue{
+					Key:      http.CanonicalHeaderKey(key),
+					RawValue: []byte(val),
+				},
+			})
+		}
+	}
+
+	return &extproc.ProcessingResponse{
+		Response: &extproc.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extproc.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: httpStatusToEnvoyCode(result.StatusCode),
+				},
+				Body:    body,
+				Headers: &extproc.HeaderMutation{SetHeaders: headers},
+			},
+		},
+	}
+}
+
+// httpStatusToEnvoyCode converts an HTTP status code integer to the Envoy StatusCode enum.
+func httpStatusToEnvoyCode(code int) typev3.StatusCode {
+	// Envoy StatusCode enum values match HTTP status codes numerically
+	envoyCode := typev3.StatusCode(code)
+	// Validate that this is a known enum value; fall back to 500 if unknown
+	if _, ok := typev3.StatusCode_name[int32(envoyCode)]; ok {
+		return envoyCode
+	}
+	return typev3.StatusCode_InternalServerError
 }
 
 // statusCodeToHTTP converts Envoy StatusCode to HTTP status code number

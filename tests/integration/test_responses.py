@@ -3,6 +3,8 @@
 import base64
 import json
 
+import pytest
+
 
 class TestNonStreamingResponse:
     def test_basic_response(self, client, model):
@@ -43,6 +45,7 @@ class TestNonStreamingResponse:
         assert "arrr" in text or "arr" in text
 
 
+@pytest.mark.envoy_skip
 class TestStreamingResponse:
     def test_streaming_events(self, client, model):
         seen_events = set()

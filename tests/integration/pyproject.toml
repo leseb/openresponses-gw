@@ -11,3 +11,6 @@ dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["."]
+markers = [
+    "envoy_skip: test is not compatible with Envoy ExtProc adapter",
+]

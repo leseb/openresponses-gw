@@ -1,69 +1,75 @@
 package envoy
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/leseb/openresponses-gw/pkg/core/engine"
 )
 
 // Processor implements the ExternalProcessorServer interface
 type Processor struct {
 	extproc.UnimplementedExternalProcessorServer
-	engine *engine.Engine
-	logger *slog.Logger
+	handler http.Handler
+	logger  *slog.Logger
+}
+
+// requestContext holds per-stream state captured during RequestHeaders,
+// used later in RequestBody to construct the full http.Request.
+type requestContext struct {
+	method  string
+	path    string
+	headers http.Header
 }
 
 // NewProcessor creates a new ExtProc processor
-func NewProcessor(eng *engine.Engine, logger *slog.Logger) *Processor {
+func NewProcessor(handler http.Handler, logger *slog.Logger) *Processor {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Processor{
-		engine: eng,
-		logger: logger,
+		handler: handler,
+		logger:  logger,
 	}
 }
 
 // Process handles the ExtProc stream
 func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) error {
-	ctx := stream.Context()
-	requestID := "unknown"
-
 	p.logger.Debug("new extproc stream started")
 
+	// Per-stream request context: populated in RequestHeaders, consumed in RequestBody.
+	var reqCtx *requestContext
+
 	for {
-		// Receive next processing request
 		req, err := stream.Recv()
 		if err == io.EOF {
-			p.logger.Debug("stream closed by client", "request_id", requestID)
+			p.logger.Debug("stream closed by client")
 			return nil
 		}
 		if err != nil {
-			p.logger.Error("error receiving request", "error", err, "request_id", requestID)
+			p.logger.Error("error receiving request", "error", err)
 			return err
 		}
 
-		// Process based on request type
 		var resp *extproc.ProcessingResponse
 
 		switch v := req.Request.(type) {
 		case *extproc.ProcessingRequest_RequestHeaders:
-			// Skip request headers - we don't need to inspect them
-			p.logger.Debug("processing request headers (skip)", "request_id", requestID)
-			resp = CreateContinueResponse()
+			p.logger.Debug("processing request headers")
+			resp, reqCtx = p.processRequestHeaders(v)
 
 		case *extproc.ProcessingRequest_RequestBody:
-			// This is where we process the request and generate the response
-			p.logger.Debug("processing request body", "request_id", requestID)
-			resp, requestID = p.processRequestBody(ctx, req)
+			p.logger.Debug("processing request body")
+			resp = p.processRequestBody(reqCtx, v)
+			reqCtx = nil // consumed
 
 		case *extproc.ProcessingRequest_ResponseHeaders:
-			// Skip response headers - we're using ImmediateResponse
-			p.logger.Debug("processing response headers (skip)", "request_id", requestID)
+			p.logger.Debug("processing response headers (skip)")
 			resp = &extproc.ProcessingResponse{
 				Response: &extproc.ProcessingResponse_ResponseHeaders{
 					ResponseHeaders: &extproc.HeadersResponse{},
@@ -71,8 +77,7 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 			}
 
 		case *extproc.ProcessingRequest_ResponseBody:
-			// Skip response body - we already sent ImmediateResponse
-			p.logger.Debug("processing response body (skip)", "request_id", requestID)
+			p.logger.Debug("processing response body (skip)")
 			resp = &extproc.ProcessingResponse{
 				Response: &extproc.ProcessingResponse_ResponseBody{
 					ResponseBody: &extproc.BodyResponse{},
@@ -80,73 +85,101 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 			}
 
 		default:
-			p.logger.Warn("unknown request type", "type", fmt.Sprintf("%T", v), "request_id", requestID)
+			p.logger.Warn("unknown request type", "type", fmt.Sprintf("%T", v))
 			resp = CreateContinueResponse()
 		}
 
-		// Send response
 		if err := stream.Send(resp); err != nil {
-			p.logger.Error("error sending response", "error", err, "request_id", requestID)
+			p.logger.Error("error sending response", "error", err)
 			return err
 		}
 	}
 }
 
-// processRequestBody processes the request body and returns an immediate response
-func (p *Processor) processRequestBody(ctx context.Context, req *extproc.ProcessingRequest) (*extproc.ProcessingResponse, string) {
-	// Extract ResponseRequest from the processing request
-	respReq, err := ExtractResponseRequest(req)
-	if err != nil {
-		p.logger.Warn("failed to extract request", "error", err)
-		// Check if it's a validation error (400) or parse error (400)
-		if err.Error() == "model field is required" || err.Error() == "input field is required" {
-			return CreateUnprocessableEntityError(err.Error()), "unknown"
+// processRequestHeaders extracts method, path, and headers from the RequestHeaders phase.
+// For bodyless methods (GET, DELETE, HEAD, OPTIONS) it delegates immediately.
+// For methods with a body (POST, PUT, PATCH) it stores context and returns Continue.
+func (p *Processor) processRequestHeaders(v *extproc.ProcessingRequest_RequestHeaders) (*extproc.ProcessingResponse, *requestContext) {
+	hdrs := v.RequestHeaders.GetHeaders()
+
+	method := "GET"
+	path := "/"
+	httpHeaders := make(http.Header)
+
+	for _, h := range hdrs.GetHeaders() {
+		key := h.GetKey()
+		value := h.GetValue()
+		if len(value) == 0 {
+			value = string(h.GetRawValue())
 		}
-		return CreateBadRequestError(fmt.Sprintf("Invalid request body: %s", err.Error())), "unknown"
+
+		switch key {
+		case ":method":
+			method = value
+		case ":path":
+			path = value
+		case ":authority", ":scheme":
+			// pseudo-headers not needed for handler delegation
+		default:
+			httpHeaders.Add(key, value)
+		}
 	}
 
-	requestID := generateRequestID()
-	p.logger.Info("processing request",
-		"request_id", requestID,
-		"model", respReq.Model,
-		"streaming", respReq.Stream,
-	)
+	p.logger.Debug("extracted request info", "method", method, "path", path)
 
-	// Process the request using the core engine
-	// This is where we call the backend (via the engine) and get the response
-	engineResp, err := p.engine.ProcessRequest(ctx, respReq)
-	if err != nil {
-		p.logger.Error("engine processing failed",
-			"request_id", requestID,
-			"error", err,
-		)
-		return CreateInternalError(fmt.Sprintf("Failed to process request: %s", err.Error())), requestID
+	// Bodyless methods: delegate immediately
+	upper := strings.ToUpper(method)
+	if upper == "GET" || upper == "DELETE" || upper == "HEAD" || upper == "OPTIONS" {
+		return p.delegateToHandler(method, path, httpHeaders, nil), nil
 	}
 
-	p.logger.Info("request processed successfully",
-		"request_id", requestID,
-		"response_id", engineResp.ID,
-		"status", engineResp.Status,
-	)
-
-	// Create immediate response with the result
-	// This bypasses the backend and returns directly to the client
-	procResp, err := CreateSuccessResponse(engineResp, respReq.Stream)
-	if err != nil {
-		p.logger.Error("failed to create success response",
-			"request_id", requestID,
-			"error", err,
-		)
-		return CreateInternalError("Failed to create response"), requestID
+	// Methods with body: store context, continue to RequestBody phase
+	ctx := &requestContext{
+		method:  method,
+		path:    path,
+		headers: httpHeaders,
 	}
 
-	return procResp, requestID
+	// Return continue with request_body_mode override to ensure we receive the body
+	return CreateContinueResponse(), ctx
 }
 
-// generateRequestID generates a simple request ID
-// In production, this should use a more sophisticated ID generation
-func generateRequestID() string {
-	// For now, use a simple counter or UUID
-	// This is a placeholder - in production use proper UUID generation
-	return fmt.Sprintf("req_%d", 12345) // TODO: Use proper UUID generation
+// processRequestBody combines stored request context with the body and delegates to the HTTP handler.
+func (p *Processor) processRequestBody(reqCtx *requestContext, v *extproc.ProcessingRequest_RequestBody) *extproc.ProcessingResponse {
+	body := v.RequestBody.GetBody()
+
+	if reqCtx == nil {
+		// No context from headers phase — fall back to POST /v1/responses for backwards compat
+		p.logger.Warn("no request context from headers phase, using defaults")
+		return p.delegateToHandler("POST", "/v1/responses", make(http.Header), body)
+	}
+
+	return p.delegateToHandler(reqCtx.method, reqCtx.path, reqCtx.headers, body)
+}
+
+// delegateToHandler constructs an http.Request from the ExtProc data, dispatches
+// it through the existing HTTP handler, and converts the result to an ImmediateResponse.
+func (p *Processor) delegateToHandler(method, rawPath string, headers http.Header, body []byte) *extproc.ProcessingResponse {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequest(method, rawPath, bodyReader)
+	if err != nil {
+		p.logger.Error("failed to create http request", "error", err)
+		return CreateInternalError("failed to construct request")
+	}
+	req.Header = headers
+
+	recorder := httptest.NewRecorder()
+	p.handler.ServeHTTP(recorder, req)
+
+	p.logger.Info("request delegated to handler",
+		"method", method,
+		"path", rawPath,
+		"status", recorder.Code,
+	)
+
+	return CreateImmediateResponseFromRecorder(recorder)
 }
