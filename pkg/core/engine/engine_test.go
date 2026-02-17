@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/leseb/openresponses-gw/pkg/core/api"
+	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/schema"
+	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 )
 
@@ -1026,5 +1028,536 @@ func TestEchoRequestParams_NilOptionals(t *testing.T) {
 	}
 	if resp.TopP != 0 {
 		t.Errorf("expected TopP=0, got %v", resp.TopP)
+	}
+}
+
+// --- Test helpers for PrepareRequest / ProcessResponse ---
+
+func newTestEngine(t *testing.T) *Engine {
+	t.Helper()
+	store, err := sqlite.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	cfg := &config.EngineConfig{
+		ModelEndpoint: "http://localhost:8080/v1",
+		BackendAPI:    "chat_completions",
+	}
+	eng, err := New(cfg, store, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return eng
+}
+
+// --- PrepareRequest tests ---
+
+func TestPrepareRequest_ValidRequest(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello world",
+	}
+
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if prepared == nil {
+		t.Fatal("expected non-nil PreparedRequest")
+	}
+	if prepared.Model != "test-model" {
+		t.Errorf("expected model=test-model, got %q", prepared.Model)
+	}
+	if prepared.State == nil {
+		t.Fatal("expected non-nil State")
+	}
+	if prepared.BackendRequest == nil {
+		t.Fatal("expected non-nil BackendRequest")
+	}
+	if prepared.BackendRequest.Model != "test-model" {
+		t.Errorf("expected backend request model=test-model, got %q", prepared.BackendRequest.Model)
+	}
+}
+
+func TestPrepareRequest_ValidationError(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	// Missing model
+	req := &schema.ResponseRequest{
+		Input: "hello",
+	}
+	_, err := eng.PrepareRequest(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for missing model")
+	}
+	if !strings.Contains(err.Error(), "model is required") {
+		t.Errorf("expected 'model is required' error, got %q", err.Error())
+	}
+
+	// Missing input
+	req = &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+	}
+	_, err = eng.PrepareRequest(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for missing input")
+	}
+	if !strings.Contains(err.Error(), "input is required") {
+		t.Errorf("expected 'input is required' error, got %q", err.Error())
+	}
+}
+
+func TestPrepareRequest_WithConversation(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	// First request to create a conversation
+	req1 := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "first message",
+	}
+	prepared1, err := eng.PrepareRequest(ctx, req1)
+	if err != nil {
+		t.Fatalf("first prepare failed: %v", err)
+	}
+	convID := prepared1.State.ConversationID
+
+	// Second request using the same conversation
+	req2 := &schema.ResponseRequest{
+		Model:        stringPtr("test-model"),
+		Input:        "second message",
+		Conversation: &convID,
+	}
+	prepared2, err := eng.PrepareRequest(ctx, req2)
+	if err != nil {
+		t.Fatalf("second prepare failed: %v", err)
+	}
+	if prepared2.State.ConversationID != convID {
+		t.Errorf("expected conversation_id=%q, got %q", convID, prepared2.State.ConversationID)
+	}
+}
+
+func TestPrepareRequest_InvalidConversation(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	nonExistent := "conv_nonexistent"
+	req := &schema.ResponseRequest{
+		Model:        stringPtr("test-model"),
+		Input:        "hello",
+		Conversation: &nonExistent,
+	}
+	_, err := eng.PrepareRequest(ctx, req)
+	if err == nil {
+		t.Fatal("expected error for non-existent conversation")
+	}
+	if !strings.Contains(err.Error(), "conversation") {
+		t.Errorf("expected conversation-related error, got %q", err.Error())
+	}
+}
+
+func TestPrepareRequest_WithTools(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	desc := "search the web"
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "find something",
+		Tools: []schema.ResponsesToolParam{
+			{
+				Type:        "function",
+				Name:        "web_search",
+				Description: &desc,
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"query": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(prepared.State.ExpandedTools) != 1 {
+		t.Fatalf("expected 1 expanded tool, got %d", len(prepared.State.ExpandedTools))
+	}
+	if prepared.State.ExpandedTools[0].Name != "web_search" {
+		t.Errorf("expected tool name=web_search, got %q", prepared.State.ExpandedTools[0].Name)
+	}
+	if len(prepared.BackendRequest.Tools) != 1 {
+		t.Fatalf("expected 1 backend tool, got %d", len(prepared.BackendRequest.Tools))
+	}
+	if prepared.BackendRequest.Tools[0].Name != "web_search" {
+		t.Errorf("expected backend tool name=web_search, got %q", prepared.BackendRequest.Tools[0].Name)
+	}
+}
+
+func TestPrepareRequest_StateFields(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	state := prepared.State
+	if state.ConversationID == "" {
+		t.Error("expected non-empty ConversationID")
+	}
+	if !strings.HasPrefix(state.ConversationID, "conv_") {
+		t.Errorf("expected ConversationID with conv_ prefix, got %q", state.ConversationID)
+	}
+	if state.ResponseID == "" {
+		t.Error("expected non-empty ResponseID")
+	}
+	if !strings.HasPrefix(state.ResponseID, "resp_") {
+		t.Errorf("expected ResponseID with resp_ prefix, got %q", state.ResponseID)
+	}
+	if len(state.Messages) == 0 {
+		t.Error("expected non-empty Messages")
+	}
+	if state.OriginalRequest == nil {
+		t.Error("expected non-nil OriginalRequest")
+	}
+	if state.OriginalRequest != req {
+		t.Error("expected OriginalRequest to be the same pointer as the input request")
+	}
+}
+
+// --- ProcessResponse tests ---
+
+func TestProcessResponse_ValidResponse(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	// First prepare a request to get a valid state
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "backend-resp-1",
+		Status: "completed",
+		Output: []api.OutputItem{
+			{
+				Type: "message",
+				ID:   "msg-1",
+				Role: "assistant",
+				Content: []api.ContentItem{
+					{Type: "output_text", Text: "Hello! How can I help?"},
+				},
+			},
+		},
+		Usage: &api.UsageInfo{
+			InputTokens:  10,
+			OutputTokens: 15,
+			TotalTokens:  25,
+		},
+	}
+
+	resp, err := eng.ProcessResponse(ctx, prepared.State, backendResp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	// Should use gateway's response ID, not backend's
+	if resp.ID != prepared.State.ResponseID {
+		t.Errorf("expected response ID=%q, got %q", prepared.State.ResponseID, resp.ID)
+	}
+	if resp.Model != "test-model" {
+		t.Errorf("expected model=test-model, got %q", resp.Model)
+	}
+	if resp.Status != "completed" {
+		t.Errorf("expected status=completed, got %q", resp.Status)
+	}
+	if len(resp.Output) != 1 {
+		t.Fatalf("expected 1 output item, got %d", len(resp.Output))
+	}
+	if resp.Output[0].Type != "message" {
+		t.Errorf("expected output type=message, got %q", resp.Output[0].Type)
+	}
+	if *resp.Output[0].Content[0].Text != "Hello! How can I help?" {
+		t.Errorf("expected output text, got %q", *resp.Output[0].Content[0].Text)
+	}
+}
+
+func TestProcessResponse_NilState(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "resp-1",
+		Status: "completed",
+	}
+
+	_, err := eng.ProcessResponse(ctx, nil, backendResp)
+	if err == nil {
+		t.Fatal("expected error for nil state")
+	}
+	if !strings.Contains(err.Error(), "state is nil") {
+		t.Errorf("expected 'state is nil' error, got %q", err.Error())
+	}
+}
+
+func TestProcessResponse_NilBackendResponse(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	_, err = eng.ProcessResponse(ctx, prepared.State, nil)
+	if err == nil {
+		t.Fatal("expected error for nil backend response")
+	}
+	if !strings.Contains(err.Error(), "backend response is nil") {
+		t.Errorf("expected 'backend response is nil' error, got %q", err.Error())
+	}
+}
+
+func TestProcessResponse_NilOriginalRequest(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	state := &ConversationState{
+		ConversationID:  "conv-1",
+		ResponseID:      "resp-1",
+		OriginalRequest: nil,
+	}
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "resp-1",
+		Status: "completed",
+	}
+
+	_, err := eng.ProcessResponse(ctx, state, backendResp)
+	if err == nil {
+		t.Fatal("expected error for nil original request")
+	}
+	if !strings.Contains(err.Error(), "original request not found") {
+		t.Errorf("expected 'original request not found' error, got %q", err.Error())
+	}
+}
+
+func TestProcessResponse_WithUsage(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "backend-resp-1",
+		Status: "completed",
+		Output: []api.OutputItem{
+			{
+				Type: "message",
+				ID:   "msg-1",
+				Role: "assistant",
+				Content: []api.ContentItem{
+					{Type: "output_text", Text: "hi"},
+				},
+			},
+		},
+		Usage: &api.UsageInfo{
+			InputTokens:  100,
+			OutputTokens: 50,
+			TotalTokens:  150,
+		},
+	}
+
+	resp, err := eng.ProcessResponse(ctx, prepared.State, backendResp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Usage == nil {
+		t.Fatal("expected non-nil usage")
+	}
+	if resp.Usage.InputTokens != 100 {
+		t.Errorf("expected InputTokens=100, got %d", resp.Usage.InputTokens)
+	}
+	if resp.Usage.OutputTokens != 50 {
+		t.Errorf("expected OutputTokens=50, got %d", resp.Usage.OutputTokens)
+	}
+	if resp.Usage.TotalTokens != 150 {
+		t.Errorf("expected TotalTokens=150, got %d", resp.Usage.TotalTokens)
+	}
+}
+
+func TestProcessResponse_WithoutUsage(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "backend-resp-1",
+		Status: "completed",
+		Output: []api.OutputItem{
+			{
+				Type: "message",
+				ID:   "msg-1",
+				Role: "assistant",
+				Content: []api.ContentItem{
+					{Type: "output_text", Text: "hi"},
+				},
+			},
+		},
+		Usage: nil,
+	}
+
+	resp, err := eng.ProcessResponse(ctx, prepared.State, backendResp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Usage == nil {
+		t.Fatal("expected non-nil usage (zero-value struct)")
+	}
+	if resp.Usage.InputTokens != 0 {
+		t.Errorf("expected InputTokens=0, got %d", resp.Usage.InputTokens)
+	}
+	if resp.Usage.OutputTokens != 0 {
+		t.Errorf("expected OutputTokens=0, got %d", resp.Usage.OutputTokens)
+	}
+}
+
+func TestProcessResponse_SavesResponse(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "backend-resp-1",
+		Status: "completed",
+		Output: []api.OutputItem{
+			{
+				Type: "message",
+				ID:   "msg-1",
+				Role: "assistant",
+				Content: []api.ContentItem{
+					{Type: "output_text", Text: "saved response"},
+				},
+			},
+		},
+	}
+
+	resp, err := eng.ProcessResponse(ctx, prepared.State, backendResp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify response is retrievable via sessions.GetResponse
+	stored, err := eng.sessions.GetResponse(ctx, resp.ID)
+	if err != nil {
+		t.Fatalf("failed to get stored response: %v", err)
+	}
+	if stored.ID != resp.ID {
+		t.Errorf("stored response ID mismatch: expected %q, got %q", resp.ID, stored.ID)
+	}
+	if stored.Status != "completed" {
+		t.Errorf("stored response status: expected completed, got %q", stored.Status)
+	}
+	if stored.ConversationID != prepared.State.ConversationID {
+		t.Errorf("stored conversation ID: expected %q, got %q", prepared.State.ConversationID, stored.ConversationID)
+	}
+}
+
+func TestProcessResponse_WithToolCalls(t *testing.T) {
+	eng := newTestEngine(t)
+	ctx := context.Background()
+
+	req := &schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "what's the weather?",
+	}
+	prepared, err := eng.PrepareRequest(ctx, req)
+	if err != nil {
+		t.Fatalf("prepare failed: %v", err)
+	}
+
+	backendResp := &api.ResponsesAPIResponse{
+		ID:     "backend-resp-1",
+		Status: "completed",
+		Output: []api.OutputItem{
+			{
+				Type:      "function_call",
+				ID:        "fc-1",
+				Name:      "get_weather",
+				Arguments: `{"city":"NYC"}`,
+				CallID:    "call-1",
+				Status:    "completed",
+			},
+		},
+	}
+
+	resp, err := eng.ProcessResponse(ctx, prepared.State, backendResp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Output) != 1 {
+		t.Fatalf("expected 1 output item, got %d", len(resp.Output))
+	}
+	if resp.Output[0].Type != "function_call" {
+		t.Errorf("expected type=function_call, got %q", resp.Output[0].Type)
+	}
+	if *resp.Output[0].Name != "get_weather" {
+		t.Errorf("expected name=get_weather, got %q", *resp.Output[0].Name)
+	}
+	if *resp.Output[0].Arguments != `{"city":"NYC"}` {
+		t.Errorf("expected arguments, got %q", *resp.Output[0].Arguments)
+	}
+	if *resp.Output[0].CallID != "call-1" {
+		t.Errorf("expected callID=call-1, got %q", *resp.Output[0].CallID)
 	}
 }
