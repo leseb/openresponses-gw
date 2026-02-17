@@ -1,4 +1,4 @@
-.PHONY: help build test lint clean run
+.PHONY: help build test lint clean run test-integration-python test-integration-responses test-integration-envoy
 
 # Variables
 BINARY_NAME=openresponses-gw-server
@@ -147,9 +147,16 @@ test-conformance-envoy: build-extproc ## Run conformance tests through Envoy Ext
 	API_KEY="${API_KEY:-none}"; \
 	./tests/scripts/test-conformance-with-envoy.sh "$$MODEL" "$$API_KEY"
 
-test-integration-python: ## Run Python integration tests
-	@echo "$(GREEN)Running Python integration tests...$(NC)"
+test-integration-python: ## Run Python integration tests (chat_completions backend)
+	@echo "$(GREEN)Running Python integration tests (chat_completions backend)...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	OPENRESPONSES_BACKEND_API=chat_completions \
+	uv run --project tests/integration pytest tests/integration/ -v
+
+test-integration-responses: ## Run Python integration tests (responses backend)
+	@echo "$(GREEN)Running Python integration tests (responses backend)...$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	OPENRESPONSES_BACKEND_API=responses \
 	uv run --project tests/integration pytest tests/integration/ -v
 
 test-integration-envoy: ## Run Python integration tests through Envoy ExtProc

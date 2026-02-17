@@ -10,15 +10,27 @@ BASE_URL = os.environ.get("OPENRESPONSES_BASE_URL", "http://localhost:8080/v1")
 API_KEY = os.environ.get("OPENRESPONSES_API_KEY", "unused")
 MODEL = os.environ.get("OPENRESPONSES_MODEL", "Qwen/Qwen3-0.6B")
 ADAPTER = os.environ.get("OPENRESPONSES_ADAPTER", "http")
+BACKEND_API = os.environ.get("OPENRESPONSES_BACKEND_API", "chat_completions")
 
 
 def pytest_collection_modifyitems(config, items):
-    if ADAPTER != "envoy":
-        return
-    skip_envoy = pytest.mark.skip(reason="Not supported through Envoy ExtProc")
-    for item in items:
-        if "envoy_skip" in item.keywords:
-            item.add_marker(skip_envoy)
+    if ADAPTER == "envoy":
+        skip_envoy = pytest.mark.skip(reason="Not supported through Envoy ExtProc")
+        for item in items:
+            if "envoy_skip" in item.keywords:
+                item.add_marker(skip_envoy)
+
+    if BACKEND_API == "responses":
+        skip = pytest.mark.skip(reason="Not supported with responses backend")
+        for item in items:
+            if "chat_completions_only" in item.keywords:
+                item.add_marker(skip)
+
+    if BACKEND_API == "chat_completions":
+        skip = pytest.mark.skip(reason="Not supported with chat_completions backend")
+        for item in items:
+            if "responses_only" in item.keywords:
+                item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
@@ -39,6 +51,11 @@ def model():
 @pytest.fixture(scope="session")
 def api_key():
     return API_KEY
+
+
+@pytest.fixture(scope="session")
+def backend_api():
+    return BACKEND_API
 
 
 @pytest.fixture(scope="session")

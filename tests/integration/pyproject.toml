@@ -13,4 +13,6 @@ dependencies = [
 testpaths = ["."]
 markers = [
     "envoy_skip: test is not compatible with Envoy ExtProc adapter",
+    "chat_completions_only: test only runs with chat_completions backend",
+    "responses_only: test only runs with responses backend",
 ]
