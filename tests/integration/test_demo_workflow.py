@@ -301,7 +301,7 @@ class TestDemoWorkflow:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["object"] == "list"
+        assert data["object"] == "vector_store.search_results.page"
         assert isinstance(data["data"], list)
 
         # If results are returned (real backend configured), validate shape

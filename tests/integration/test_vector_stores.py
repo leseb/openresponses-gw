@@ -156,7 +156,7 @@ class TestVectorStores:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["object"] == "list"
+        assert data["object"] == "vector_store.search_results.page"
         assert isinstance(data["data"], list)
 
     def test_search_with_content(
@@ -200,7 +200,7 @@ class TestVectorStores:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["object"] == "list"
+        assert data["object"] == "vector_store.search_results.page"
         assert isinstance(data["data"], list)
 
         # Validate result shape if results are returned
