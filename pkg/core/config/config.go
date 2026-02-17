@@ -38,6 +38,7 @@ type ServerConfig struct {
 type EngineConfig struct {
 	ModelEndpoint string        `yaml:"model_endpoint"`
 	APIKey        string        `yaml:"api_key"`
+	BackendAPI    string        `yaml:"backend_api"` // "chat_completions" (default) or "responses"
 	MaxTokens     int           `yaml:"max_tokens"`
 	Timeout       time.Duration `yaml:"timeout"`
 }
@@ -84,6 +85,9 @@ func Load(path string) (*Config, error) {
 	}
 	if endpoint := os.Getenv("OPENAI_API_ENDPOINT"); endpoint != "" {
 		cfg.Engine.ModelEndpoint = endpoint
+	}
+	if v := os.Getenv("BACKEND_API"); v != "" {
+		cfg.Engine.BackendAPI = v
 	}
 
 	// Embedding env overrides
@@ -138,6 +142,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Apply defaults
+	applyEngineDefaults(&cfg.Engine)
 	applyEmbeddingDefaults(&cfg.Embedding)
 	applyVectorStoreDefaults(&cfg.VectorStore)
 	applyFileStoreDefaults(&cfg.FileStore)
@@ -184,22 +189,32 @@ func Default() *Config {
 	}
 	applySessionStoreDefaults(&ssCfg)
 
+	engineCfg := EngineConfig{
+		ModelEndpoint: os.Getenv("OPENAI_API_ENDPOINT"),
+		APIKey:        os.Getenv("OPENAI_API_KEY"),
+		BackendAPI:    os.Getenv("BACKEND_API"),
+		MaxTokens:     4096,
+		Timeout:       60 * time.Second,
+	}
+	applyEngineDefaults(&engineCfg)
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
 			Port:    8080,
 			Timeout: 60 * time.Second,
 		},
-		Engine: EngineConfig{
-			ModelEndpoint: os.Getenv("OPENAI_API_ENDPOINT"),
-			APIKey:        os.Getenv("OPENAI_API_KEY"),
-			MaxTokens:     4096,
-			Timeout:       60 * time.Second,
-		},
+		Engine:       engineCfg,
 		Embedding:    embCfg,
 		VectorStore:  vsCfg,
 		FileStore:    fsCfg,
 		SessionStore: ssCfg,
+	}
+}
+
+func applyEngineDefaults(cfg *EngineConfig) {
+	if cfg.BackendAPI == "" {
+		cfg.BackendAPI = "chat_completions"
 	}
 }
 

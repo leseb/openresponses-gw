@@ -55,11 +55,16 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		return nil, fmt.Errorf("session store is required")
 	}
 
-	// Create Responses API client — backend must support /v1/responses
+	// Create backend API client
 	if cfg.ModelEndpoint == "" {
 		return nil, fmt.Errorf("model endpoint is required (set OPENAI_API_ENDPOINT)")
 	}
-	llm := api.NewOpenAIResponsesClient(cfg.ModelEndpoint, cfg.APIKey)
+	var llm api.ResponsesAPIClient
+	if cfg.BackendAPI == "responses" {
+		llm = api.NewOpenAIResponsesClient(cfg.ModelEndpoint, cfg.APIKey)
+	} else {
+		llm = api.NewChatCompletionsAdapter(cfg.ModelEndpoint, cfg.APIKey)
+	}
 
 	return &Engine{
 		config:       cfg,
