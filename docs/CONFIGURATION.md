@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide explains how to configure the Open Responses Gateway. The gateway requires a `/v1/responses`-compatible inference backend (e.g., vLLM, OpenAI).
+This guide explains how to configure the Open Responses Gateway. The gateway works with any inference backend that supports `/v1/chat/completions` (default) or `/v1/responses`.
 
 ## Quick Start: Testing with OpenAI
 
@@ -197,6 +197,9 @@ The gateway supports **3 ways** to configure the inference backend (in order of 
 export OPENAI_API_KEY=sk-your-key-here
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1  # optional, this is the default
 
+# Optional — backend API mode (default: chat_completions)
+export BACKEND_API=chat_completions  # "chat_completions" (default) or "responses"
+
 # Optional — embedding service (enables vector search / RAG)
 export EMBEDDING_ENDPOINT=https://api.openai.com/v1
 export EMBEDDING_API_KEY=sk-your-key-here
@@ -233,6 +236,7 @@ server:
 engine:
   model_endpoint: https://api.openai.com/v1
   api_key: sk-your-key-here  # Not recommended - use env vars instead
+  backend_api: chat_completions  # "chat_completions" (default) or "responses"
   max_tokens: 4096
   timeout: 60s
 
@@ -268,17 +272,30 @@ Run:
 
 ## Compatible Backends
 
-The gateway requires a backend that supports the `/v1/responses` endpoint (the Open Responses API). Compatible backends include:
+The gateway supports two backend API modes, controlled by the `BACKEND_API` env var (or `backend_api` in YAML config):
 
-### vLLM (Recommended)
+| Mode | Endpoint Called | Compatible Backends |
+|------|----------------|---------------------|
+| `chat_completions` (default) | `/v1/chat/completions` | vLLM, Ollama, TGI, OpenAI, any OpenAI-compatible server |
+| `responses` | `/v1/responses` | vLLM, Ollama, OpenAI |
+
+### vLLM
 
 ```bash
-# Start vLLM with a model
 python -m vllm.entrypoints.openai.api_server --model <model>
 
-# Configure gateway
 export OPENAI_API_KEY=unused
 export OPENAI_API_ENDPOINT=http://localhost:8000/v1
+./bin/openresponses-gw-server
+```
+
+### Ollama
+
+```bash
+ollama serve
+
+export OPENAI_API_KEY=unused
+export OPENAI_API_ENDPOINT=http://localhost:11434/v1
 ./bin/openresponses-gw-server
 ```
 
@@ -287,6 +304,16 @@ export OPENAI_API_ENDPOINT=http://localhost:8000/v1
 ```bash
 export OPENAI_API_KEY=sk-proj-...
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1
+./bin/openresponses-gw-server
+```
+
+### Using the Responses API backend
+
+If your backend supports the `/v1/responses` endpoint natively (e.g., vLLM):
+
+```bash
+export BACKEND_API=responses
+export OPENAI_API_ENDPOINT=http://localhost:8000/v1
 ./bin/openresponses-gw-server
 ```
 
@@ -450,6 +477,7 @@ curl -X POST http://localhost:8080/v1/responses \
 docker run -p 8080:8080 \
   -e OPENAI_API_KEY=sk-... \
   -e OPENAI_API_ENDPOINT=https://api.openai.com/v1 \
+  -e BACKEND_API=chat_completions \
   -e EMBEDDING_ENDPOINT=https://api.openai.com/v1 \
   -e EMBEDDING_API_KEY=sk-... \
   -e MILVUS_ADDRESS=host.docker.internal:19530 \
