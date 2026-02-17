@@ -9,18 +9,18 @@
       "missing": []
     },
     "conformance": {
-      "score": 82.3,
+      "score": 82.7,
       "issues": 47,
-      "missing_properties": 54,
-      "total_problems": 101,
+      "missing_properties": 52,
+      "total_problems": 99,
       "total_properties": 572
     }
   },
   "categories": {
     "Files": {
-      "score": 92.9,
+      "score": 97.6,
       "issues": 1,
-      "missing_properties": 2,
+      "missing_properties": 0,
       "total_properties": 42,
       "endpoints": [
         {
@@ -29,26 +29,23 @@
             {
               "method": "GET",
               "missing_properties": [],
+              "conformance_issues": [],
+              "missing_count": 0,
+              "issues_count": 0
+            },
+            {
+              "method": "POST",
+              "missing_properties": [],
               "conformance_issues": [
                 {
-                  "property": "GET.responses.200.content.application/json.properties.data.items",
+                  "property": "POST.requestBody.content.multipart/form-data.properties.purpose",
                   "details": [
-                    "Type added: ['object']"
+                    "Enum removed: ['assistants', 'batch', 'fine-tune', 'vision', 'user_data', 'evals']"
                   ]
                 }
               ],
               "missing_count": 0,
               "issues_count": 1
-            },
-            {
-              "method": "POST",
-              "missing_properties": [
-                "POST.requestBody.content.multipart/form-data.properties.file",
-                "POST.requestBody.content.multipart/form-data.properties.purpose"
-              ],
-              "conformance_issues": [],
-              "missing_count": 2,
-              "issues_count": 0
             }
           ]
         },

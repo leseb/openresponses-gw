@@ -322,7 +322,6 @@ components:
         status_details:
           description: Details about status (nullable, e.g. validation failure info)
           type: string
-      type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ImageURL:
       description: Image content
       properties:
@@ -1620,16 +1619,27 @@ paths:
     post:
       requestBody:
         content:
-          application/x-www-form-urlencoded:
-            schema:
-              oneOf:
-              - title: file
-                type: file
-              - title: purpose
-                type: string
           multipart/form-data:
             schema:
               type: object
+              required:
+              - file
+              - purpose
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+                purpose:
+                  type: string
+                  description: 'Purpose: assistants, vision, batch, or fine-tune'
+                  enum:
+                  - assistants
+                  - batch
+                  - fine-tune
+                  - vision
+                  - user_data
+                  - evals
         description: 'File to upload | Purpose: assistants, vision, batch, or fine-tune'
         required: true
       responses:

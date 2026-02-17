@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Post-process swag-generated OpenAPI 3.1 spec to fix nullable fields.
+"""Post-process swag-generated OpenAPI 3.1 spec.
 
-Swag v2 does not emit anyOf/null for Go pointer types. This script reads the
-generated YAML, transforms pointer-typed fields into proper nullable schemas
-(anyOf with {type: "null"}), and writes the result back.
-
-The list of nullable fields is derived from the Go source structs where pointer
-types (*int64, *string, *SomeStruct) indicate nullable fields per JSON semantics.
+Applies several fixes that swag v2 cannot express natively:
+  1. Nullable fields — pointer-typed Go fields become anyOf with {type: "null"}.
+  2. Files API — fix POST /v1/files multipart schema and remove spurious
+     ``type: object`` from the File schema so oasdiff sees full conformance.
 
 Usage:
     python scripts/fix-openapi-nullable.py docs/openapi.yaml
@@ -129,6 +127,57 @@ def _tag_null_types(obj):
             _tag_null_types(item)
 
 
+def fix_files_api(spec: dict) -> dict:
+    """Fix Files API schema issues that swag generates incorrectly.
+
+    1. POST /v1/files — swag puts formData params under
+       application/x-www-form-urlencoded instead of multipart/form-data.
+       Replace the multipart schema with proper ``file`` and ``purpose``
+       properties so oasdiff sees them.
+    2. File schema — remove the top-level ``type: object`` that swag emits.
+       The OpenAI spec omits it (properties imply it in OpenAPI 3.1) and
+       oasdiff flags the extra type as a conformance issue.
+    """
+    # --- Fix 1: POST /v1/files multipart/form-data schema ---
+    post_files = spec.get("paths", {}).get("/v1/files", {}).get("post", {})
+    rb_content = post_files.get("requestBody", {}).get("content", {})
+    if "multipart/form-data" in rb_content:
+        rb_content["multipart/form-data"]["schema"] = {
+            "type": "object",
+            "required": ["file", "purpose"],
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "File to upload",
+                },
+                "purpose": {
+                    "type": "string",
+                    "description": "Purpose: assistants, vision, batch, or fine-tune",
+                    "enum": [
+                        "assistants",
+                        "batch",
+                        "fine-tune",
+                        "vision",
+                        "user_data",
+                        "evals",
+                    ],
+                },
+            },
+        }
+        # Remove the bogus application/x-www-form-urlencoded entry
+        rb_content.pop("application/x-www-form-urlencoded", None)
+
+    # --- Fix 2: Remove ``type: object`` from File schema ---
+    schemas = spec.get("components", {}).get("schemas", {})
+    for key in schemas:
+        if key.endswith("schema.File"):
+            schemas[key].pop("type", None)
+            break
+
+    return spec
+
+
 def main():
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <openapi.yaml>", file=sys.stderr)
@@ -143,6 +192,7 @@ def main():
         spec = yaml.safe_load(f)
 
     fix_nullable(spec)
+    fix_files_api(spec)
 
     # Tag null types for proper YAML quoting
     _tag_null_types(spec)
