@@ -23,8 +23,15 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.AddVectorStoreFileRequest:
       properties:
-        chunking_strategy:
-          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ChunkingStrategy'
+        attributes:
+          description: File attributes
+          type: object
+        chunking_strategy: &id001
+          type: object
+          description: The chunking strategy used to chunk the file(s). If not set, will use the `auto` strategy.
+          oneOf:
+          - $ref: '#/components/schemas/AutoChunkingStrategyRequestParam'
+          - $ref: '#/components/schemas/StaticChunkingStrategyRequestParam'
         file_id:
           description: Required
           type: string
@@ -43,13 +50,11 @@ components:
           type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ChunkingStrategy:
-      properties:
-        static:
-          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.StaticChunkingStrategy'
-        type:
-          description: '"auto" or "static"'
-          type: string
       type: object
+      description: The strategy used to chunk the file.
+      oneOf:
+      - $ref: '#/components/schemas/StaticChunkingStrategyResponseParam'
+      - $ref: '#/components/schemas/OtherChunkingStrategyResponseParam'
     github_com_leseb_openresponses-gw_pkg_core_schema.Connector:
       properties:
         connector_id:
@@ -157,6 +162,10 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreFileBatchRequest:
       properties:
+        attributes:
+          description: File attributes
+          type: object
+        chunking_strategy: *id001
         file_ids:
           description: Array of file IDs (max 500)
           items:
@@ -166,6 +175,7 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreRequest:
       properties:
+        chunking_strategy: *id001
         expires_after:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreExpiration'
         file_ids:
@@ -250,6 +260,8 @@ components:
           type: string
         object:
           description: Always "vector_store.file.deleted"
+          enum:
+          - vector_store.file.deleted
           type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.DeleteVectorStoreResponse:
@@ -262,6 +274,8 @@ components:
           type: string
         object:
           description: Always "vector_store.deleted"
+          enum:
+          - vector_store.deleted
           type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ErrorField:
@@ -922,15 +936,31 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.SearchVectorStoreRequest:
       properties:
-        filter:
-          description: Optional filter criteria
-          type: object
-        query:
-          description: Search query
-          type: string
-        top_k:
-          description: 'Number of results to return (default: 10)'
+        filters:
+          description: A filter to apply based on file attributes.
+          oneOf:
+          - $ref: '#/components/schemas/ComparisonFilter'
+          - $ref: '#/components/schemas/CompoundFilter'
+        max_num_results:
+          description: Max results (1-50, default 10)
           type: integer
+          default: 10
+        query:
+          description: A query string for a search
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+              description: A list of queries to search for.
+              minItems: 1
+        ranking_options:
+          description: Ranking options for search
+          type: object
+        rewrite_query:
+          description: Whether to rewrite the query for vector search
+          type: boolean
+          default: false
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.SearchVectorStoreResponse:
       properties:
@@ -940,9 +970,23 @@ components:
             $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreSearchResult'
           type: array
           uniqueItems: false
-        object:
-          description: Always "list"
+        has_more:
+          description: Whether there are more results
+          type: boolean
+        next_page:
+          description: Token for the next page
           type: string
+        object:
+          description: Always "vector_store.search_results.page"
+          enum:
+          - vector_store.search_results.page
+          type: string
+        search_query:
+          description: The queries used for search
+          items:
+            type: string
+          type: array
+          uniqueItems: false
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.SetDefaultVersionRequest:
       properties:
@@ -1036,9 +1080,15 @@ components:
           type: string
         object:
           description: Always "vector_store"
+          enum:
+          - vector_store
           type: string
         status:
-          description: '"in_progress", "completed", "failed"'
+          description: Vector store status
+          enum:
+          - expired
+          - in_progress
+          - completed
           type: string
         usage_bytes:
           description: Total bytes used
@@ -1048,7 +1098,9 @@ components:
       description: Expiration policy
       properties:
         anchor:
-          description: '"last_active_at"'
+          description: Anchor timestamp
+          enum:
+          - last_active_at
           type: string
         days:
           description: Number of days
@@ -1056,6 +1108,9 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreFile:
       properties:
+        attributes:
+          description: File attributes
+          type: object
         chunking_strategy:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ChunkingStrategy'
         created_at:
@@ -1068,9 +1123,16 @@ components:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreFileError'
         object:
           description: Always "vector_store.file"
+          enum:
+          - vector_store.file
           type: string
         status:
-          description: '"in_progress", "completed", "failed", "cancelled"'
+          description: File status
+          enum:
+          - in_progress
+          - completed
+          - cancelled
+          - failed
           type: string
         usage_bytes:
           description: Bytes used
@@ -1090,10 +1152,17 @@ components:
           description: Batch ID
           type: string
         object:
-          description: Always "vector_store.file_batch"
+          description: Always "vector_store.files_batch"
+          enum:
+          - vector_store.files_batch
           type: string
         status:
-          description: '"in_progress", "completed", "cancelled", "failed"'
+          description: Batch status
+          enum:
+          - in_progress
+          - completed
+          - cancelled
+          - failed
           type: string
         vector_store_id:
           description: Vector store ID
@@ -1123,6 +1192,10 @@ components:
       properties:
         code:
           description: Error code
+          enum:
+          - server_error
+          - unsupported_file
+          - invalid_file
           type: string
         message:
           description: Error message
@@ -1130,18 +1203,33 @@ components:
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreSearchResult:
       properties:
+        attributes:
+          description: File attributes
+          type: object
         content:
-          description: Matched content snippet
-          type: string
+          description: Content chunks from the file
+          items:
+            $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreSearchResultContent'
+          type: array
+          uniqueItems: false
         file_id:
           description: ID of the file
           type: string
-        metadata:
-          description: Optional metadata
-          type: object
+        filename:
+          description: Name of the file
+          type: string
         score:
           description: Similarity score
           type: number
+      type: object
+    github_com_leseb_openresponses-gw_pkg_core_schema.VectorStoreSearchResultContent:
+      properties:
+        text:
+          description: The text content
+          type: string
+        type:
+          description: Content type, e.g. "text"
+          type: string
       type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.VideoURL:
       description: Video content
@@ -1149,6 +1237,149 @@ components:
         url:
           type: string
       type: object
+    StaticChunkingStrategyResponseParam:
+      type: object
+      title: Static Chunking Strategy
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: Always `static`.
+          enum:
+          - static
+        static:
+          type: object
+          additionalProperties: false
+          properties:
+            max_chunk_size_tokens:
+              type: integer
+              minimum: 100
+              maximum: 4096
+              description: The maximum number of tokens in each chunk. The default value is `800`. The minimum value is `100`
+                and the maximum value is `4096`.
+            chunk_overlap_tokens:
+              type: integer
+              description: 'The number of tokens that overlap between chunks. The default value is `400`.
+
+
+                Note that the overlap must not exceed half of `max_chunk_size_tokens`.
+
+                '
+          required:
+          - max_chunk_size_tokens
+          - chunk_overlap_tokens
+      required:
+      - type
+      - static
+    OtherChunkingStrategyResponseParam:
+      type: object
+      title: Other Chunking Strategy
+      description: This is returned when the chunking strategy is unknown. Typically, this is because the file was indexed
+        before the `chunking_strategy` concept was introduced in the API.
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: Always `other`.
+          enum:
+          - other
+      required:
+      - type
+    AutoChunkingStrategyRequestParam:
+      type: object
+      title: Auto Chunking Strategy
+      description: The default strategy. This strategy currently uses a `max_chunk_size_tokens` of `800` and `chunk_overlap_tokens`
+        of `400`.
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: Always `auto`.
+          enum:
+          - auto
+      required:
+      - type
+    StaticChunkingStrategyRequestParam:
+      type: object
+      title: Static Chunking Strategy
+      description: Customize your own chunking strategy by setting chunk size and chunk overlap.
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          description: Always `static`.
+          enum:
+          - static
+        static:
+          type: object
+          additionalProperties: false
+          properties:
+            max_chunk_size_tokens:
+              type: integer
+              minimum: 100
+              maximum: 4096
+              description: The maximum number of tokens in each chunk. The default value is `800`. The minimum value is `100`
+                and the maximum value is `4096`.
+            chunk_overlap_tokens:
+              type: integer
+              description: 'The number of tokens that overlap between chunks. The default value is `400`.
+
+
+                Note that the overlap must not exceed half of `max_chunk_size_tokens`.
+
+                '
+          required:
+          - max_chunk_size_tokens
+          - chunk_overlap_tokens
+      required:
+      - type
+      - static
+    ComparisonFilter:
+      type: object
+      title: Comparison filter
+      description: A filter used to compare a specified attribute key to a given value using a defined comparison operation.
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+          - eq
+          - ne
+          - gt
+          - gte
+          - lt
+          - lte
+        key:
+          type: string
+        value:
+          oneOf:
+          - type: string
+          - type: number
+          - type: boolean
+      required:
+      - type
+      - key
+      - value
+    CompoundFilter:
+      type: object
+      title: Compound filter
+      description: Combine multiple filters using `and` or `or`.
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+          - and
+          - or
+        filters:
+          type: array
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/ComparisonFilter'
+            - $ref: '#/components/schemas/CompoundFilter'
+      required:
+      - type
+      - filters
 externalDocs:
   description: ''
   url: ''
@@ -1238,11 +1469,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.RegisterConnectorRequest'
-                description: Register connector request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.RegisterConnectorRequest'
         description: Register connector request
         required: true
       responses:
@@ -1379,11 +1606,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateConversationRequest'
-                description: Create conversation request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateConversationRequest'
         description: Create conversation request
         required: true
       responses:
@@ -1540,11 +1763,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.AddConversationItemsRequest'
-                description: Items to add (max 20)
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.AddConversationItemsRequest'
         description: Items to add (max 20)
         required: true
       responses:
@@ -1816,11 +2035,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreatePromptRequest'
-                description: Create prompt request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreatePromptRequest'
         description: Create prompt request
         required: true
       responses:
@@ -1929,11 +2144,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UpdatePromptRequest'
-                description: Update prompt request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UpdatePromptRequest'
         description: Update prompt request
         required: true
       responses:
@@ -1980,11 +2191,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.SetDefaultVersionRequest'
-                description: Set default version request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.SetDefaultVersionRequest'
         description: Set default version request
         required: true
       responses:
@@ -2096,11 +2303,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponseRequest'
-                description: Response request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ResponseRequest'
         description: Response request
         required: true
       responses:
@@ -2270,11 +2473,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreRequest'
-                description: Create vector store request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreRequest'
         description: Create vector store request
         required: true
       responses:
@@ -2378,11 +2577,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UpdateVectorStoreRequest'
-                description: Update vector store request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.UpdateVectorStoreRequest'
         description: Update vector store request
         required: true
       responses:
@@ -2429,11 +2624,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreFileBatchRequest'
-                description: File batch request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.CreateVectorStoreFileBatchRequest'
         description: File batch request
         required: true
       responses:
@@ -2679,11 +2870,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.AddVectorStoreFileRequest'
-                description: Add file request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.AddVectorStoreFileRequest'
         description: Add file request
         required: true
       responses:
@@ -2846,11 +3033,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.SearchVectorStoreRequest'
-                description: Search request
-                summary: request
+              $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.SearchVectorStoreRequest'
         description: Search request
         required: true
       responses:

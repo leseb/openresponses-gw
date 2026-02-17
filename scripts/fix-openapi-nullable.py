@@ -178,6 +178,330 @@ def fix_files_api(spec: dict) -> dict:
     return spec
 
 
+def fix_request_body_oneof(spec: dict) -> dict:
+    """Fix swag's bogus ``oneOf`` wrapper around requestBody schemas.
+
+    Swag v2 generates requestBody schemas as::
+
+        oneOf:
+          - type: object          # empty placeholder
+          - $ref: '#/components/schemas/...'
+
+    This confuses oasdiff because the properties live inside the ``$ref``
+    variant, not at the top level.  Replace with a direct ``$ref``.
+    """
+    for _path, methods in spec.get("paths", {}).items():
+        for _method, operation in methods.items():
+            if not isinstance(operation, dict):
+                continue
+            rb = operation.get("requestBody", {})
+            for _ct, media in rb.get("content", {}).items():
+                schema = media.get("schema", {})
+                one_of = schema.get("oneOf")
+                if not isinstance(one_of, list) or len(one_of) != 2:
+                    continue
+                # Find the variant that has a $ref
+                ref_variant = None
+                for variant in one_of:
+                    if "$ref" in variant:
+                        ref_variant = variant
+                        break
+                if ref_variant is None:
+                    continue
+                # Replace the entire schema with a direct $ref
+                ref = ref_variant["$ref"]
+                schema.clear()
+                schema["$ref"] = ref
+    return spec
+
+
+def fix_chunking_strategy_union(spec: dict) -> dict:
+    """Rewrite ChunkingStrategy from a flat schema to a oneOf union.
+
+    The OpenAI spec models ``chunking_strategy`` as a ``oneOf`` with two
+    discriminated variants (static / other).  Swag generates a flat object
+    because Go doesn't have sum types.  Rewrite the schema in-place so
+    oasdiff sees the union variants.
+    """
+    schemas = spec.get("components", {}).get("schemas", {})
+
+    # Find the ChunkingStrategy schema key
+    cs_key = None
+    for key in schemas:
+        if key.endswith("schema.ChunkingStrategy"):
+            cs_key = key
+            break
+    if cs_key is None:
+        return spec
+
+    # Create named variant schemas that oasdiff can match by component name
+    schemas["StaticChunkingStrategyResponseParam"] = {
+        "type": "object",
+        "title": "Static Chunking Strategy",
+        "additionalProperties": False,
+        "properties": {
+            "type": {
+                "type": "string",
+                "description": "Always `static`.",
+                "enum": ["static"],
+            },
+            "static": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "max_chunk_size_tokens": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 4096,
+                        "description": (
+                            "The maximum number of tokens in each chunk. "
+                            "The default value is `800`. The minimum value is "
+                            "`100` and the maximum value is `4096`."
+                        ),
+                    },
+                    "chunk_overlap_tokens": {
+                        "type": "integer",
+                        "description": (
+                            "The number of tokens that overlap between chunks. "
+                            "The default value is `400`.\n\nNote that the overlap "
+                            "must not exceed half of `max_chunk_size_tokens`.\n"
+                        ),
+                    },
+                },
+                "required": ["max_chunk_size_tokens", "chunk_overlap_tokens"],
+            },
+        },
+        "required": ["type", "static"],
+    }
+    schemas["OtherChunkingStrategyResponseParam"] = {
+        "type": "object",
+        "title": "Other Chunking Strategy",
+        "description": (
+            "This is returned when the chunking strategy is unknown. "
+            "Typically, this is because the file was indexed before the "
+            "`chunking_strategy` concept was introduced in the API."
+        ),
+        "additionalProperties": False,
+        "properties": {
+            "type": {
+                "type": "string",
+                "description": "Always `other`.",
+                "enum": ["other"],
+            },
+        },
+        "required": ["type"],
+    }
+
+    schemas[cs_key] = {
+        "type": "object",
+        "description": "The strategy used to chunk the file.",
+        "oneOf": [
+            {"$ref": "#/components/schemas/StaticChunkingStrategyResponseParam"},
+            {"$ref": "#/components/schemas/OtherChunkingStrategyResponseParam"},
+        ],
+    }
+    return spec
+
+
+def fix_request_chunking_strategy(spec: dict) -> dict:
+    """Replace chunking_strategy $ref in request schemas with request-specific union.
+
+    The OpenAI spec uses different variants for request (auto/static) vs
+    response (static/other).  The response variants were handled by
+    ``fix_chunking_strategy_union``.  Here we add the request variants and
+    patch the request schemas to reference them instead.
+    """
+    schemas = spec.get("components", {}).get("schemas", {})
+
+    # Add request variant schemas
+    schemas["AutoChunkingStrategyRequestParam"] = {
+        "type": "object",
+        "title": "Auto Chunking Strategy",
+        "description": (
+            "The default strategy. This strategy currently uses a "
+            "`max_chunk_size_tokens` of `800` and `chunk_overlap_tokens` of `400`."
+        ),
+        "additionalProperties": False,
+        "properties": {
+            "type": {
+                "type": "string",
+                "description": "Always `auto`.",
+                "enum": ["auto"],
+            },
+        },
+        "required": ["type"],
+    }
+    schemas["StaticChunkingStrategyRequestParam"] = {
+        "type": "object",
+        "title": "Static Chunking Strategy",
+        "description": (
+            "Customize your own chunking strategy by setting chunk size "
+            "and chunk overlap."
+        ),
+        "additionalProperties": False,
+        "properties": {
+            "type": {
+                "type": "string",
+                "description": "Always `static`.",
+                "enum": ["static"],
+            },
+            "static": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "max_chunk_size_tokens": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 4096,
+                        "description": (
+                            "The maximum number of tokens in each chunk. "
+                            "The default value is `800`. The minimum value is "
+                            "`100` and the maximum value is `4096`."
+                        ),
+                    },
+                    "chunk_overlap_tokens": {
+                        "type": "integer",
+                        "description": (
+                            "The number of tokens that overlap between chunks. "
+                            "The default value is `400`.\n\nNote that the overlap "
+                            "must not exceed half of `max_chunk_size_tokens`.\n"
+                        ),
+                    },
+                },
+                "required": ["max_chunk_size_tokens", "chunk_overlap_tokens"],
+            },
+        },
+        "required": ["type", "static"],
+    }
+
+    request_cs = {
+        "type": "object",
+        "description": (
+            "The chunking strategy used to chunk the file(s). "
+            "If not set, will use the `auto` strategy."
+        ),
+        "oneOf": [
+            {"$ref": "#/components/schemas/AutoChunkingStrategyRequestParam"},
+            {"$ref": "#/components/schemas/StaticChunkingStrategyRequestParam"},
+        ],
+    }
+
+    # Patch request schemas that have chunking_strategy
+    request_schema_suffixes = [
+        "schema.CreateVectorStoreRequest",
+        "schema.AddVectorStoreFileRequest",
+        "schema.CreateVectorStoreFileBatchRequest",
+    ]
+    for key in schemas:
+        for suffix in request_schema_suffixes:
+            if key.endswith(suffix):
+                props = schemas[key].get("properties", {})
+                if "chunking_strategy" in props:
+                    props["chunking_strategy"] = request_cs
+                break
+
+    return spec
+
+
+def fix_search_request(spec: dict) -> dict:
+    """Fix search request schema to match OpenAI spec.
+
+    1. ``query`` — must be oneOf string or array of strings.
+    2. ``filters`` — must be oneOf ComparisonFilter / CompoundFilter.
+    3. ``max_num_results`` — needs default: 10.
+    4. ``rewrite_query`` — needs default: false.
+    """
+    schemas = spec.get("components", {}).get("schemas", {})
+
+    for key in schemas:
+        if not key.endswith("schema.SearchVectorStoreRequest"):
+            continue
+        props = schemas[key].get("properties", {})
+
+        # Fix query: oneOf [string, array]
+        if "query" in props:
+            props["query"] = {
+                "description": "A query string for a search",
+                "oneOf": [
+                    {"type": "string"},
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "description": "A list of queries to search for.",
+                            "minItems": 1,
+                        },
+                    },
+                ],
+            }
+
+        # Fix filters: oneOf [ComparisonFilter, CompoundFilter]
+        if "filters" in props:
+            # Add named filter schemas
+            schemas["ComparisonFilter"] = {
+                "type": "object",
+                "title": "Comparison filter",
+                "description": "A filter used to compare a specified attribute key to a given value using a defined comparison operation.",
+                "additionalProperties": False,
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["eq", "ne", "gt", "gte", "lt", "lte"],
+                    },
+                    "key": {"type": "string"},
+                    "value": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "number"},
+                            {"type": "boolean"},
+                        ],
+                    },
+                },
+                "required": ["type", "key", "value"],
+            }
+            schemas["CompoundFilter"] = {
+                "type": "object",
+                "title": "Compound filter",
+                "description": "Combine multiple filters using `and` or `or`.",
+                "additionalProperties": False,
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["and", "or"],
+                    },
+                    "filters": {
+                        "type": "array",
+                        "items": {
+                            "oneOf": [
+                                {"$ref": "#/components/schemas/ComparisonFilter"},
+                                {"$ref": "#/components/schemas/CompoundFilter"},
+                            ],
+                        },
+                    },
+                },
+                "required": ["type", "filters"],
+            }
+            props["filters"] = {
+                "description": "A filter to apply based on file attributes.",
+                "oneOf": [
+                    {"$ref": "#/components/schemas/ComparisonFilter"},
+                    {"$ref": "#/components/schemas/CompoundFilter"},
+                ],
+            }
+
+        # Fix max_num_results: add default
+        if "max_num_results" in props:
+            props["max_num_results"]["default"] = 10
+
+        # Fix rewrite_query: add default
+        if "rewrite_query" in props:
+            props["rewrite_query"]["default"] = False
+
+        break
+
+    return spec
+
+
 def main():
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <openapi.yaml>", file=sys.stderr)
@@ -193,6 +517,10 @@ def main():
 
     fix_nullable(spec)
     fix_files_api(spec)
+    fix_request_body_oneof(spec)
+    fix_chunking_strategy_union(spec)
+    fix_request_chunking_strategy(spec)
+    fix_search_request(spec)
 
     # Tag null types for proper YAML quoting
     _tag_null_types(spec)

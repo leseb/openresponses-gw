@@ -715,17 +715,32 @@ func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.logger.Info("Searching vector store", "vector_store_id", vsID, "query", req.Query)
+	// Extract the query string (supports both string and array forms)
+	var queryStr string
+	switch q := req.Query.(type) {
+	case string:
+		queryStr = q
+	case []interface{}:
+		if len(q) > 0 {
+			if s, ok := q[0].(string); ok {
+				queryStr = s
+			}
+		}
+	}
 
-	topK := req.TopK
-	if topK <= 0 {
-		topK = 10
+	h.logger.Info("Searching vector store", "vector_store_id", vsID, "query", queryStr)
+
+	topK := 10
+	if req.MaxNumResults != nil && *req.MaxNumResults > 0 {
+		topK = *req.MaxNumResults
+	} else if req.TopK > 0 {
+		topK = req.TopK
 	}
 
 	var results []vectorstore.SearchResult
 	if h.vectorStoreService != nil {
 		var searchErr error
-		results, searchErr = h.vectorStoreService.Search(r.Context(), vsID, req.Query, topK)
+		results, searchErr = h.vectorStoreService.Search(r.Context(), vsID, queryStr, topK)
 		if searchErr != nil {
 			h.logger.Error("Vector store search failed", "error", searchErr, "vector_store_id", vsID)
 			h.writeError(w, http.StatusInternalServerError, "search_error", searchErr.Error())
@@ -737,15 +752,20 @@ func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request
 	data := make([]schema.VectorStoreSearchResult, 0, len(results))
 	for _, r := range results {
 		data = append(data, schema.VectorStoreSearchResult{
-			FileID:  r.FileID,
-			Score:   r.Score,
-			Content: r.Content,
+			FileID:   r.FileID,
+			Filename: "",
+			Score:    r.Score,
+			Content: []schema.VectorStoreSearchResultContent{
+				{Type: "text", Text: r.Content},
+			},
 		})
 	}
 
 	searchResp := schema.SearchVectorStoreResponse{
-		Object: "list",
-		Data:   data,
+		Object:      "vector_store.search_results.page",
+		SearchQuery: []string{queryStr},
+		Data:        data,
+		HasMore:     false,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
