@@ -32,7 +32,7 @@ repos:
       # Generate and verify OpenAPI spec from Go annotations
       - id: gen-openapi
         name: Check generated OpenAPI spec is up to date
-        entry: bash -c 'make gen-openapi && git diff --exit-code docs/openapi.yaml'
+        entry: bash -c 'export PATH="$HOME/go/bin:$PATH" && make gen-openapi && git diff --exit-code docs/openapi.yaml'
         language: system
         pass_filenames: false
         files: ^(cmd/server/main\.go|pkg/adapters/http/.*\.go|pkg/core/schema/.*\.go)$
