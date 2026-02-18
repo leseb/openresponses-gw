@@ -419,15 +419,11 @@ class TestDemoWorkflow:
         assert response.id.startswith("resp_")
         assert response.id != prev_id
 
-    @pytest.mark.envoy_skip
     def test_11_multi_turn_conversation(self, httpx_client, model):
         """Follow-up query using the conversation field.
 
         Uses httpx because ``conversation`` is a gateway extension not
         present in the OpenAI SDK's request/response types.
-
-        Skipped through Envoy: accumulated conversation context from 10
-        prior turns makes inference too slow for the ExtProc timeout.
         """
         conv_id = TestDemoWorkflow._state.get("conversation_id")
         assert conv_id is not None, "test_08 must run first to set conversation_id"
@@ -661,7 +657,6 @@ class TestDemoWorkflow:
         connector_ids = [c["connector_id"] for c in data.get("data", [])]
         assert "novatech-mcp" in connector_ids
 
-    @pytest.mark.envoy_skip
     def test_24_query_with_mcp_tool(self, httpx_client, model, mcp_connector):
         """Responses API + mcp tool: engine discovers and executes MCP tool server-side.
 
@@ -689,7 +684,6 @@ class TestDemoWorkflow:
         # Save for next test
         TestDemoWorkflow._state["mcp_output"] = data.get("output", [])
 
-    @pytest.mark.envoy_skip
     def test_25_verify_mcp_output(self):
         """Verify the MCP response includes function_call and function_call_output items."""
         output = TestDemoWorkflow._state.get("mcp_output", [])
