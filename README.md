@@ -1,6 +1,7 @@
 # Open Responses Gateway
 
 ![CI](https://github.com/leseb/openresponses-gw/actions/workflows/ci.yml/badge.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/leseb/openresponses-gw)](https://goreportcard.com/report/github.com/leseb/openresponses-gw)
 
 The **stateful layer** for the [Open Responses API](https://github.com/openresponses/openresponses) — adds persistence, conversations, file search, MCP tools, and prompts on top of any `/v1/responses`-compatible inference backend.
 
