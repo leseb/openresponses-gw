@@ -7,48 +7,48 @@ backends provide stateless LLM generation via either `/v1/chat/completions` (def
 or `/v1/responses`. The gateway adds state management, tool execution, and storage on top.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Adapter Layer                           │
-│  ┌──────────────┐  ┌──────────────┐                             │
-│  │ HTTP Server  │  │ Envoy ExtProc│  (extensible)               │
-│  └──────────────┘  └──────────────┘                             │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    Core Engine (Stateful Tier)                  │
-│  • Response & Conversation storage                              │
-│  • Agentic tool loop (MCP, file_search)                         │
-│  • Connectors (MCP registry)                                    │
-│  • Files + Vector Stores                                        │
-│  • Prompts API                                                  │
-│  • Streaming (SSE) — forwards native backend events             │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-              ResponsesAPIClient interface
-               ┌──────────┴──────────┐
-               │                     │
-    ChatCompletionsAdapter   OpenAIResponsesClient
-    POST /v1/chat/completions   POST /v1/responses
-          (default)
-               │                     │
-┌──────────────▼─────────────────────▼────────────────────────────┐
-│                   Inference Backend                             │
-│  • Any /v1/chat/completions server (vLLM, Ollama, TGI, etc.)    │
-│  • Or /v1/responses-compatible server (vLLM, Ollama, OpenAI)    │
-└──────────┬──────────────────────────────────────────────────────┘
-           │
-┌──────────▼──────────────────────────────────────────────────────┐
-│                  Vector Store Layer (optional)                  │
-│  • Embedding Client (OpenAI-compatible)                         │
-│  • Milvus Backend (HNSW + cosine similarity)                    │
-│  • Memory Backend (no-op, default)                              │
-└──────────┬──────────────────────────────────────────────────────┘
-           │
-┌──────────▼──────────────────────────────────────────────────────┐
-│                       Storage Layer                             │
-│  • In-Memory Store (default)                                    │
-│  • SQLite Store (persistent, pure Go)                           │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                         Adapter Layer                        │
+│  ┌──────────────┐  ┌───────────────┐                         │
+│  │ HTTP Server  │  │ Envoy ExtProc │  (extensible)           │
+│  └──────────────┘  └───────────────┘                         │
+└───────────────────────────────┬──────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────┐
+│                  Core Engine (Stateful Tier)                  │
+│  • Response & Conversation storage                           │
+│  • Agentic tool loop (MCP, file_search)                      │
+│  • Connectors (MCP registry)                                 │
+│  • Files + Vector Stores                                     │
+│  • Prompts API                                               │
+│  • Streaming (SSE) — forwards native backend events          │
+└───────────────────────────────┬──────────────────────────────┘
+                                │
+                   ResponsesAPIClient interface
+                    ┌───────────┴───────────┐
+                    │                       │
+     ChatCompletionsAdapter     OpenAIResponsesClient
+     POST /v1/chat/completions  POST /v1/responses
+           (default)
+                    │                       │
+┌───────────────────▼───────────────────────▼──────────────────┐
+│                       Inference Backend                      │
+│  • /v1/chat/completions (vLLM, Ollama, TGI, etc.)            │
+│  • /v1/responses (vLLM, Ollama, OpenAI)                      │
+└───────────────────────────────┬──────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────┐
+│                 Vector Store Layer (optional)                 │
+│  • Embedding Client (OpenAI-compatible)                      │
+│  • Milvus Backend (HNSW + cosine similarity)                 │
+│  • Memory Backend (no-op, default)                           │
+└───────────────────────────────┬──────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────┐
+│                         Storage Layer                        │
+│  • In-Memory Store (default)                                 │
+│  • SQLite Store (persistent, pure Go)                        │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Layers
@@ -92,6 +92,69 @@ Pluggable storage backends (`pkg/storage/`):
 
 - **memory/** — In-memory store for sessions, files, vectors, conversations, and prompts (default)
 - **sqlite/** — SQLite persistent store for sessions, conversations, and responses (pure Go via `modernc.org/sqlite`, no CGO required)
+
+## Deployment Modes
+
+The gateway supports two deployment modes. Both use the same core engine; they differ in how traffic reaches the backend.
+
+### Mode 1: Standalone HTTP Server
+
+The gateway runs as a standalone HTTP server. Clients connect directly. The gateway handles the full request lifecycle: parsing, state resolution, backend calls, tool loops, streaming, and response assembly.
+
+```
+┌────────┐         ┌──────────────────────────┐         ┌─────────┐
+│ Client │──HTTP──▶│  Gateway (HTTP Adapter)  │──HTTP──▶│ Backend │
+│        │◀──SSE───│  :8080                   │◀──SSE───│ (vLLM)  │
+└────────┘         └──────────────────────────┘         └─────────┘
+```
+
+This is the default mode (`cmd/server`). It supports full SSE streaming, all API endpoints (Responses, Files, Vector Stores, Conversations, Prompts), and the agentic tool loop.
+
+### Mode 2: Envoy Filter Chain (ExtProc)
+
+The gateway runs as an Envoy External Processor (gRPC). Envoy sits in front of the backend and routes traffic through the ExtProc filter before forwarding to the backend. The gateway never makes its own backend calls — Envoy handles routing.
+
+```
+ Client             Envoy            Gateway (ExtProc)      Backend (vLLM)
+   │                  │                     │                     │
+   │──HTTP request───▶│                     │                     │
+   │                  │──req headers (gRPC)▶│                     │
+   │                  │──req body (gRPC)───▶│                     │
+   │                  │                     │ parse request       │
+   │                  │                     │ resolve state       │
+   │                  │                     │ expand tools        │
+   │                  │◀─modified req+state─│                     │
+   │                  │                                           │
+   │                  │─────HTTP (enriched request)──────────────▶│
+   │                  │◀────HTTP response─────────────────────────│
+   │                  │                                           │
+   │                  │──resp body (gRPC)──▶│                     │
+   │                  │                     │ save state          │
+   │                  │                     │ rewrite IDs         │
+   │                  │◀─modified response──│                     │
+   │                  │                     │                     │
+   │◀─HTTP response───│                     │                     │
+   │                  │                     │                     │
+```
+
+**How it works:**
+
+1. **Request headers** — Envoy sends request headers to the ExtProc. The processor acknowledges and waits for the body.
+2. **Request body** — The processor parses the client's Responses API request, resolves conversation context (multi-turn history), expands tool definitions, and builds a `ConversationState`. It then:
+   - Injects the state into an `x-openresponses-state` HTTP header (base64-encoded JSON)
+   - Modifies the request body with expanded tools and conversation messages
+   - Returns the modified request to Envoy
+3. **Envoy forwards** — Envoy routes the enriched request to the backend cluster (vLLM). The backend processes inference normally, unaware of the gateway.
+4. **Response headers** — The processor acknowledges without modification.
+5. **Response body** — The processor parses the backend's response, saves the response and conversation state to the session store, rewrites the response with the gateway's response/conversation IDs, and returns the modified response to Envoy.
+6. **Envoy returns** — The client receives the final response.
+
+**Key design choice:** The gateway acts as a pure filter — it enriches requests and post-processes responses but never makes its own HTTP calls to the backend. This keeps the data path through Envoy, enabling Envoy's native features (load balancing, retries, circuit breaking, observability) to apply to backend traffic.
+
+**Trade-offs vs. standalone mode:**
+- Streaming is limited to what Envoy's `BUFFERED` body mode supports (no incremental SSE)
+- The agentic tool loop (multi-round tool calling) is not supported — only single-turn inference
+- Only the Responses API is handled; other endpoints (Files, Vector Stores, etc.) require separate routing
 
 ## Request Flow
 

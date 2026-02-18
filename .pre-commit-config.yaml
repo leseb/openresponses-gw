@@ -32,7 +32,7 @@ repos:
       # Generate and verify OpenAPI spec from Go annotations
       - id: gen-openapi
         name: Check generated OpenAPI spec is up to date
-        entry: bash -c 'export PATH="$HOME/go/bin:$PATH" && make gen-openapi && git diff --exit-code docs/openapi.yaml'
+        entry: bash -c 'export PATH="$HOME/go/bin:$PATH" && if ! which swag > /dev/null 2>&1; then echo "swag not installed, skipping (make install-swag)"; exit 0; fi && make gen-openapi && git diff --exit-code docs/openapi.yaml'
         language: system
         pass_filenames: false
         files: ^(cmd/server/main\.go|pkg/adapters/http/.*\.go|pkg/core/schema/.*\.go)$
@@ -40,7 +40,7 @@ repos:
       # Check OpenAPI conformance against OpenAI spec
       - id: openapi-conformance
         name: Check OpenAPI conformance with OpenAI spec
-        entry: bash -c 'echo "Checking OpenAPI conformance..." && uv run --with pyyaml scripts/conformance/openapi_conformance.py 2>&1 | tail -20 || echo "Conformance check failed - run '\''make test-openapi-conformance'\'' for details"'
+        entry: bash -c 'if ! which oasdiff > /dev/null 2>&1; then echo "oasdiff not installed, skipping (brew install oasdiff)"; exit 0; fi && echo "Checking OpenAPI conformance..." && uv run --with pyyaml scripts/conformance/openapi_conformance.py 2>&1 | tail -20 || echo "Conformance check failed - run '\''make test-openapi-conformance'\'' for details"'
         language: system
         pass_filenames: false
         files: ^docs/openapi\.yaml$

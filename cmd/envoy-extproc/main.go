@@ -17,12 +17,10 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/leseb/openresponses-gw/pkg/adapters/envoy"
-	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/core/services"
 	fsmemory "github.com/leseb/openresponses-gw/pkg/filestore/memory"
-	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
@@ -76,12 +74,10 @@ func main() {
 	}
 	defer store.Close()
 
-	// Initialize stores (mirrors cmd/server/main.go)
+	// Initialize stores
 	connectorsStore := memory.NewConnectorsStore()
-	promptsStore := memory.NewPromptsStore()
 	filesStore := fsmemory.New()
 	defer filesStore.Close(context.Background())
-	vectorStoresStore := memory.NewVectorStoresStore()
 
 	// Initialize vector store service with in-memory backend (no embedding by default)
 	vsBackend := vectorstore.NewMemoryBackend()
@@ -98,15 +94,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create HTTP handler for delegation
-	logger := logging.New(logging.Config{
-		Level:  *logLevel,
-		Format: "json",
-	})
-	handler := httpAdapter.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
-
 	// Create ExtProc processor
-	processor := envoy.NewProcessor(handler, slogLogger)
+	processor := envoy.NewProcessor(eng, slogLogger)
 
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
