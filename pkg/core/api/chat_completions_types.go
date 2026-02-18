@@ -31,15 +31,23 @@ type ChatCompletionMsg struct {
 
 // ChatCompletionContentPart represents a content part in a multimodal message.
 type ChatCompletionContentPart struct {
-	Type     string                  `json:"type"` // "text", "image_url"
+	Type     string                  `json:"type"` // "text", "image_url", "file"
 	Text     string                  `json:"text,omitempty"`
 	ImageURL *ChatCompletionImageURL `json:"image_url,omitempty"`
+	File     *ChatCompletionFile     `json:"file,omitempty"`
 }
 
 // ChatCompletionImageURL represents an image URL in a content part.
 type ChatCompletionImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"`
+}
+
+// ChatCompletionFile represents a file in a content part.
+type ChatCompletionFile struct {
+	FileData string `json:"file_data,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 // ChatCompletionTool represents a tool definition for Chat Completions.

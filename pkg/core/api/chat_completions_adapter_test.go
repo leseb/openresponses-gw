@@ -412,6 +412,124 @@ func TestConvertInputToMessages_MessageType(t *testing.T) {
 	}
 }
 
+func TestConvertInputToMessages_ImageInput(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "input_text",
+					"text": "What is in this image?",
+				},
+				map[string]interface{}{
+					"type":      "input_image",
+					"image_url": "data:image/png;base64,abc123",
+				},
+			},
+		},
+	}
+
+	msgs := convertInputToMessages(input)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	parts, ok := msgs[0].Content.([]ChatCompletionContentPart)
+	if !ok {
+		t.Fatalf("expected []ChatCompletionContentPart, got %T", msgs[0].Content)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+	if parts[0].Type != "text" || parts[0].Text != "What is in this image?" {
+		t.Errorf("expected text part, got %+v", parts[0])
+	}
+	if parts[1].Type != "image_url" || parts[1].ImageURL == nil {
+		t.Fatalf("expected image_url part, got %+v", parts[1])
+	}
+	if parts[1].ImageURL.URL != "data:image/png;base64,abc123" {
+		t.Errorf("expected image URL, got %s", parts[1].ImageURL.URL)
+	}
+}
+
+func TestConvertInputToMessages_FileInput(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "input_text",
+					"text": "Summarize this file.",
+				},
+				map[string]interface{}{
+					"type": "input_file",
+					"file": map[string]interface{}{
+						"file_data": "SGVsbG8sIHdvcmxkIQ==",
+						"filename":  "hello.txt",
+					},
+				},
+			},
+		},
+	}
+
+	msgs := convertInputToMessages(input)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	parts, ok := msgs[0].Content.([]ChatCompletionContentPart)
+	if !ok {
+		t.Fatalf("expected []ChatCompletionContentPart, got %T", msgs[0].Content)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+	if parts[0].Type != "text" || parts[0].Text != "Summarize this file." {
+		t.Errorf("expected text part, got %+v", parts[0])
+	}
+	if parts[1].Type != "file" || parts[1].File == nil {
+		t.Fatalf("expected file part, got %+v", parts[1])
+	}
+	if parts[1].File.FileData != "SGVsbG8sIHdvcmxkIQ==" {
+		t.Errorf("expected file_data, got %s", parts[1].File.FileData)
+	}
+	if parts[1].File.Filename != "hello.txt" {
+		t.Errorf("expected filename hello.txt, got %s", parts[1].File.Filename)
+	}
+}
+
+func TestConvertInputToMessages_FileInputByID(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "input_file",
+					"file": map[string]interface{}{
+						"file_id": "file-abc123",
+					},
+				},
+			},
+		},
+	}
+
+	msgs := convertInputToMessages(input)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	parts, ok := msgs[0].Content.([]ChatCompletionContentPart)
+	if !ok {
+		t.Fatalf("expected []ChatCompletionContentPart, got %T", msgs[0].Content)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part, got %d", len(parts))
+	}
+	if parts[0].File == nil || parts[0].File.FileID != "file-abc123" {
+		t.Errorf("expected file_id=file-abc123, got %+v", parts[0].File)
+	}
+}
+
 // --- Response conversion tests ---
 
 func TestConvertFromChatResponse_TextResponse(t *testing.T) {

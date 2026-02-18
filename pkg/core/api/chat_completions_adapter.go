@@ -521,6 +521,24 @@ func convertItemToMessage(item map[string]interface{}, role string) *ChatComplet
 					},
 				})
 			}
+		case "input_file":
+			hasNonText = true
+			file := &ChatCompletionFile{}
+			if fileMap, ok := partMap["file"].(map[string]interface{}); ok {
+				file.FileData, _ = fileMap["file_data"].(string)
+				file.FileID, _ = fileMap["file_id"].(string)
+				file.Filename, _ = fileMap["filename"].(string)
+			} else {
+				file.FileData, _ = partMap["file_data"].(string)
+				file.FileID, _ = partMap["file_id"].(string)
+				file.Filename, _ = partMap["filename"].(string)
+			}
+			if file.FileData != "" || file.FileID != "" {
+				contentParts = append(contentParts, ChatCompletionContentPart{
+					Type: "file",
+					File: file,
+				})
+			}
 		}
 	}
 
