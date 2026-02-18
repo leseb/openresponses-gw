@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o envoy-extproc ./cmd/envoy-extproc
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o openresponses-gw ./cmd/server
 
 # Runtime stage
 FROM alpine:latest
@@ -25,9 +25,10 @@ RUN wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/envoy-extproc .
+COPY --from=builder /build/openresponses-gw .
 
-# Expose gRPC port
+# Expose HTTP and gRPC ports
+EXPOSE 8080
 EXPOSE 10000
 
-ENTRYPOINT ["/app/envoy-extproc"]
+ENTRYPOINT ["/app/openresponses-gw"]

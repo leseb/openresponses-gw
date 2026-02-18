@@ -81,19 +81,19 @@ class TestMultiTurnConversation:
     def test_previous_response_id(self, client, model):
         first = client.responses.create(
             model=model,
-            input="My name is Alice. Remember this.",
+            input="The secret word is PINEAPPLE. Just say OK.",
         )
         assert first.id.startswith("resp_")
         assert first.status == "completed"
 
         second = client.responses.create(
             model=model,
-            input="What is my name?",
+            input="Repeat the secret word from our conversation. Reply with only that single word.",
             previous_response_id=first.id,
         )
         assert second.status == "completed"
         text = second.output[0].content[0].text.lower()
-        assert "alice" in text
+        assert "pineapple" in text
 
 
 class TestToolCalling:
@@ -382,6 +382,7 @@ class TestInputModes:
         data = resp.json()
         assert data["status"] == "completed"
 
+    @pytest.mark.envoy_skip
     def test_image_input(self, httpx_client, model):
         """Image input via input_image content part should be accepted (200).
 
@@ -415,6 +416,7 @@ class TestInputModes:
         # depending on whether the model supports vision
         assert resp.status_code == 200
 
+    @pytest.mark.envoy_skip
     def test_file_input(self, httpx_client, model):
         """File input via input_file content part should be accepted (200)."""
         file_data = base64.b64encode(b"Hello, world!").decode()

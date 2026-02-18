@@ -1,18 +1,14 @@
-# Configuration for ExtProc with Ollama backend via Envoy
+# Gateway config for the Envoy example.
+# Single binary serves both HTTP (CRUD APIs on :8080) and ExtProc (gRPC on :10000).
+extproc:
+  port: 10000
 
 engine:
-  # This endpoint is not used directly by ExtProc in filter chain mode
-  # The request is routed by Envoy to the backend cluster
-  # This is kept for Engine initialization and any internal calls
   model_endpoint: http://ollama:11434/v1
-
-  # API key not needed for Ollama, but must be non-empty
   api_key: unused
-
   max_tokens: 4096
   timeout: 120s
 
-# Session store for conversation state
 session_store:
   type: sqlite
   dsn: ":memory:"

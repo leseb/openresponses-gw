@@ -38,7 +38,7 @@ func NewChatCompletionsAdapter(baseURL, apiKey string) *ChatCompletionsAdapter {
 // CreateResponse sends a non-streaming request to /v1/chat/completions
 // and converts the response back to ResponsesAPIResponse.
 func (a *ChatCompletionsAdapter) CreateResponse(ctx context.Context, req *ResponsesAPIRequest) (*ResponsesAPIResponse, error) {
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 	chatReq.Stream = false
 
 	body, err := json.Marshal(chatReq)
@@ -72,13 +72,13 @@ func (a *ChatCompletionsAdapter) CreateResponse(ctx context.Context, req *Respon
 		return nil, fmt.Errorf("failed to unmarshal chat response: %w", err)
 	}
 
-	return convertFromChatResponse(&chatResp), nil
+	return ConvertFromChatResponse(&chatResp), nil
 }
 
 // CreateResponseStream sends a streaming request to /v1/chat/completions
 // and converts the SSE stream into ResponsesStreamEvent channel.
 func (a *ChatCompletionsAdapter) CreateResponseStream(ctx context.Context, req *ResponsesAPIRequest) (<-chan ResponsesStreamEvent, error) {
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 	chatReq.Stream = true
 	chatReq.StreamOptions = &ChatStreamOptions{IncludeUsage: true}
 
@@ -310,8 +310,8 @@ func (a *ChatCompletionsAdapter) setHeaders(req *http.Request) {
 	}
 }
 
-// convertToChatRequest converts a ResponsesAPIRequest to a ChatCompletionRequest.
-func convertToChatRequest(req *ResponsesAPIRequest) *ChatCompletionRequest {
+// ConvertToChatRequest converts a ResponsesAPIRequest to a ChatCompletionRequest.
+func ConvertToChatRequest(req *ResponsesAPIRequest) *ChatCompletionRequest {
 	chatReq := &ChatCompletionRequest{
 		Model:             req.Model,
 		Temperature:       req.Temperature,
@@ -345,8 +345,12 @@ func convertToChatRequest(req *ResponsesAPIRequest) *ChatCompletionRequest {
 	// Convert tools
 	chatReq.Tools = convertToolsToChatTools(req.Tools)
 
-	// Convert tool choice
-	chatReq.ToolChoice = convertToolChoice(req.ToolChoice)
+	// Convert tool choice — only if there are tools to send.
+	// Non-function tools (web_search, file_search) are stripped by convertToolsToChatTools,
+	// so tool_choice would be orphaned and rejected by the backend.
+	if len(chatReq.Tools) > 0 {
+		chatReq.ToolChoice = convertToolChoice(req.ToolChoice)
+	}
 
 	return chatReq
 }
@@ -592,8 +596,8 @@ func convertToolChoice(toolChoice interface{}) interface{} {
 	return toolChoice
 }
 
-// convertFromChatResponse converts a ChatCompletionResponse to ResponsesAPIResponse.
-func convertFromChatResponse(chatResp *ChatCompletionResponse) *ResponsesAPIResponse {
+// ConvertFromChatResponse converts a ChatCompletionResponse to ResponsesAPIResponse.
+func ConvertFromChatResponse(chatResp *ChatCompletionResponse) *ResponsesAPIResponse {
 	resp := &ResponsesAPIResponse{
 		ID:        chatResp.ID,
 		Object:    "response",

@@ -1,0 +1,10 @@
+# Gateway config for Envoy integration tests.
+# Single binary serves both HTTP (CRUD APIs) and ExtProc (inference).
+server:
+  port: 8082
+
+extproc:
+  port: 10000
+
+engine:
+  model_endpoint: "http://localhost:8000/v1"

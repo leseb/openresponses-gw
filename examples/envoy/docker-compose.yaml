@@ -16,16 +16,17 @@ services:
     networks:
       - extproc_network
 
-  envoy-extproc:
+  gateway:
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.envoy-extproc
-    container_name: envoy-extproc
+    container_name: gateway
     ports:
+      - "8082:8080"
       - "10000:10000"
     volumes:
       - ./extproc-config.yaml:/app/config.yaml:ro
-    command: ["-config", "/app/config.yaml", "-port", "10000", "-log-level", "debug"]
+    command: ["-config", "/app/config.yaml"]
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:10000"]
       interval: 10s
@@ -48,7 +49,7 @@ services:
       - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
     command: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "debug"]
     depends_on:
-      envoy-extproc:
+      gateway:
         condition: service_started
       ollama:
         condition: service_healthy

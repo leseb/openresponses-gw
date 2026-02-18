@@ -1,14 +1,22 @@
 # Envoy configuration for ExtProc integration with OpenAI Responses Gateway
 #
-# Architecture (Filter Chain Mode):
-#   Client → Envoy:8080 → ExtProc (inject state) → Backend (Ollama)
-#                                                        ↓
-#                              ExtProc (process response) ← Backend Response
-#                                                        ↓
-#                                                    Client
+# Architecture (Dual-Cluster Mode):
+#   Client → Envoy:8080 ─┬─ POST /v1/responses ──→ ExtProc ──→ Ollama
+#                         │                            ↑
+#                         │                  (process response)
+#                         │
+#                         └─ Everything else ──→ Gateway (HTTP Server)
+#                            /v1/files              (CRUD APIs)
+#                            /v1/vector_stores       shared SQLite DB
+#                            /v1/prompts
+#                            /v1/conversations
+#                            /v1/connectors
+#                            GET/DELETE /v1/responses/*
+#                            /health
 #
 # The ExtProc injects conversation state into request headers, forwards to
 # backend, then processes the response to save state before returning to client.
+# Non-inference traffic is routed directly to the gateway HTTP server.
 
 admin:
   address:
@@ -36,18 +44,27 @@ static_resources:
             - name: backend
               domains: ["*"]
               routes:
+              # POST /v1/responses → backend_cluster (through ExtProc)
               - match:
                   prefix: "/v1/responses"
+                  headers:
+                  - name: ":method"
+                    exact_match: "POST"
                 route:
                   cluster: backend_cluster
                   timeout: 300s
+              # Everything else → gateway_cluster (ExtProc disabled)
               - match:
                   prefix: "/"
                 route:
-                  cluster: backend_cluster
-                  timeout: 300s
+                  cluster: gateway_cluster
+                  timeout: 60s
+                typed_per_filter_config:
+                  envoy.filters.http.ext_proc:
+                    "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExtProcPerRoute
+                    disabled: true
           http_filters:
-          # ExtProc filter - processes request and response
+          # ExtProc filter - processes request and response for inference routes
           - name: envoy.filters.http.ext_proc
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
@@ -57,6 +74,9 @@ static_resources:
                 timeout: 120s
               # Fail closed if ExtProc is unavailable
               failure_mode_allow: false
+              # Allow ExtProc to modify routing headers (:path, :authority, etc.)
+              mutation_rules:
+                allow_all_routing: true
               processing_mode:
                 # Process headers to inject state
                 request_header_mode: SEND
@@ -92,7 +112,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: envoy-extproc
+                address: gateway
                 port_value: 10000
     # Health check via gRPC health protocol
     health_checks:
@@ -103,6 +123,7 @@ static_resources:
       grpc_health_check: {}
 
   # Backend cluster - Ollama server
+  # Used by POST /v1/responses route (ExtProc enriches the request)
   - name: backend_cluster
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
@@ -115,4 +136,20 @@ static_resources:
               socket_address:
                 address: ollama
                 port_value: 11434
+    connect_timeout: 5s
+
+  # Gateway cluster - HTTP server for CRUD APIs (files, vector stores, etc.)
+  # ExtProc is disabled for this route; traffic passes through directly
+  - name: gateway_cluster
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: gateway_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: gateway
+                port_value: 8080
     connect_timeout: 5s

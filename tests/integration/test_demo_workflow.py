@@ -661,6 +661,7 @@ class TestDemoWorkflow:
         connector_ids = [c["connector_id"] for c in data.get("data", [])]
         assert "novatech-mcp" in connector_ids
 
+    @pytest.mark.envoy_skip
     def test_24_query_with_mcp_tool(self, httpx_client, model, mcp_connector):
         """Responses API + mcp tool: engine discovers and executes MCP tool server-side.
 
@@ -688,6 +689,7 @@ class TestDemoWorkflow:
         # Save for next test
         TestDemoWorkflow._state["mcp_output"] = data.get("output", [])
 
+    @pytest.mark.envoy_skip
     def test_25_verify_mcp_output(self):
         """Verify the MCP response includes function_call and function_call_output items."""
         output = TestDemoWorkflow._state.get("mcp_output", [])

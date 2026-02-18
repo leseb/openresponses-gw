@@ -80,6 +80,11 @@ func (e *Engine) Store() state.SessionStore {
 	return e.sessions
 }
 
+// BackendAPI returns the configured backend API mode ("chat_completions" or "responses").
+func (e *Engine) BackendAPI() string {
+	return e.config.BackendAPI
+}
+
 // echoRequestParams copies all request parameters to the response (Open Responses spec)
 func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 	resp.PreviousResponseID = req.PreviousResponseID

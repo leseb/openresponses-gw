@@ -528,9 +528,9 @@ requests through Envoy's ExtProc filter. Only streaming tests are skipped (ExtPr
 ### 3. Debugging Integration Tests
 
 ```bash
-# Start the ExtProc server
+# Start the gateway (HTTP + ExtProc in single process)
 OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
-  ./bin/openresponses-gw-extproc -port 10000 &
+  ./bin/openresponses-gw -config tests/envoy/config.yaml &
 
 # Start Envoy with the test config
 envoy -c tests/envoy/envoy.yaml &

@@ -14,11 +14,18 @@ import (
 // Config represents the main configuration
 type Config struct {
 	Server       ServerConfig       `yaml:"server"`
+	ExtProc      ExtProcConfig      `yaml:"extproc"`
 	Engine       EngineConfig       `yaml:"engine"`
 	Embedding    EmbeddingConfig    `yaml:"embedding"`
 	VectorStore  VectorStoreConfig  `yaml:"vector_store"`
 	FileStore    FileStoreConfig    `yaml:"file_store"`
 	SessionStore SessionStoreConfig `yaml:"session_store"`
+}
+
+// ExtProcConfig contains Envoy ExtProc gRPC server configuration.
+// When Port is non-zero, the server also listens for ExtProc gRPC calls.
+type ExtProcConfig struct {
+	Port int `yaml:"port"` // 0 = disabled (default)
 }
 
 // SessionStoreConfig contains session store backend configuration
@@ -139,6 +146,14 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("SESSION_STORE_DSN"); v != "" {
 		cfg.SessionStore.DSN = v
+	}
+
+	// ExtProc env overrides
+	if v := os.Getenv("EXTPROC_PORT"); v != "" {
+		var p int
+		if _, err := fmt.Sscanf(v, "%d", &p); err == nil {
+			cfg.ExtProc.Port = p
+		}
 	}
 
 	// Apply defaults

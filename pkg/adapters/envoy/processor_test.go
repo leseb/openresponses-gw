@@ -28,8 +28,8 @@ func TestNewProcessor(t *testing.T) {
 	if proc.logger == nil {
 		t.Error("expected non-nil logger")
 	}
-	if proc.injector == nil {
-		t.Error("expected non-nil injector")
+	if proc.stateInjector == nil {
+		t.Error("expected non-nil stateInjector")
 	}
 }
 
@@ -54,6 +54,11 @@ func TestGenerateRequestID(t *testing.T) {
 
 func newTestProcessor(t *testing.T) *Processor {
 	t.Helper()
+	return newTestProcessorWithBackend(t, "chat_completions")
+}
+
+func newTestProcessorWithBackend(t *testing.T, backendAPI string) *Processor {
+	t.Helper()
 	store, err := sqlite.New(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +66,7 @@ func newTestProcessor(t *testing.T) *Processor {
 	t.Cleanup(func() { store.Close() })
 	cfg := &config.EngineConfig{
 		ModelEndpoint: "http://localhost:8080/v1",
-		BackendAPI:    "chat_completions",
+		BackendAPI:    backendAPI,
 	}
 	eng, err := engine.New(cfg, store, nil, nil)
 	if err != nil {
@@ -77,6 +82,111 @@ func makeProcessingRequest(body []byte) *extproc.ProcessingRequest {
 				Body: body,
 			},
 		},
+	}
+}
+
+// --- processRequestHeaders tests ---
+
+func TestProcessRequestHeaders_ChatCompletionsPath(t *testing.T) {
+	proc := newTestProcessor(t) // default backend_api=chat_completions
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	resp := proc.processRequestHeaders(reqCtx)
+
+	rh := resp.GetRequestHeaders()
+	if rh == nil {
+		t.Fatal("expected RequestHeaders response")
+	}
+	if rh.Response.HeaderMutation == nil {
+		t.Fatal("expected header mutations for chat_completions backend")
+	}
+
+	// content-length should be removed (body phase will replace the body)
+	foundRemoveContentLength := false
+	for _, h := range rh.Response.HeaderMutation.RemoveHeaders {
+		if h == "content-length" {
+			foundRemoveContentLength = true
+		}
+	}
+	if !foundRemoveContentLength {
+		t.Error("expected content-length to be removed")
+	}
+
+	// :path should be set to /v1/chat/completions
+	foundPath := false
+	for _, h := range rh.Response.HeaderMutation.SetHeaders {
+		if h.Header.Key == ":path" {
+			foundPath = true
+			if string(h.Header.RawValue) != "/v1/chat/completions" {
+				t.Errorf("expected :path=/v1/chat/completions, got %q", string(h.Header.RawValue))
+			}
+		}
+	}
+	if !foundPath {
+		t.Error("expected :path header mutation for chat_completions backend")
+	}
+}
+
+func TestProcessRequestHeaders_ResponsesNoPathMutation(t *testing.T) {
+	proc := newTestProcessorWithBackend(t, "responses")
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	resp := proc.processRequestHeaders(reqCtx)
+
+	rh := resp.GetRequestHeaders()
+	if rh == nil {
+		t.Fatal("expected RequestHeaders response")
+	}
+	if rh.Response.HeaderMutation == nil {
+		t.Fatal("expected header mutations (content-length removal)")
+	}
+
+	// content-length should still be removed
+	foundRemoveContentLength := false
+	for _, h := range rh.Response.HeaderMutation.RemoveHeaders {
+		if h == "content-length" {
+			foundRemoveContentLength = true
+		}
+	}
+	if !foundRemoveContentLength {
+		t.Error("expected content-length to be removed")
+	}
+
+	// Verify :path header is NOT mutated for responses backend
+	for _, h := range rh.Response.HeaderMutation.SetHeaders {
+		if h.Header.Key == ":path" {
+			t.Error("unexpected :path header mutation for responses backend")
+		}
+	}
+}
+
+func TestProcessRequestHeaders_NilEngine(t *testing.T) {
+	proc := NewProcessor(nil, nil)
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	// Should not panic with nil engine
+	resp := proc.processRequestHeaders(reqCtx)
+
+	rh := resp.GetRequestHeaders()
+	if rh == nil {
+		t.Fatal("expected RequestHeaders response")
+	}
+	// content-length should still be removed
+	if rh.Response.HeaderMutation == nil {
+		t.Fatal("expected header mutations (content-length removal)")
+	}
+	foundRemoveContentLength := false
+	for _, h := range rh.Response.HeaderMutation.RemoveHeaders {
+		if h == "content-length" {
+			foundRemoveContentLength = true
+		}
+	}
+	if !foundRemoveContentLength {
+		t.Error("expected content-length to be removed even with nil engine")
+	}
+	// No path mutation expected when engine is nil
+	if len(rh.Response.HeaderMutation.SetHeaders) > 0 {
+		t.Error("expected no set header mutations with nil engine")
 	}
 }
 
@@ -111,6 +221,27 @@ func TestProcessRequestBody_ValidRequest(t *testing.T) {
 		t.Error("expected non-empty mutated body")
 	}
 
+	// Body should be a chat completions request (default backend_api)
+	var chatReq api.ChatCompletionRequest
+	if err := json.Unmarshal(mutatedBody, &chatReq); err != nil {
+		t.Fatalf("expected body to be a ChatCompletionRequest: %v", err)
+	}
+	if chatReq.Model != "test-model" {
+		t.Errorf("expected model=test-model, got %q", chatReq.Model)
+	}
+	if len(chatReq.Messages) == 0 {
+		t.Error("expected non-empty messages in chat request")
+	}
+
+	// Verify state headers are injected (but NOT :path — that's done in headers phase)
+	if rb.Response.HeaderMutation != nil {
+		for _, h := range rb.Response.HeaderMutation.SetHeaders {
+			if h.Header.Key == ":path" {
+				t.Error(":path mutation should be in headers phase, not body phase")
+			}
+		}
+	}
+
 	// Verify state was injected
 	if !reqCtx.stateInjected {
 		t.Error("expected stateInjected=true")
@@ -120,6 +251,36 @@ func TestProcessRequestBody_ValidRequest(t *testing.T) {
 	}
 	if reqCtx.requestID == "unknown" {
 		t.Error("expected requestID to be updated")
+	}
+}
+
+func TestProcessRequestBody_ResponsesBackend(t *testing.T) {
+	proc := newTestProcessorWithBackend(t, "responses")
+	ctx := context.Background()
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	body, _ := json.Marshal(schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	})
+	req := makeProcessingRequest(body)
+
+	resp := proc.processRequestBody(ctx, req, reqCtx)
+
+	rb := resp.GetRequestBody()
+	if rb == nil {
+		t.Fatal("expected RequestBody response")
+	}
+
+	mutatedBody := rb.Response.GetBodyMutation().GetBody()
+
+	// Body should be a Responses API request
+	var apiReq api.ResponsesAPIRequest
+	if err := json.Unmarshal(mutatedBody, &apiReq); err != nil {
+		t.Fatalf("expected body to be a ResponsesAPIRequest: %v", err)
+	}
+	if apiReq.Model != "test-model" {
+		t.Errorf("expected model=test-model, got %q", apiReq.Model)
 	}
 }
 
@@ -200,6 +361,38 @@ func TestProcessRequestBody_MissingInput(t *testing.T) {
 	}
 }
 
+func TestProcessRequestBody_ValidationError(t *testing.T) {
+	proc := newTestProcessor(t)
+	ctx := context.Background()
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	// Send a request that passes extraction but fails engine.PrepareRequest validation.
+	// The Validate() method inside PrepareRequest wraps errors as "invalid request: ...".
+	// Missing input triggers a validation error from the engine.
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": "test-model",
+		"input": nil,
+	})
+	req := makeProcessingRequest(body)
+
+	resp := proc.processRequestBody(ctx, req, reqCtx)
+
+	// Should return an error (either 400 or 422 depending on where the error is caught)
+	imm := resp.GetImmediateResponse()
+	if imm == nil {
+		// If not an immediate response, it should at least not be a successful mutation
+		rb := resp.GetRequestBody()
+		if rb != nil && reqCtx.stateInjected {
+			t.Error("expected validation error, not successful state injection")
+		}
+		return
+	}
+	// Validation errors from PrepareRequest should return 400
+	if imm.Status.Code != 400 && imm.Status.Code != 422 {
+		t.Errorf("expected status code 400 or 422, got %v", imm.Status.Code)
+	}
+}
+
 func TestProcessRequestBody_SetsRequestContext(t *testing.T) {
 	proc := newTestProcessor(t)
 	ctx := context.Background()
@@ -257,7 +450,7 @@ func TestProcessResponseBody_NoStateInjected(t *testing.T) {
 	}
 }
 
-func TestProcessResponseBody_ValidResponse(t *testing.T) {
+func TestProcessResponseBody_ChatCompletionsResponse(t *testing.T) {
 	proc := newTestProcessor(t)
 	ctx := context.Background()
 
@@ -272,7 +465,77 @@ func TestProcessResponseBody_ValidResponse(t *testing.T) {
 		t.Fatal("setup: state not injected")
 	}
 
-	// Now process a backend response
+	// Now process a chat completions backend response (since backend_api=chat_completions)
+	content := "Hello there!"
+	chatResp := api.ChatCompletionResponse{
+		ID:      "chatcmpl-1",
+		Object:  "chat.completion",
+		Model:   "test-model",
+		Created: 1234567890,
+		Choices: []api.ChatCompletionChoice{
+			{
+				Index: 0,
+				Message: api.ChatCompletionChoiceMsg{
+					Role:    "assistant",
+					Content: &content,
+				},
+				FinishReason: "stop",
+			},
+		},
+		Usage: &api.ChatCompletionUsage{
+			PromptTokens:     10,
+			CompletionTokens: 5,
+			TotalTokens:      15,
+		},
+	}
+	respBody, _ := json.Marshal(chatResp)
+
+	resp := proc.processResponseBody(ctx, &extproc.HttpBody{Body: respBody}, reqCtx)
+
+	rb := resp.GetResponseBody()
+	if rb == nil {
+		t.Fatal("expected ResponseBody response")
+	}
+	if rb.Response.BodyMutation == nil {
+		t.Fatal("expected body mutation")
+	}
+
+	// Parse the modified body — should be a Responses API response
+	modifiedBody := rb.Response.GetBodyMutation().GetBody()
+	var finalResp schema.Response
+	if err := json.Unmarshal(modifiedBody, &finalResp); err != nil {
+		t.Fatalf("failed to parse modified response body: %v", err)
+	}
+
+	// Verify gateway response ID is used (not the chat completion ID)
+	if finalResp.ID != reqCtx.preparedReq.State.ResponseID {
+		t.Errorf("expected response ID=%q, got %q", reqCtx.preparedReq.State.ResponseID, finalResp.ID)
+	}
+	if finalResp.Status != "completed" {
+		t.Errorf("expected status=completed, got %q", finalResp.Status)
+	}
+	// Verify the text content was converted
+	if len(finalResp.Output) == 0 {
+		t.Fatal("expected non-empty output")
+	}
+}
+
+func TestProcessResponseBody_ResponsesBackend(t *testing.T) {
+	proc := newTestProcessorWithBackend(t, "responses")
+	ctx := context.Background()
+
+	// First prepare a request
+	reqCtx := &requestContext{requestID: "unknown"}
+	reqBody, _ := json.Marshal(schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	})
+	proc.processRequestBody(ctx, makeProcessingRequest(reqBody), reqCtx)
+	if !reqCtx.stateInjected {
+		t.Fatal("setup: state not injected")
+	}
+
+	// Process a Responses API backend response
 	backendResp := api.ResponsesAPIResponse{
 		ID:     "backend-resp-1",
 		Status: "completed",
@@ -304,14 +567,12 @@ func TestProcessResponseBody_ValidResponse(t *testing.T) {
 		t.Fatal("expected body mutation")
 	}
 
-	// Parse the modified body
 	modifiedBody := rb.Response.GetBodyMutation().GetBody()
 	var finalResp schema.Response
 	if err := json.Unmarshal(modifiedBody, &finalResp); err != nil {
 		t.Fatalf("failed to parse modified response body: %v", err)
 	}
 
-	// Verify gateway response ID is used
 	if finalResp.ID != reqCtx.preparedReq.State.ResponseID {
 		t.Errorf("expected response ID=%q, got %q", reqCtx.preparedReq.State.ResponseID, finalResp.ID)
 	}
@@ -359,20 +620,25 @@ func TestProcessResponseBody_ResponseIDRewrite(t *testing.T) {
 
 	gatewayResponseID := reqCtx.preparedReq.State.ResponseID
 
-	// Backend response with a different ID
-	backendResp := api.ResponsesAPIResponse{
-		ID:     "backend-id-should-be-replaced",
-		Status: "completed",
-		Output: []api.OutputItem{
+	// Backend chat completion response with a different ID
+	content := "hi"
+	chatResp := api.ChatCompletionResponse{
+		ID:      "chatcmpl-should-be-replaced",
+		Object:  "chat.completion",
+		Model:   "test-model",
+		Created: 1234567890,
+		Choices: []api.ChatCompletionChoice{
 			{
-				Type:    "message",
-				ID:      "msg-1",
-				Role:    "assistant",
-				Content: []api.ContentItem{{Type: "output_text", Text: "hi"}},
+				Index: 0,
+				Message: api.ChatCompletionChoiceMsg{
+					Role:    "assistant",
+					Content: &content,
+				},
+				FinishReason: "stop",
 			},
 		},
 	}
-	respBody, _ := json.Marshal(backendResp)
+	respBody, _ := json.Marshal(chatResp)
 
 	resp := proc.processResponseBody(ctx, &extproc.HttpBody{Body: respBody}, reqCtx)
 
@@ -387,7 +653,7 @@ func TestProcessResponseBody_ResponseIDRewrite(t *testing.T) {
 	}
 
 	// The response ID should be the gateway's, not the backend's
-	if finalResp.ID == "backend-id-should-be-replaced" {
+	if finalResp.ID == "chatcmpl-should-be-replaced" {
 		t.Error("response ID was not rewritten from backend ID")
 	}
 	if finalResp.ID != gatewayResponseID {

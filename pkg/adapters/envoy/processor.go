@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -22,12 +23,12 @@ import (
 )
 
 // Processor implements the ExternalProcessorServer interface.
-// It uses filter chain mode: injects state into requests and processes responses.
+// It uses filter chain mode: serializes prepared requests and processes responses.
 type Processor struct {
 	extproc.UnimplementedExternalProcessorServer
-	engine   *engine.Engine
-	logger   *slog.Logger
-	injector engine.StateInjector
+	engine        *engine.Engine
+	logger        *slog.Logger
+	stateInjector *engine.HeaderStateInjector
 }
 
 // NewProcessor creates a new ExtProc processor.
@@ -36,9 +37,9 @@ func NewProcessor(eng *engine.Engine, logger *slog.Logger) *Processor {
 		logger = slog.Default()
 	}
 	return &Processor{
-		engine:   eng,
-		logger:   logger,
-		injector: engine.NewHeaderStateInjector(),
+		engine:        eng,
+		logger:        logger,
+		stateInjector: engine.NewHeaderStateInjector(),
 	}
 }
 
@@ -109,19 +110,42 @@ func (p *Processor) Process(stream extproc.ExternalProcessor_ProcessServer) erro
 }
 
 // processRequestHeaders handles the request headers phase.
-// We continue without modification - the body phase will handle preparation.
+// We remove content-length here because the body phase will replace the body
+// with a different size. Envoy will set the correct content-length after the
+// body mutation. We also mutate :path for chat_completions backend.
 func (p *Processor) processRequestHeaders(_ *requestContext) *extproc.ProcessingResponse {
+	headerMutation := &extproc.HeaderMutation{
+		// Remove content-length so the body mutation doesn't trigger
+		// Envoy's "mismatch between content length and the length of
+		// the mutated body" check. Envoy will set it from the new body.
+		RemoveHeaders: []string{"content-length"},
+	}
+
+	// Mutate :path for chat_completions backend
+	if p.engine != nil && p.engine.BackendAPI() == "chat_completions" {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{
+				Key:      ":path",
+				RawValue: []byte("/v1/chat/completions"),
+			},
+			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		})
+	}
+
 	return &extproc.ProcessingResponse{
 		Response: &extproc.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extproc.HeadersResponse{
-				Response: &extproc.CommonResponse{},
+				Response: &extproc.CommonResponse{
+					HeaderMutation: headerMutation,
+				},
 			},
 		},
 	}
 }
 
 // processRequestBody handles the request body phase.
-// This is where we prepare the request, inject state, and modify the body/headers.
+// This is where we prepare the request, serialize it based on backend_api,
+// and mutate the path header for chat_completions mode.
 func (p *Processor) processRequestBody(ctx context.Context, req *extproc.ProcessingRequest, reqCtx *requestContext) *extproc.ProcessingResponse {
 	// Extract ResponseRequest from the processing request
 	respReq, err := ExtractResponseRequest(req)
@@ -152,7 +176,11 @@ func (p *Processor) processRequestBody(ctx context.Context, req *extproc.Process
 			"request_id", reqCtx.requestID,
 			"error", err,
 		)
-		return CreateInternalError(fmt.Sprintf("Failed to prepare request: %s", err.Error()))
+		errMsg := err.Error()
+		if strings.HasPrefix(errMsg, "invalid request:") {
+			return CreateBadRequestError(strings.TrimPrefix(errMsg, "invalid request: "))
+		}
+		return CreateInternalError(fmt.Sprintf("Failed to prepare request: %s", errMsg))
 	}
 
 	reqCtx.preparedReq = prepared
@@ -164,26 +192,32 @@ func (p *Processor) processRequestBody(ctx context.Context, req *extproc.Process
 		"conversation_id", prepared.State.ConversationID,
 	)
 
-	// Inject state into the request
-	modifiedBody, err := p.injector.InjectIntoBody(reqCtx.originalBody, prepared.State)
+	// Serialize request body based on backend_api config
+	var modifiedBody []byte
+	if p.engine.BackendAPI() == "chat_completions" {
+		chatReq := api.ConvertToChatRequest(prepared.BackendRequest)
+		modifiedBody, err = json.Marshal(chatReq)
+	} else {
+		modifiedBody, err = json.Marshal(prepared.BackendRequest)
+	}
 	if err != nil {
-		p.logger.Error("failed to inject state into body",
+		p.logger.Error("failed to serialize request body",
 			"request_id", reqCtx.requestID,
 			"error", err,
 		)
-		return CreateInternalError("Failed to inject state")
+		return CreateInternalError("Failed to serialize request")
 	}
 
-	// Get headers to add
-	stateHeaders := p.injector.InjectIntoHeaders(prepared.State)
-
-	// Build header mutations
+	// Build header mutations: state metadata for the response phase.
+	// Note: content-length is NOT set here — it was removed in the headers
+	// phase and Envoy will set it automatically from the mutated body size.
+	stateHeaders := p.stateInjector.InjectIntoHeaders(prepared.State)
 	var headerMutations []*corev3.HeaderValueOption
 	for key, value := range stateHeaders {
 		headerMutations = append(headerMutations, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
-				Key:   key,
-				Value: value,
+				Key:      key,
+				RawValue: []byte(value),
 			},
 		})
 	}
@@ -234,20 +268,37 @@ func (p *Processor) processResponseBody(ctx context.Context, body *extproc.HttpB
 		}
 	}
 
-	// Parse the backend response
+	// Parse the backend response based on backend_api config
 	var backendResp api.ResponsesAPIResponse
-	if err := json.Unmarshal(body.Body, &backendResp); err != nil {
-		p.logger.Error("failed to parse backend response",
-			"request_id", reqCtx.requestID,
-			"error", err,
-		)
-		// Continue with the original response - don't block the request
-		return &extproc.ProcessingResponse{
-			Response: &extproc.ProcessingResponse_ResponseBody{
-				ResponseBody: &extproc.BodyResponse{
-					Response: &extproc.CommonResponse{},
+	if p.engine.BackendAPI() == "chat_completions" {
+		var chatResp api.ChatCompletionResponse
+		if err := json.Unmarshal(body.Body, &chatResp); err != nil {
+			p.logger.Error("failed to parse chat completions response",
+				"request_id", reqCtx.requestID,
+				"error", err,
+			)
+			return &extproc.ProcessingResponse{
+				Response: &extproc.ProcessingResponse_ResponseBody{
+					ResponseBody: &extproc.BodyResponse{
+						Response: &extproc.CommonResponse{},
+					},
 				},
-			},
+			}
+		}
+		backendResp = *api.ConvertFromChatResponse(&chatResp)
+	} else {
+		if err := json.Unmarshal(body.Body, &backendResp); err != nil {
+			p.logger.Error("failed to parse backend response",
+				"request_id", reqCtx.requestID,
+				"error", err,
+			)
+			return &extproc.ProcessingResponse{
+				Response: &extproc.ProcessingResponse_ResponseBody{
+					ResponseBody: &extproc.BodyResponse{
+						Response: &extproc.CommonResponse{},
+					},
+				},
+			}
 		}
 	}
 

@@ -7,12 +7,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	envoyAdapter "github.com/leseb/openresponses-gw/pkg/adapters/envoy"
 	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
@@ -72,13 +79,14 @@ var (
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
-	port := flag.Int("port", 8080, "HTTP port to listen on")
+	port := flag.Int("port", 0, "HTTP port to listen on (overrides config)")
+	extprocPort := flag.Int("extproc-port", 0, "gRPC ExtProc port (overrides config; 0 = disabled)")
 	version := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
 	// Print version
 	if *version {
-		fmt.Printf("Open Responses Gateway Server\nVersion: %s\nBuild Time: %s\n", Version, BuildTime)
+		fmt.Printf("Open Responses Gateway\nVersion: %s\nBuild Time: %s\n", Version, BuildTime)
 		os.Exit(0)
 	}
 
@@ -87,7 +95,7 @@ func main() {
 		Level:  "info",
 		Format: "json",
 	})
-	logger.Info("Starting Open Responses Gateway Server",
+	logger.Info("Starting Open Responses Gateway",
 		"version", Version,
 		"build_time", BuildTime)
 
@@ -99,9 +107,12 @@ func main() {
 		cfg = config.Default()
 	}
 
-	// Override port if specified
-	if *port != 8080 {
+	// Override ports from flags
+	if *port != 0 {
 		cfg.Server.Port = *port
+	}
+	if *extprocPort != 0 {
+		cfg.ExtProc.Port = *extprocPort
 	}
 
 	// Initialize session store
@@ -208,9 +219,9 @@ func main() {
 	logger.Info("Initialized HTTP adapter")
 
 	// Create HTTP server
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	httpAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
-		Addr:         addr,
+		Addr:         httpAddr,
 		Handler:      handler,
 		ReadTimeout:  cfg.Server.Timeout,
 		WriteTimeout: cfg.Server.Timeout,
@@ -221,14 +232,46 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start server in goroutine
+	// Start HTTP server
 	go func() {
-		logger.Info("Server listening", "address", addr)
+		logger.Info("HTTP server listening", "address", httpAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Server error", "error", err)
+			logger.Error("HTTP server error", "error", err)
 			os.Exit(1)
 		}
 	}()
+
+	// Optionally start gRPC ExtProc server (shares all stores with HTTP server)
+	var grpcServer *grpc.Server
+	if cfg.ExtProc.Port > 0 {
+		grpcServer = grpc.NewServer()
+
+		// Create ExtProc processor sharing the same engine
+		processor := envoyAdapter.NewProcessor(eng, logger.Logger)
+		extproc.RegisterExternalProcessorServer(grpcServer, processor)
+
+		// Register gRPC health check
+		healthServer := health.NewServer()
+		healthpb.RegisterHealthServer(grpcServer, healthServer)
+		healthServer.SetServingStatus(
+			"envoy.service.ext_proc.v3.ExternalProcessor",
+			healthpb.HealthCheckResponse_SERVING,
+		)
+
+		extprocAddr := fmt.Sprintf(":%d", cfg.ExtProc.Port)
+		lis, err := net.Listen("tcp", extprocAddr)
+		if err != nil {
+			logger.Error("Failed to listen for ExtProc", "error", err, "address", extprocAddr)
+			os.Exit(1)
+		}
+
+		go func() {
+			logger.Info("ExtProc gRPC server listening", "address", extprocAddr)
+			if err := grpcServer.Serve(lis); err != nil {
+				logger.Error("ExtProc gRPC server error", "error", err)
+			}
+		}()
+	}
 
 	// Wait for interrupt signal
 	<-ctx.Done()
@@ -239,8 +282,21 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("Server shutdown error", "error", err)
-		os.Exit(1)
+		logger.Error("HTTP server shutdown error", "error", err)
+	}
+
+	if grpcServer != nil {
+		done := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			logger.Warn("gRPC graceful stop timed out, forcing shutdown")
+			grpcServer.Stop()
+		}
 	}
 
 	logger.Info("Server stopped gracefully")

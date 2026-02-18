@@ -7,7 +7,8 @@
 ## Quick reference
 
 ```bash
-make build                    # Build server + extproc binaries
+make build                    # Build single gateway binary (HTTP + ExtProc)
+make run                      # Build and run (HTTP :8080 + ExtProc :10000)
 make test                     # Unit tests (go test -v -race ./...)
 make lint                     # golangci-lint
 make gen-openapi              # Regenerate docs/openapi.yaml (needs swag on PATH)
@@ -59,12 +60,11 @@ enum constraints. For union types that swag can't express, add post-processing i
 
 ```
 cmd/
-  server/          → HTTP server entry point (port 8080)
-  envoy-extproc/   → Envoy ExtProc gRPC entry point (port 10000)
+  server/          → Single binary: HTTP + optional gRPC ExtProc (--extproc-port)
 pkg/
   adapters/
     http/          → HTTP handlers, SSE streaming, OpenAPI serving
-    envoy/         → gRPC ExtProc processor (no streaming support)
+    envoy/         → gRPC ExtProc processor (shares engine with HTTP)
   core/
     engine/        → Main orchestrator: LLM calls, agentic tool loops, streaming
     schema/        → API type definitions (add swagger tags here)
@@ -86,7 +86,7 @@ scripts/
 - **Request flow**: HTTP handler → `engine.ProcessRequest()` → `api.ResponsesOpenAIClient` → vLLM/OpenAI
 - **Streaming flow**: HTTP handler → `engine.ProcessRequestStream()` → SSE events channel → `handleStreamingResponse()` flushes to client
 - **Agentic loop**: Engine iterates up to 10 times, executing server-side tools (MCP, file_search) between LLM calls
-- **ExtProc adapter**: Converts gRPC ↔ HTTP, delegates to same HTTP handler. Does NOT support streaming — uses `httptest.NewRecorder()` which buffers full response.
+- **ExtProc adapter**: Shares engine/stores with HTTP adapter in a single process. Does NOT support streaming — uses `httptest.NewRecorder()` which buffers full response.
 
 ## Conventions
 

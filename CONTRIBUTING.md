@@ -28,12 +28,8 @@ make test
 ### Building
 
 ```bash
-# Build all binaries
+# Build the gateway binary (HTTP + ExtProc)
 make build
-
-# Build specific binary
-make build-server
-make build-extproc
 ```
 
 ### Running Locally

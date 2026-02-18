@@ -103,8 +103,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Build server
-        run: make build-server
+      - name: Build gateway
+        run: make build
 
       - name: Wait for vLLM
         run: |
@@ -115,117 +115,22 @@ jobs:
           done'
           echo "vLLM is ready"
 
-      - name: Start server
+      - name: Start gateway (HTTP + ExtProc)
         env:
           OPENAI_API_ENDPOINT: http://localhost:8000/v1
           OPENAI_API_KEY: unused
         run: |
-          ./bin/openresponses-gw-server > /tmp/server.log 2>&1 &
-          echo $! > /tmp/server.pid
+          ./bin/openresponses-gw -config tests/envoy/config.yaml > /tmp/gateway.log 2>&1 &
+          echo $! > /tmp/gateway.pid
 
-      - name: Wait for server
+      - name: Wait for gateway
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
-              echo "Server is ready"
-              exit 0
-            fi
-            echo "Waiting for server... ($i/30)"
-            sleep 2
-          done
-          echo "Server failed to start"
-          cat /tmp/server.log
-          exit 1
-
-      - name: Run integration tests
-        env:
-          OPENRESPONSES_BASE_URL: http://localhost:8080/v1
-          OPENRESPONSES_MODEL: Qwen/Qwen3-0.6B
-        run: make test-integration-python
-
-      - name: Upload server log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-server-log
-          path: /tmp/server.log
-
-      - name: Upload vLLM log
-        if: failure()
-        run: docker logs vllm > /tmp/vllm.log 2>&1 || true
-
-      - name: Upload vLLM log artifact
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-vllm-log
-          path: /tmp/vllm.log
-
-  envoy-integration-tests:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Launch vLLM container
-        run: |
-          docker run -d \
-            --name vllm \
-            --privileged=true \
-            --net=host \
-            quay.io/higginsd/vllm-cpu:65393ee064-qwen3 \
-            --host 0.0.0.0 \
-            --port 8000 \
-            --enable-auto-tool-choice \
-            --tool-call-parser hermes \
-            --model /root/.cache/Qwen3-0.6B \
-            --served-model-name Qwen/Qwen3-0.6B \
-            --max-model-len 8192
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache-dependency-path: go.sum
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Build ExtProc binary
-        run: make build-extproc
-
-      - name: Wait for vLLM
-        run: |
-          echo "Waiting for vLLM to be ready..."
-          timeout 900 bash -c 'until curl -fsS http://localhost:8000/health >/dev/null; do
-            echo "Waiting for vLLM..."
-            sleep 5
-          done'
-          echo "vLLM is ready"
-
-      - name: Start ExtProc
-        env:
-          OPENAI_API_ENDPOINT: http://localhost:8000/v1
-          OPENAI_API_KEY: unused
-        run: |
-          ./bin/openresponses-gw-extproc -config tests/envoy/extproc-config.yaml -port 10000 > /tmp/extproc.log 2>&1 &
-          echo $! > /tmp/extproc.pid
-
-      - name: Wait for ExtProc
-        run: |
-          echo "Waiting for ExtProc to be ready..."
+          echo "Waiting for gateway to be ready..."
           timeout 30 bash -c 'until nc -z localhost 10000; do
-            echo "Waiting for ExtProc..."
+            echo "Waiting for gateway..."
             sleep 1
           done'
-          echo "ExtProc is ready"
+          echo "Gateway is ready"
 
       - name: Start Envoy
         run: |
@@ -245,19 +150,19 @@ jobs:
           done'
           echo "Envoy is ready"
 
-      - name: Run Envoy integration tests
+      - name: Run integration tests
         env:
           OPENRESPONSES_BASE_URL: http://localhost:8081/v1
           OPENRESPONSES_ADAPTER: envoy
           OPENRESPONSES_MODEL: Qwen/Qwen3-0.6B
-        run: make test-integration-envoy
+        run: make test-integration
 
-      - name: Upload ExtProc log
+      - name: Upload gateway log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: envoy-extproc-log
-          path: /tmp/extproc.log
+          name: gateway-log
+          path: /tmp/gateway.log
 
       - name: Collect Envoy log
         if: failure()
@@ -267,7 +172,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: envoy-envoy-log
+          name: envoy-log
           path: /tmp/envoy.log
 
       - name: Collect vLLM log
@@ -278,7 +183,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: envoy-vllm-log
+          name: integration-vllm-log
           path: /tmp/vllm.log
 
   conformance-tests:
@@ -316,8 +221,8 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build server
-        run: make build-server
+      - name: Build gateway
+        run: make build
 
       - name: Wait for vLLM
         run: |
@@ -333,7 +238,7 @@ jobs:
           OPENAI_API_ENDPOINT: http://localhost:8000/v1
           OPENAI_API_KEY: unused
         run: |
-          ./bin/openresponses-gw-server > /tmp/server.log 2>&1 &
+          ./bin/openresponses-gw > /tmp/server.log 2>&1 &
           echo $! > /tmp/server.pid
 
       - name: Wait for server

@@ -1,24 +1,30 @@
 # Envoy External Processor Integration
 
-This example demonstrates running the OpenAI Responses Gateway as an Envoy External Processor (ExtProc). This enables the gateway to intercept and process requests through Envoy's ExtProc protocol.
+This example demonstrates running the OpenAI Responses Gateway with Envoy as the single entrypoint. The gateway runs as a single binary serving both HTTP (CRUD APIs) and gRPC (ExtProc for inference).
 
 ## Architecture
 
 ```
-Client → Envoy:8080 → ExtProc:10000 (gRPC)
-                           ↓
-                    Core Engine (reused)
-                           ↓
-                    SessionStore (in-memory)
-                           ↓
-                    Backend (Ollama:11434)
+Client → Envoy:8080 ─┬─ POST /v1/responses ──→ ExtProc:10000 ──→ Ollama
+                      │                              ↑
+                      │                    (process response)
+                      │
+                      └─ Everything else ──→ HTTP Server:8080
+                         /v1/files              (CRUD APIs)
+                         /v1/vector_stores       same process
+                         /v1/prompts
+                         /v1/conversations
+                         /v1/connectors
+                         GET/DELETE /v1/responses/*
+                         /health
 ```
 
 **Key Design:**
-- ExtProc uses `ImmediateResponse` to return responses directly to clients
+- Single binary runs both HTTP and gRPC listeners
+- ExtProc and HTTP server share the same engine, stores, and state
+- Envoy routes POST /v1/responses through ExtProc for inference
+- All other routes go directly to the HTTP server (ExtProc disabled per-route)
 - The backend (Ollama/OpenAI) is called by the ExtProc service, not by Envoy
-- Envoy's role is limited to proxying and invoking ExtProc
-- All business logic remains in the reusable core engine
 
 ## Prerequisites
 
@@ -36,7 +42,7 @@ docker-compose up -d
 
 This will start three services:
 - **Ollama** (port 11434): Local LLM backend
-- **ExtProc** (port 10000): gRPC service processing requests
+- **Gateway** (ports 8080, 10000): HTTP + gRPC in one process
 - **Envoy** (ports 8080, 9901): Proxy and admin interface
 
 ### 2. Pull Ollama Model
@@ -92,23 +98,19 @@ Expected response:
 
 Key settings:
 - **Listener**: Port 8080 for HTTP traffic
-- **ExtProc Filter**:
-  - Buffered body mode (Phase 1)
-  - 30s timeout for processing
-  - Failure mode: fail closed
+- **Route splitting**: POST /v1/responses → backend (through ExtProc), everything else → gateway (ExtProc disabled)
+- **ExtProc Filter**: Buffered body mode, 120s timeout, fail closed
 - **Backend Cluster**: Routes to Ollama at port 11434
+- **Gateway Cluster**: Routes to HTTP server at port 8080
 
-### ExtProc Configuration (config.yaml)
+### Gateway Configuration (extproc-config.yaml)
 
 ```yaml
+extproc:
+  port: 10000
+
 engine:
-  backend:
-    url: "http://ollama:11434"
-  session:
-    ttl: 3600
-  request:
-    max_input_length: 10000
-    default_temperature: 0.7
+  model_endpoint: http://ollama:11434/v1
 ```
 
 ## Monitoring
@@ -133,34 +135,24 @@ curl http://localhost:9901/config_dump
 docker-compose logs -f
 
 # Specific service
-docker-compose logs -f envoy-extproc
+docker-compose logs -f gateway
 docker-compose logs -f envoy
 docker-compose logs -f ollama
 ```
 
-## Features
-
-✅ **Streaming Support**: Full support for both streaming and non-streaming responses
-✅ **Buffered Mode**: Request bodies buffered for processing
-✅ **Immediate Response**: ExtProc returns responses directly via ImmediateResponse
-✅ **Structured Logging**: JSON-formatted logs with slog
-✅ **Proper Error Handling**: OpenAI-compatible error responses with appropriate status codes
-✅ **Content Decompression**: Automatic handling of gzip and brotli compression
-✅ **Health Checks**: gRPC health protocol support
-
 ## Troubleshooting
 
-### ExtProc Not Connecting
+### Gateway Not Connecting
 
 Check health status:
 ```bash
 docker-compose ps
-docker-compose logs envoy-extproc
+docker-compose logs gateway
 ```
 
 Verify gRPC connectivity:
 ```bash
-docker-compose exec envoy-extproc grpc_health_probe -addr=:10000
+docker-compose exec gateway grpc_health_probe -addr=:10000
 ```
 
 ### Requests Timing Out
@@ -183,32 +175,6 @@ List available models:
 docker-compose exec ollama ollama list
 ```
 
-## Advanced Usage
-
-### Using Different Backend
-
-Modify `config.yaml` to point to OpenAI or another provider:
-
-```yaml
-engine:
-  backend:
-    url: "https://api.openai.com/v1"
-    api_key: "sk-..."
-```
-
-### Custom Models
-
-Update the request to use different models:
-
-```bash
-curl -X POST http://localhost:8080/v1/responses \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4",
-    "input": "Hello!"
-  }'
-```
-
 ## Cleanup
 
 ```bash
@@ -218,61 +184,6 @@ docker-compose down
 # Remove volumes (includes Ollama models)
 docker-compose down -v
 ```
-
-## Advanced Features
-
-### Error Handling
-
-The ExtProc service returns OpenAI-compatible error responses:
-
-```json
-{
-  "error": {
-    "message": "model field is required",
-    "type": "invalid_request_error",
-    "code": 422
-  }
-}
-```
-
-Error types:
-- `400` - Bad request (malformed JSON)
-- `422` - Unprocessable entity (validation errors)
-- `500` - Internal server error (backend failures)
-
-### Logging
-
-Structured JSON logging with configurable levels:
-
-```bash
-# Set log level via command flag
-docker-compose run envoy-extproc -log-level debug
-
-# Or in docker-compose.yaml
-command: ["-config", "/app/config.yaml", "-log-level", "info"]
-```
-
-Log levels: `debug`, `info`, `warn`, `error`
-
-### Monitoring Endpoints
-
-ExtProc metrics via Envoy admin:
-```bash
-# ExtProc-specific stats
-curl http://localhost:9901/stats | grep ext_proc
-
-# Connection stats
-curl http://localhost:9901/stats | grep extproc_cluster
-```
-
-## Future Enhancements
-
-- [ ] Request/response header inspection and modification
-- [ ] Metrics collection (Prometheus)
-- [ ] Distributed tracing (OpenTelemetry)
-- [ ] Rate limiting integration
-- [ ] Authentication/authorization hooks
-- [ ] Integration tests with Testcontainers
 
 ## References
 

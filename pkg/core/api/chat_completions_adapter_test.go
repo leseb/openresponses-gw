@@ -22,7 +22,7 @@ func TestConvertToChatRequest_BasicText(t *testing.T) {
 		Instructions: &instructions,
 	}
 
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 
 	if chatReq.Model != "gpt-4" {
 		t.Errorf("expected model gpt-4, got %s", chatReq.Model)
@@ -50,7 +50,7 @@ func TestConvertToChatRequest_NoInstructions(t *testing.T) {
 		Input: "Hello",
 	}
 
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 
 	if len(chatReq.Messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(chatReq.Messages))
@@ -79,7 +79,7 @@ func TestConvertToChatRequest_SamplingParams(t *testing.T) {
 		TopLogprobs:      &topLogprobs,
 	}
 
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 
 	if chatReq.Temperature == nil || *chatReq.Temperature != 0.7 {
 		t.Errorf("expected temperature 0.7, got %v", chatReq.Temperature)
@@ -126,7 +126,7 @@ func TestConvertToChatRequest_Tools(t *testing.T) {
 		},
 	}
 
-	chatReq := convertToChatRequest(req)
+	chatReq := ConvertToChatRequest(req)
 
 	if len(chatReq.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(chatReq.Tools))
@@ -173,6 +173,51 @@ func TestConvertToChatRequest_ToolChoice(t *testing.T) {
 				t.Errorf("expected %s, got %s", expectedJSON, resultJSON)
 			}
 		})
+	}
+}
+
+func TestConvertToChatRequest_ToolChoiceDroppedWhenNoFunctionTools(t *testing.T) {
+	// When all tools are non-function (e.g., web_search), they get stripped
+	// during conversion. tool_choice should also be dropped to avoid
+	// the backend rejecting tool_choice without any tools.
+	req := &ResponsesAPIRequest{
+		Model: "gpt-4",
+		Input: "Hello",
+		Tools: []ToolParam{
+			{Type: "web_search"},
+		},
+		ToolChoice: "auto",
+	}
+
+	chatReq := ConvertToChatRequest(req)
+
+	if len(chatReq.Tools) != 0 {
+		t.Errorf("expected 0 tools (web_search stripped), got %d", len(chatReq.Tools))
+	}
+	if chatReq.ToolChoice != nil {
+		t.Errorf("expected nil tool_choice when no tools, got %v", chatReq.ToolChoice)
+	}
+}
+
+func TestConvertToChatRequest_ToolChoiceKeptWithFunctionTools(t *testing.T) {
+	desc := "A function"
+	req := &ResponsesAPIRequest{
+		Model: "gpt-4",
+		Input: "Hello",
+		Tools: []ToolParam{
+			{Type: "web_search"},
+			{Type: "function", Name: "my_func", Description: &desc},
+		},
+		ToolChoice: "auto",
+	}
+
+	chatReq := ConvertToChatRequest(req)
+
+	if len(chatReq.Tools) != 1 {
+		t.Fatalf("expected 1 tool (function only), got %d", len(chatReq.Tools))
+	}
+	if chatReq.ToolChoice != "auto" {
+		t.Errorf("expected tool_choice=auto, got %v", chatReq.ToolChoice)
 	}
 }
 
@@ -393,7 +438,7 @@ func TestConvertFromChatResponse_TextResponse(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if resp.ID != "chatcmpl-123" {
 		t.Errorf("expected id chatcmpl-123, got %s", resp.ID)
@@ -465,7 +510,7 @@ func TestConvertFromChatResponse_ToolCalls(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if resp.Status != "completed" {
 		t.Errorf("expected status completed (tool_calls maps to completed), got %s", resp.Status)
@@ -504,7 +549,7 @@ func TestConvertFromChatResponse_LengthFinish(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if resp.Status != "incomplete" {
 		t.Errorf("expected status incomplete for length finish, got %s", resp.Status)
@@ -545,7 +590,7 @@ func TestConvertFromChatResponse_MultipleToolCalls(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if len(resp.Output) != 2 {
 		t.Fatalf("expected 2 output items, got %d", len(resp.Output))
@@ -586,7 +631,7 @@ func TestConvertFromChatResponse_TextAndToolCalls(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if len(resp.Output) != 2 {
 		t.Fatalf("expected 2 output items (message + function_call), got %d", len(resp.Output))
@@ -1076,7 +1121,7 @@ func TestConvertFromChatResponse_EmptyContent(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if len(resp.Output) != 0 {
 		t.Errorf("expected 0 output items for nil content, got %d", len(resp.Output))
@@ -1100,7 +1145,7 @@ func TestConvertFromChatResponse_EmptyString(t *testing.T) {
 		},
 	}
 
-	resp := convertFromChatResponse(chatResp)
+	resp := ConvertFromChatResponse(chatResp)
 
 	if len(resp.Output) != 0 {
 		t.Errorf("expected 0 output items for empty string, got %d", len(resp.Output))

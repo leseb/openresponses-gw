@@ -35,10 +35,10 @@ bin/
 dist/
 build/
 /server
-/envoy-extproc
 
 # Config files with secrets
 config.yaml
+!tests/envoy/config.yaml
 *.env
 .env.local
 

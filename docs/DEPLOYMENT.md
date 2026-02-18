@@ -7,18 +7,18 @@ Simple Go binary, no external dependencies (except storage).
 ```bash
 export OPENAI_API_ENDPOINT="http://localhost:11434/v1"
 export OPENAI_API_KEY="your-api-key"
-./bin/openresponses-gw-server
+./bin/openresponses-gw
 ```
 
 Or with a config file:
 
 ```bash
-./bin/openresponses-gw-server --config config.yaml
+./bin/openresponses-gw --config config.yaml
 ```
 
 ## Envoy External Processor
 
-Works as an Envoy ExtProc filter. See `examples/envoy/` for configuration examples.
+The same binary also serves as an Envoy ExtProc filter. Pass `--extproc-port` (or set `extproc.port` in config) to enable the gRPC listener alongside the HTTP server. See `examples/envoy/` for configuration examples.
 
 ```yaml
 # envoy.yaml
@@ -33,10 +33,10 @@ http_filters:
 Quick start with Envoy:
 
 ```bash
-# Build and start the ExtProc server
-make build-extproc
+# Build and start the gateway (HTTP + ExtProc in one process)
+make build
 OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
-  ./bin/openresponses-gw-extproc -port 10000 &
+  ./bin/openresponses-gw -extproc-port 10000 &
 
 # Start Envoy with the example config
 envoy -c examples/envoy/envoy.yaml &
@@ -49,7 +49,7 @@ curl -X POST http://localhost:8081/v1/responses \
 
 ## Docker
 
-A Dockerfile for the ExtProc binary is available at `deployments/docker/Dockerfile.envoy-extproc`.
+A Dockerfile is available at `deployments/docker/Dockerfile.envoy-extproc`.
 
 ## Extensibility
 

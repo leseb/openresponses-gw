@@ -1,8 +1,7 @@
-.PHONY: help build test lint clean run test-integration-python test-integration-responses test-integration-envoy
+.PHONY: help build test lint clean run run-standalone-http
 
 # Variables
-BINARY_NAME=openresponses-gw-server
-EXTPROC_BINARY_NAME=openresponses-gw-extproc
+BINARY_NAME=openresponses-gw
 VERSION?=$(shell git describe --tags --always --dirty)
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
@@ -36,20 +35,11 @@ init: ## Initialize project
 	$(GOMOD) tidy
 	@echo "$(GREEN)✓ Project initialized$(NC)"
 
-build: build-server build-extproc ## Build all binaries
-	@echo "$(GREEN)✓ All binaries built$(NC)"
-
-build-server: ## Build HTTP server binary
-	@echo "$(GREEN)Building HTTP server...$(NC)"
+build: ## Build the gateway binary (HTTP + ExtProc)
+	@echo "$(GREEN)Building gateway...$(NC)"
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) ./$(CMD_DIR)/server
 	@echo "$(GREEN)✓ Built $(BIN_DIR)/$(BINARY_NAME)$(NC)"
-
-build-extproc: ## Build Envoy ExtProc binary
-	@echo "$(GREEN)Building Envoy ExtProc...$(NC)"
-	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/$(EXTPROC_BINARY_NAME) ./$(CMD_DIR)/envoy-extproc
-	@echo "$(GREEN)✓ Built $(BIN_DIR)/$(EXTPROC_BINARY_NAME)$(NC)"
 
 test: ## Run unit tests
 	@echo "$(GREEN)Running tests...$(NC)"
@@ -83,8 +73,12 @@ clean: ## Clean build artifacts
 	rm -f coverage.txt coverage.html
 	@echo "$(GREEN)✓ Cleaned$(NC)"
 
-run: build-server ## Build and run server
-	@echo "$(GREEN)Starting server...$(NC)"
+run: build ## Build and run (HTTP on :8082, ExtProc on :10000) for use with Envoy
+	@echo "$(GREEN)Starting gateway (HTTP :8082 + ExtProc :10000)...$(NC)"
+	./$(BIN_DIR)/$(BINARY_NAME) -config tests/envoy/config.yaml
+
+run-standalone-http: build ## Build and run HTTP-only mode (port :8080, no ExtProc/Envoy)
+	@echo "$(GREEN)Starting gateway (HTTP :8080, standalone)...$(NC)"
 	./$(BIN_DIR)/$(BINARY_NAME)
 
 gen-openapi: ## Generate OpenAPI spec from Go annotations
@@ -129,38 +123,31 @@ test-conformance: ## Run conformance tests (assumes server is already running)
 	@echo "$(YELLOW)Use 'make test-conformance-auto' to start server automatically$(NC)"
 	./tests/scripts/test-conformance.sh
 
-test-conformance-auto: build-server ## Run conformance tests (starts server automatically)
+test-conformance-auto: build ## Run conformance tests (starts server automatically)
 	@echo "$(GREEN)Running conformance tests with auto-started server...$(NC)"
 	./tests/scripts/test-conformance-with-server.sh
 
-test-conformance-custom: build-server ## Run conformance tests with custom model
+test-conformance-custom: build ## Run conformance tests with custom model
 	@echo "$(GREEN)Running conformance tests with custom parameters...$(NC)"
 	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
 	PORT="${PORT:-8080}"; \
 	API_KEY="${API_KEY:-none}"; \
 	./tests/scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
 
-test-conformance-envoy: build-extproc ## Run conformance tests through Envoy ExtProc
+test-conformance-envoy: build ## Run conformance tests through Envoy ExtProc
 	@echo "$(GREEN)Running conformance tests through Envoy...$(NC)"
 	@which envoy > /dev/null || (echo "$(RED)envoy not installed. See: https://www.envoyproxy.io/docs/envoy/latest/start/install$(NC)" && exit 1)
 	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
 	API_KEY="${API_KEY:-none}"; \
 	./tests/scripts/test-conformance-with-envoy.sh "$$MODEL" "$$API_KEY"
 
-test-integration-python: ## Run Python integration tests (chat_completions backend)
-	@echo "$(GREEN)Running Python integration tests (chat_completions backend)...$(NC)"
-	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
-	OPENRESPONSES_BACKEND_API=chat_completions \
-	uv run --project tests/integration pytest tests/integration/ -v
-
-test-integration-responses: ## Run Python integration tests (responses backend)
-	@echo "$(GREEN)Running Python integration tests (responses backend)...$(NC)"
-	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
-	OPENRESPONSES_BACKEND_API=responses \
-	uv run --project tests/integration pytest tests/integration/ -v
-
-test-integration-envoy: ## Run Python integration tests through Envoy ExtProc
-	@echo "$(GREEN)Running Python integration tests (Envoy ExtProc)...$(NC)"
+test-integration: ## Run integration tests through Envoy (requires gateway + Envoy + vLLM)
+	@echo "$(GREEN)Running integration tests through Envoy...$(NC)"
+	@echo "$(YELLOW)Prerequisites (must be running separately):$(NC)"
+	@echo "$(YELLOW)  1. vLLM on port 8000$(NC)"
+	@echo "$(YELLOW)  2. Gateway: bin/openresponses-gw --config tests/envoy/config.yaml$(NC)"
+	@echo "$(YELLOW)  3. Envoy:   envoy -c tests/envoy/envoy.yaml --log-level warning$(NC)"
+	@echo "$(YELLOW)Override backend: OPENRESPONSES_BACKEND_API=responses make test-integration$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
 	OPENRESPONSES_BASE_URL=http://localhost:8081/v1 \
 	OPENRESPONSES_ADAPTER=envoy \
