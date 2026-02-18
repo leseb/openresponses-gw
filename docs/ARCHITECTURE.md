@@ -18,11 +18,11 @@ or `/v1/responses`. The gateway adds state management, tool execution, and stora
 ┌─────────▼────────────────────▼───────────────────────────────┐
 │                  Core Engine (Stateful Tier)                 │
 │  • Response & Conversation storage                           │
-│  • Agentic tool loop (MCP, file_search) — HTTP adapter only  │
+│  • Agentic tool loop (MCP, file_search)                      │
 │  • Connectors (MCP registry)                                 │
 │  • Files + Vector Stores                                     │
 │  • Prompts API                                               │
-│  • Streaming (SSE) — HTTP adapter only                       │
+│  • Streaming (SSE)                                           │
 └─────────┬────────────────────┬───────────────────────────────┘
           │                    │
    (HTTP adapter)       (ExtProc adapter)
@@ -63,7 +63,7 @@ Gateway-specific adapters that translate between the gateway's protocol and the 
 
 **HTTP Server** (`pkg/adapters/http/`) — HTTP server with full routing, SSE streaming, and OpenAPI spec serving. Always active.
 
-**Envoy ExtProc** (`pkg/adapters/envoy/`) — gRPC External Processor for Envoy proxy. Enabled when `extproc.port` is configured (or `--extproc-port` flag). Runs in the same process as the HTTP server, sharing all stores and the engine. Unlike the HTTP adapter, the ExtProc does not use `ResponsesAPIClient` — it calls `engine.PrepareRequest()` and `engine.ProcessResponse()` directly for state management, performs format conversion itself (chat completions or responses API based on `backend_api` config), and lets Envoy forward the enriched request to the backend. Supports request/response extraction, content decompression (gzip, brotli), and health checks.
+**Envoy ExtProc** (`pkg/adapters/envoy/`) — gRPC External Processor for Envoy proxy. Enabled when `extproc.port` is configured (or `--extproc-port` flag). Runs in the same process as the HTTP server, sharing all stores and the engine. For simple requests (non-streaming, no server-side tools), the ExtProc operates in filter chain mode: it calls `engine.PrepareRequest()` and `engine.ProcessResponse()` directly for state management, performs format conversion itself (chat completions or responses API based on `backend_api` config), and lets Envoy forward the enriched request to the backend. For streaming requests or those with server-side tools (MCP, file_search), the ExtProc uses an ImmediateResponse fallback: it calls `engine.ProcessRequestStream()` or `engine.ProcessRequest()` to handle the full request lifecycle internally, bypassing the filter chain entirely. Streaming responses are buffered (all SSE events collected before delivery). Supports request/response extraction, content decompression (gzip, brotli), and health checks.
 
 ### Core Engine
 
@@ -197,8 +197,8 @@ Client → Envoy:8081 ─┬─ POST /v1/responses ──→ ExtProc:10000 ─�
 - **Pure filter for inference** — The ExtProc enriches requests and post-processes responses but never makes its own HTTP calls to the backend. This keeps the inference data path through Envoy, enabling load balancing, retries, circuit breaking, and observability.
 
 **Trade-offs vs. standalone mode:**
-- Streaming is limited to what Envoy's body mode supports (no incremental SSE for inference)
-- The agentic tool loop (multi-round tool calling) is not supported for inference — only single-turn
+- Streaming and agentic tool loop requests bypass the Envoy filter chain via ImmediateResponse — the ExtProc calls the backend directly instead of letting Envoy forward the request. This means Envoy's load balancing, retries, and circuit breaking do not apply for these request types.
+- Streaming responses are buffered — all SSE events are collected before delivery to the client (not incremental). True incremental streaming via Envoy's `STREAMED` body mode is a future improvement.
 - Requires running two processes (gateway + Envoy) instead of one, though the gateway is a single binary serving both HTTP and ExtProc
 
 ## Request Flow
@@ -222,6 +222,8 @@ Client → Envoy:8081 ─┬─ POST /v1/responses ──→ ExtProc:10000 ─�
 
 ### ExtProc Adapter
 
+**Filter chain mode** (non-streaming, no server-side tools):
+
 1. Request arrives at Envoy, which streams headers and body to the ExtProc via gRPC
 2. Processor parses the Responses API request and calls `engine.PrepareRequest()`
 3. Engine resolves conversation context and expands tools (same as HTTP path)
@@ -230,3 +232,11 @@ Client → Envoy:8081 ─┬─ POST /v1/responses ──→ ExtProc:10000 ─�
 6. Backend response flows back through Envoy to the ExtProc
 7. Processor parses the response, calls `engine.ProcessResponse()` to save state, and rewrites IDs
 8. Envoy returns the final Responses API response to the client
+
+**ImmediateResponse mode** (streaming or server-side tools):
+
+1. Request arrives at Envoy, which streams headers and body to the ExtProc via gRPC
+2. Processor parses the Responses API request and detects `stream: true` or server-side tools (MCP, file_search)
+3. For streaming: calls `engine.ProcessRequestStream()`, collects all SSE events, returns buffered SSE as ImmediateResponse
+4. For tool loop: calls `engine.ProcessRequest()` (full agentic loop), returns JSON as ImmediateResponse
+5. Envoy returns the ImmediateResponse directly to the client — the backend request is handled by the engine internally

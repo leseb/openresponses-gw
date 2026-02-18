@@ -606,6 +606,83 @@ func TestProcessResponseBody_InvalidJSON(t *testing.T) {
 	}
 }
 
+// --- routing tests ---
+
+func TestProcessRequestBody_StreamingRouting(t *testing.T) {
+	proc := newTestProcessor(t)
+	ctx := context.Background()
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	// Request with stream: true should be routed to streaming handler
+	body, _ := json.Marshal(map[string]interface{}{
+		"model":  "test-model",
+		"input":  "hello",
+		"stream": true,
+	})
+	req := makeProcessingRequest(body)
+
+	resp := proc.processRequestBody(ctx, req, reqCtx)
+
+	// Should return an ImmediateResponse (either success SSE or error since
+	// test engine has no real backend, but validates routing away from filter chain)
+	imm := resp.GetImmediateResponse()
+	if imm == nil {
+		t.Fatal("expected ImmediateResponse for streaming request, got filter chain response")
+	}
+}
+
+func TestProcessRequestBody_ToolLoopRouting_NoVectorSearch(t *testing.T) {
+	// Test processor has no vector searcher, so file_search should go through
+	// the filter chain (not the full lifecycle).
+	proc := newTestProcessor(t)
+	ctx := context.Background()
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"model": "test-model",
+		"input": "search for documents",
+		"tools": []map[string]interface{}{
+			{"type": "file_search", "vector_store_ids": []string{"vs-1"}},
+		},
+	})
+	req := makeProcessingRequest(body)
+
+	resp := proc.processRequestBody(ctx, req, reqCtx)
+
+	// Without a vector searcher, file_search tools stay in filter chain mode
+	rb := resp.GetRequestBody()
+	if rb == nil {
+		t.Fatal("expected RequestBody (filter chain) response when engine has no vector searcher")
+	}
+	if rb.Response == nil || rb.Response.BodyMutation == nil {
+		t.Fatal("expected body mutation in filter chain response")
+	}
+}
+
+func TestProcessRequestBody_SimpleRequestUnchanged(t *testing.T) {
+	proc := newTestProcessor(t)
+	ctx := context.Background()
+	reqCtx := &requestContext{requestID: "unknown"}
+
+	// Simple request without streaming or server-side tools
+	body, _ := json.Marshal(schema.ResponseRequest{
+		Model: stringPtr("test-model"),
+		Input: "hello",
+	})
+	req := makeProcessingRequest(body)
+
+	resp := proc.processRequestBody(ctx, req, reqCtx)
+
+	// Should return a RequestBody response (filter chain mode)
+	rb := resp.GetRequestBody()
+	if rb == nil {
+		t.Fatal("expected RequestBody response for simple request, got ImmediateResponse")
+	}
+	if rb.Response == nil || rb.Response.BodyMutation == nil {
+		t.Fatal("expected body mutation in filter chain response")
+	}
+}
+
 func TestProcessResponseBody_ResponseIDRewrite(t *testing.T) {
 	proc := newTestProcessor(t)
 	ctx := context.Background()

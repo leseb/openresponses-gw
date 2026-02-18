@@ -2,6 +2,7 @@ package envoy
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -326,6 +327,164 @@ func TestCreateUnprocessableEntityError(t *testing.T) {
 	ir := got.GetImmediateResponse()
 	if ir.Status.Code != typev3.StatusCode_UnprocessableEntity {
 		t.Errorf("expected UnprocessableEntity status, got %v", ir.Status.Code)
+	}
+}
+
+// --- SSE formatting tests ---
+
+func TestExtractEventTypeFromJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    interface{}
+		data     []byte
+		wantType string
+	}{
+		{
+			name: "RawStreamingEvent returns EventType",
+			event: &schema.RawStreamingEvent{
+				EventType: "response.output_text.delta",
+				RawData:   json.RawMessage(`{"text":"hello"}`),
+			},
+			data:     []byte(`{"text":"hello"}`),
+			wantType: "response.output_text.delta",
+		},
+		{
+			name:     "typed event extracts type field",
+			event:    map[string]interface{}{"type": "response.created", "id": "resp_1"},
+			data:     []byte(`{"type":"response.created","id":"resp_1"}`),
+			wantType: "response.created",
+		},
+		{
+			name:     "malformed JSON returns message",
+			event:    "not a struct",
+			data:     []byte(`{invalid`),
+			wantType: "message",
+		},
+		{
+			name:     "JSON without type field returns message",
+			event:    map[string]interface{}{"id": "resp_1"},
+			data:     []byte(`{"id":"resp_1"}`),
+			wantType: "message",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractEventTypeFromJSON(tt.event, tt.data)
+			if got != tt.wantType {
+				t.Errorf("extractEventTypeFromJSON() = %q, want %q", got, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestFormatSSEEvents(t *testing.T) {
+	t.Run("empty list", func(t *testing.T) {
+		result := formatSSEEvents(nil)
+		if len(result) != 0 {
+			t.Errorf("expected empty bytes, got %q", string(result))
+		}
+	})
+
+	t.Run("single typed event", func(t *testing.T) {
+		events := []interface{}{
+			map[string]interface{}{"type": "response.created", "id": "resp_1"},
+		}
+		result := formatSSEEvents(events)
+		output := string(result)
+
+		if !strings.Contains(output, "event: response.created\n") {
+			t.Errorf("expected event type line, got %q", output)
+		}
+		if !strings.Contains(output, "data: ") {
+			t.Errorf("expected data line, got %q", output)
+		}
+		if !strings.HasSuffix(output, "\n\n") {
+			t.Errorf("expected trailing double newline, got %q", output)
+		}
+	})
+
+	t.Run("multiple events concatenated", func(t *testing.T) {
+		events := []interface{}{
+			map[string]interface{}{"type": "response.created", "id": "resp_1"},
+			&schema.RawStreamingEvent{
+				EventType: "response.output_text.delta",
+				RawData:   json.RawMessage(`{"type":"response.output_text.delta","delta":"hello"}`),
+			},
+		}
+		result := formatSSEEvents(events)
+		output := string(result)
+
+		if !strings.Contains(output, "event: response.created\n") {
+			t.Errorf("expected first event type, got %q", output)
+		}
+		if !strings.Contains(output, "event: response.output_text.delta\n") {
+			t.Errorf("expected second event type, got %q", output)
+		}
+		// Should have two event blocks
+		blocks := strings.Split(output, "\n\n")
+		// Last element is empty (trailing \n\n), so we expect 3 parts
+		if len(blocks) != 3 {
+			t.Errorf("expected 2 event blocks (3 parts after split), got %d", len(blocks))
+		}
+	})
+
+	t.Run("RawStreamingEvent data is raw JSON", func(t *testing.T) {
+		rawJSON := `{"type":"response.output_text.delta","delta":"world"}`
+		events := []interface{}{
+			&schema.RawStreamingEvent{
+				EventType: "response.output_text.delta",
+				RawData:   json.RawMessage(rawJSON),
+			},
+		}
+		result := formatSSEEvents(events)
+		output := string(result)
+
+		expectedData := "data: " + rawJSON + "\n"
+		if !strings.Contains(output, expectedData) {
+			t.Errorf("expected raw JSON in data line, got %q", output)
+		}
+	})
+}
+
+func TestCreateSSEImmediateResponse(t *testing.T) {
+	sseBody := []byte("event: response.created\ndata: {\"type\":\"response.created\"}\n\n")
+
+	resp := CreateSSEImmediateResponse(sseBody)
+
+	ir := resp.GetImmediateResponse()
+	if ir == nil {
+		t.Fatal("expected ImmediateResponse, got nil")
+	}
+
+	// Check status 200
+	if ir.Status.Code != typev3.StatusCode_OK {
+		t.Errorf("expected status 200, got %v", ir.Status.Code)
+	}
+
+	// Check body matches input
+	if string(ir.Body) != string(sseBody) {
+		t.Errorf("expected body to match input, got %q", string(ir.Body))
+	}
+
+	// Check headers
+	if ir.Headers == nil || len(ir.Headers.SetHeaders) != 3 {
+		t.Fatalf("expected 3 headers, got %d", len(ir.Headers.SetHeaders))
+	}
+
+	headers := make(map[string]string)
+	for _, h := range ir.Headers.SetHeaders {
+		headers[h.Header.Key] = string(h.Header.RawValue)
+	}
+
+	if headers["content-type"] != "text/event-stream" {
+		t.Errorf("expected content-type: text/event-stream, got %q", headers["content-type"])
+	}
+	if headers["cache-control"] != "no-cache" {
+		t.Errorf("expected cache-control: no-cache, got %q", headers["cache-control"])
+	}
+	if headers["connection"] != "keep-alive" {
+		t.Errorf("expected connection: keep-alive, got %q", headers["connection"])
 	}
 }
 

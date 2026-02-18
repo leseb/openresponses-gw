@@ -85,6 +85,25 @@ func (e *Engine) BackendAPI() string {
 	return e.config.BackendAPI
 }
 
+// HasServerSideTools returns true if any tool in the request requires
+// server-side execution AND the engine is configured to handle it.
+// file_search requires a VectorSearcher; MCP requires ConnectorLookup.
+func (e *Engine) HasServerSideTools(tools []schema.ResponsesToolParam) bool {
+	for _, tool := range tools {
+		switch tool.Type {
+		case "file_search":
+			if e.vectorSearch != nil {
+				return true
+			}
+		case "mcp":
+			if e.connectors != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // echoRequestParams copies all request parameters to the response (Open Responses spec)
 func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 	resp.PreviousResponseID = req.PreviousResponseID

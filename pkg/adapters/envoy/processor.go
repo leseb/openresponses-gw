@@ -20,6 +20,7 @@ import (
 
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
+	"github.com/leseb/openresponses-gw/pkg/core/schema"
 )
 
 // Processor implements the ExternalProcessorServer interface.
@@ -162,6 +163,14 @@ func (p *Processor) processRequestBody(ctx context.Context, req *extproc.Process
 		"request_id", reqCtx.requestID,
 		"model", respReq.Model,
 	)
+
+	// Check if request needs full engine lifecycle (streaming or server-side tools).
+	// These requests bypass the filter chain and return an ImmediateResponse.
+	// For tools, we only bypass when the engine can actually handle them server-side
+	// (e.g., file_search requires a configured vector searcher, MCP requires connectors).
+	if respReq.Stream || p.engine.HasServerSideTools(respReq.Tools) {
+		return p.handleFullLifecycle(ctx, respReq, reqCtx)
+	}
 
 	// Store original body for potential modification
 	reqBody := req.GetRequestBody()
@@ -355,6 +364,87 @@ func (p *Processor) processResponseBody(ctx context.Context, body *extproc.HttpB
 			},
 		},
 	}
+}
+
+// handleFullLifecycle handles requests that need the full engine lifecycle
+// (streaming or server-side tools) by dispatching to the appropriate handler.
+func (p *Processor) handleFullLifecycle(ctx context.Context, respReq *schema.ResponseRequest, reqCtx *requestContext) *extproc.ProcessingResponse {
+	if respReq.Stream {
+		p.logger.Info("routing to streaming handler",
+			"request_id", reqCtx.requestID,
+		)
+		return p.handleStreamingRequest(ctx, respReq, reqCtx)
+	}
+	p.logger.Info("routing to tool-loop handler",
+		"request_id", reqCtx.requestID,
+	)
+	return p.handleToolLoopRequest(ctx, respReq, reqCtx)
+}
+
+// handleStreamingRequest handles streaming requests by calling
+// engine.ProcessRequestStream(), collecting all events, and returning
+// them as a buffered SSE ImmediateResponse.
+func (p *Processor) handleStreamingRequest(ctx context.Context, respReq *schema.ResponseRequest, reqCtx *requestContext) *extproc.ProcessingResponse {
+	eventsCh, err := p.engine.ProcessRequestStream(ctx, respReq)
+	if err != nil {
+		p.logger.Error("failed to start streaming request",
+			"request_id", reqCtx.requestID,
+			"error", err,
+		)
+		errMsg := err.Error()
+		if strings.HasPrefix(errMsg, "invalid request:") {
+			return CreateBadRequestError(strings.TrimPrefix(errMsg, "invalid request: "))
+		}
+		return CreateInternalError(fmt.Sprintf("Failed to process streaming request: %s", errMsg))
+	}
+
+	// Collect all events from the channel
+	var events []interface{}
+	for event := range eventsCh {
+		events = append(events, event)
+	}
+
+	sseBody := formatSSEEvents(events)
+	p.logger.Info("streaming request completed",
+		"request_id", reqCtx.requestID,
+		"event_count", len(events),
+		"body_size", len(sseBody),
+	)
+
+	return CreateSSEImmediateResponse(sseBody)
+}
+
+// handleToolLoopRequest handles non-streaming requests with server-side tools
+// by calling engine.ProcessRequest() which runs the full agentic tool loop.
+func (p *Processor) handleToolLoopRequest(ctx context.Context, respReq *schema.ResponseRequest, reqCtx *requestContext) *extproc.ProcessingResponse {
+	resp, err := p.engine.ProcessRequest(ctx, respReq)
+	if err != nil {
+		p.logger.Error("failed to process tool-loop request",
+			"request_id", reqCtx.requestID,
+			"error", err,
+		)
+		errMsg := err.Error()
+		if strings.HasPrefix(errMsg, "invalid request:") {
+			return CreateBadRequestError(strings.TrimPrefix(errMsg, "invalid request: "))
+		}
+		return CreateInternalError(fmt.Sprintf("Failed to process request: %s", errMsg))
+	}
+
+	result, err := CreateSuccessResponse(resp, false)
+	if err != nil {
+		p.logger.Error("failed to create success response",
+			"request_id", reqCtx.requestID,
+			"error", err,
+		)
+		return CreateInternalError("Failed to serialize response")
+	}
+
+	p.logger.Info("tool-loop request completed",
+		"request_id", reqCtx.requestID,
+		"response_id", resp.ID,
+		"status", resp.Status,
+	)
+	return result
 }
 
 // generateRequestID generates a unique request ID.

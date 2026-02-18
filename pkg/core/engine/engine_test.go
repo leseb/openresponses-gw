@@ -33,6 +33,86 @@ func (d *dummyVectorSearcher) Search(_ context.Context, _, _ string, _ int) ([]v
 	return d.results, d.err
 }
 
+// --- HasServerSideTools tests ---
+
+func TestHasServerSideTools(t *testing.T) {
+	store, err := sqlite.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cfg := &config.EngineConfig{
+		ModelEndpoint: "http://localhost:8080/v1",
+		BackendAPI:    "chat_completions",
+	}
+
+	// Engine with no vector search and no connectors
+	engNone, err := New(cfg, store, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Engine with vector search
+	engVS, err := New(cfg, store, nil, &dummyVectorSearcher{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		engine *Engine
+		tools  []schema.ResponsesToolParam
+		want   bool
+	}{
+		{
+			name:   "empty tools",
+			engine: engNone,
+			tools:  nil,
+			want:   false,
+		},
+		{
+			name:   "function only",
+			engine: engNone,
+			tools:  []schema.ResponsesToolParam{{Type: "function", Name: "my_func"}},
+			want:   false,
+		},
+		{
+			name:   "web_search only",
+			engine: engNone,
+			tools:  []schema.ResponsesToolParam{{Type: "web_search"}},
+			want:   false,
+		},
+		{
+			name:   "file_search without vector searcher",
+			engine: engNone,
+			tools:  []schema.ResponsesToolParam{{Type: "file_search", VectorStoreIDs: []string{"vs-1"}}},
+			want:   false,
+		},
+		{
+			name:   "file_search with vector searcher",
+			engine: engVS,
+			tools:  []schema.ResponsesToolParam{{Type: "file_search", VectorStoreIDs: []string{"vs-1"}}},
+			want:   true,
+		},
+		{
+			name:   "mcp without connectors",
+			engine: engNone,
+			tools:  []schema.ResponsesToolParam{{Type: "mcp", ServerLabel: "my-server"}},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.engine.HasServerSideTools(tt.tools)
+			if got != tt.want {
+				t.Errorf("HasServerSideTools() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // --- extractInputMessages tests ---
 
 func TestExtractInputMessages_StringInput(t *testing.T) {

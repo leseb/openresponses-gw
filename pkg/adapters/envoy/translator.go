@@ -1,6 +1,7 @@
 package envoy
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -242,6 +243,82 @@ func CreateImmediateResponseFromRecorder(recorder *httptest.ResponseRecorder) *e
 				},
 				Body:    body,
 				Headers: &extproc.HeaderMutation{SetHeaders: headers},
+			},
+		},
+	}
+}
+
+// extractEventTypeFromJSON extracts the SSE event type from a streaming event.
+// For *schema.RawStreamingEvent, returns EventType directly (since MarshalJSON
+// returns raw data without a type field). For all other event types, unmarshals
+// just the "type" field from the already-marshaled JSON bytes.
+func extractEventTypeFromJSON(event interface{}, data []byte) string {
+	if raw, ok := event.(*schema.RawStreamingEvent); ok {
+		return raw.EventType
+	}
+	var typed struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &typed); err == nil && typed.Type != "" {
+		return typed.Type
+	}
+	return "message"
+}
+
+// formatSSEEvents marshals each event to JSON, extracts the event type,
+// and writes SSE format (event: <type>\ndata: <json>\n\n).
+// Events that fail to marshal are skipped.
+func formatSSEEvents(events []interface{}) []byte {
+	var buf bytes.Buffer
+	for _, event := range events {
+		data, err := json.Marshal(event)
+		if err != nil {
+			continue
+		}
+		eventType := extractEventTypeFromJSON(event, data)
+		buf.WriteString("event: ")
+		buf.WriteString(eventType)
+		buf.WriteByte('\n')
+		buf.WriteString("data: ")
+		buf.Write(data)
+		buf.WriteByte('\n')
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+// CreateSSEImmediateResponse creates an ImmediateResponse with status 200,
+// SSE body, and appropriate streaming headers.
+func CreateSSEImmediateResponse(sseBody []byte) *extproc.ProcessingResponse {
+	return &extproc.ProcessingResponse{
+		Response: &extproc.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extproc.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: typev3.StatusCode_OK,
+				},
+				Body: sseBody,
+				Headers: &extproc.HeaderMutation{
+					SetHeaders: []*corev3.HeaderValueOption{
+						{
+							Header: &corev3.HeaderValue{
+								Key:      "content-type",
+								RawValue: []byte("text/event-stream"),
+							},
+						},
+						{
+							Header: &corev3.HeaderValue{
+								Key:      "cache-control",
+								RawValue: []byte("no-cache"),
+							},
+						},
+						{
+							Header: &corev3.HeaderValue{
+								Key:      "connection",
+								RawValue: []byte("keep-alive"),
+							},
+						},
+					},
+				},
 			},
 		},
 	}
