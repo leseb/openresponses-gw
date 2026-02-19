@@ -28,7 +28,7 @@ make test
 ### Building
 
 ```bash
-# Build the gateway binary (HTTP + ExtProc)
+# Build the gateway binary
 make build
 ```
 
@@ -52,10 +52,7 @@ make test
 make test-coverage
 
 # Run Python integration tests (requires uv and a running server)
-make test-integration-python
-
-# Run integration tests through Envoy ExtProc
-make test-integration-envoy
+make test-integration
 ```
 
 ### Code Quality
@@ -202,8 +199,7 @@ pkg/
 │   ├── services/      # Vector store service
 │   └── state/         # State management interfaces
 ├── adapters/          # Gateway-specific adapters
-│   ├── http/          # Standard HTTP server
-│   └── envoy/         # Envoy ExtProc (delegates to HTTP handler)
+│   └── http/          # HTTP server
 ├── storage/           # Storage implementations
 │   ├── sqlite/        # SQLite session store
 │   └── memory/        # In-memory stores (prompts, connectors, vector stores)

@@ -7,19 +7,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	extproc "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
-	envoyAdapter "github.com/leseb/openresponses-gw/pkg/adapters/envoy"
 	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
@@ -50,7 +43,6 @@ var (
 // @description				This gateway provides:
 // @description				- **Core API**: Full Open Responses spec compliance (POST /v1/responses)
 // @description				- **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Connectors
-// @description				- **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration
 // @description
 // @description				Streaming: All 24 event types from Open Responses spec
 // @description				Request Echo: All request parameters returned in response
@@ -80,7 +72,6 @@ func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	port := flag.Int("port", 0, "HTTP port to listen on (overrides config)")
-	extprocPort := flag.Int("extproc-port", 0, "gRPC ExtProc port (overrides config; 0 = disabled)")
 	version := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -111,10 +102,6 @@ func main() {
 	if *port != 0 {
 		cfg.Server.Port = *port
 	}
-	if *extprocPort != 0 {
-		cfg.ExtProc.Port = *extprocPort
-	}
-
 	// Initialize session store
 	store, err := sqlite.New(cfg.SessionStore.DSN)
 	if err != nil {
@@ -241,38 +228,6 @@ func main() {
 		}
 	}()
 
-	// Optionally start gRPC ExtProc server (shares all stores with HTTP server)
-	var grpcServer *grpc.Server
-	if cfg.ExtProc.Port > 0 {
-		grpcServer = grpc.NewServer()
-
-		// Create ExtProc processor sharing the same engine
-		processor := envoyAdapter.NewProcessor(eng, logger.Logger)
-		extproc.RegisterExternalProcessorServer(grpcServer, processor)
-
-		// Register gRPC health check
-		healthServer := health.NewServer()
-		healthpb.RegisterHealthServer(grpcServer, healthServer)
-		healthServer.SetServingStatus(
-			"envoy.service.ext_proc.v3.ExternalProcessor",
-			healthpb.HealthCheckResponse_SERVING,
-		)
-
-		extprocAddr := fmt.Sprintf(":%d", cfg.ExtProc.Port)
-		lis, err := net.Listen("tcp", extprocAddr)
-		if err != nil {
-			logger.Error("Failed to listen for ExtProc", "error", err, "address", extprocAddr)
-			os.Exit(1)
-		}
-
-		go func() {
-			logger.Info("ExtProc gRPC server listening", "address", extprocAddr)
-			if err := grpcServer.Serve(lis); err != nil {
-				logger.Error("ExtProc gRPC server error", "error", err)
-			}
-		}()
-	}
-
 	// Wait for interrupt signal
 	<-ctx.Done()
 	logger.Info("Shutdown signal received")
@@ -283,20 +238,6 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", "error", err)
-	}
-
-	if grpcServer != nil {
-		done := make(chan struct{})
-		go func() {
-			grpcServer.GracefulStop()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			logger.Warn("gRPC graceful stop timed out, forcing shutdown")
-			grpcServer.Stop()
-		}
 	}
 
 	logger.Info("Server stopped gracefully")

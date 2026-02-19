@@ -46,9 +46,6 @@ make test-conformance
 
 # Run with custom model via environment variable
 MODEL="gpt-4" PORT=8080 API_KEY="none" make test-conformance-custom
-
-# Run conformance tests through Envoy ExtProc (starts ExtProc + Envoy automatically)
-make test-conformance-envoy
 ```
 
 ## Example: Testing with Ollama
@@ -78,7 +75,7 @@ export OPENAI_API_KEY="sk-..."
 
 ```bash
 # Start your server with custom backend configuration
-./bin/openresponses-gw-server -config config/my-backend.yaml &
+./bin/openresponses-gw -config config/my-backend.yaml &
 
 # Run tests against it
 ./tests/scripts/test-conformance.sh "my-custom-model" "http://localhost:8080" "my-key"
@@ -88,7 +85,7 @@ export OPENAI_API_KEY="sk-..."
 
 The conformance test suite validates **6 critical behaviors**:
 
-### 1. Basic Text Response ✓
+### 1. Basic Text Response
 Simple request-response with text input/output.
 
 **Example Request:**
@@ -104,7 +101,7 @@ Simple request-response with text input/output.
 - Status transitions to "completed"
 - Output contains assistant message
 
-### 2. Streaming Response ✓
+### 2. Streaming Response
 Server-Sent Events with all 24 event types.
 
 **Example Request:**
@@ -121,7 +118,7 @@ Server-Sent Events with all 24 event types.
 - Event types: response.created, response.in_progress, response.output_text.delta, etc.
 - Proper event sequencing
 
-### 3. System Prompt ✓
+### 3. System Prompt
 Instruction-following with system messages.
 
 **Example Request:**
@@ -137,7 +134,7 @@ Instruction-following with system messages.
 - System instructions are respected
 - Output reflects system context
 
-### 4. Tool Calling ✓
+### 4. Tool Calling
 Function invocation capabilities.
 
 **Example Request:**
@@ -165,7 +162,7 @@ Function invocation capabilities.
 - Function calls are generated
 - Arguments are properly formatted
 
-### 5. Image Input ✓
+### 5. Image Input
 Multimodal input handling.
 
 **Example Request:**
@@ -191,7 +188,7 @@ Multimodal input handling.
 - Base64-encoded images
 - Image detail levels
 
-### 6. Multi-turn Conversation ✓
+### 6. Multi-turn Conversation
 Conversation history with previous_response_id.
 
 **Example Request:**
@@ -210,7 +207,7 @@ Conversation history with previous_response_id.
 
 ## Interpreting Results
 
-### Success ✅
+### Success
 ```
 ==== Running Conformance Tests ====
 
@@ -225,7 +222,7 @@ Results: 6 passed, 0 failed, 6 total
 ✓ All conformance tests passed!
 ```
 
-### Failure ❌
+### Failure
 ```
 ✗ Streaming Response (1.1s)
   ✗ Missing required event type 'response.output_text.delta'
@@ -250,10 +247,6 @@ curl http://localhost:8080/health
 
 # Start server manually
 make run
-
-# Or build and run
-make build-server
-./bin/openresponses-gw-server
 ```
 
 ### "Port already in use"
@@ -266,15 +259,6 @@ lsof -ti:8080 | xargs kill -9
 
 # Or use a different port
 ./tests/scripts/test-conformance-with-server.sh "gpt-4" "9000"
-```
-
-### "bun not found"
-```bash
-# Install Bun (recommended)
-curl -fsSL https://bun.sh/install | bash
-
-# Or use npx (slower)
-# Tests will automatically use npx if bun is not available
 ```
 
 ### Tests timeout
@@ -316,248 +300,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-### GitLab CI
-
-```yaml
-conformance:
-  image: golang:1.21
-  before_script:
-    - curl -fsSL https://bun.sh/install | bash
-    - export PATH="$HOME/.bun/bin:$PATH"
-  script:
-    - make build-server
-    - ./tests/scripts/test-conformance-with-server.sh
-  variables:
-    MODEL: "gpt-4"
-    API_KEY: $OPENAI_API_KEY
-```
-
-## Advanced Usage
-
-### Running Specific Tests
-
-```bash
-# Clone the conformance repo first
-git clone https://github.com/openresponses/openresponses .conformance-tests
-cd .conformance-tests
-bun install
-
-# Run specific tests
-bun run test:compliance \
-  --base-url http://localhost:8080 \
-  --api-key none \
-  --model "ollama/gpt-oss:20b" \
-  --filter "basic-response,streaming-response"
-
-# Available test IDs:
-# - basic-response
-# - streaming-response
-# - system-prompt
-# - tool-calling
-# - image-input
-# - multi-turn
-```
-
-### JSON Output for CI
-
-```bash
-cd .conformance-tests
-bun run test:compliance \
-  --base-url http://localhost:8080 \
-  --api-key none \
-  --model "gpt-4" \
-  --json > results.json
-
-# Parse results
-cat results.json | jq '.summary'
-```
-
-### Verbose Output
-
-```bash
-# Tests run with --verbose by default in our scripts
-# To see full request/response details:
-./tests/scripts/test-conformance.sh "gpt-4" 2>&1 | tee test-output.log
-```
-
-## Next Steps
-
-After passing conformance tests:
-
-1. ✅ **100% Open Responses compliant** - Your implementation is verified!
-2. 📝 Add compliance badge to README
-3. 🚀 Deploy with confidence
-4. 🔄 Run tests in CI/CD on every commit
-5. 📊 Monitor test results over time
-
----
-
-## Architecture: Single Source of Truth with Multiple Adapters
-
-The gateway follows a clean architecture pattern where the **core business logic is implemented once** and multiple **protocol adapters** translate between different protocols and the core:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ARCHITECTURE                          │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌──────────────┐           ┌──────────────┐           │
-│  │   HTTP API   │           │ Envoy Proxy  │           │
-│  │   (REST)     │           │  (ExtProc)   │           │
-│  └──────┬───────┘           └──────┬───────┘           │
-│         │                          │                    │
-│         ▼                          ▼                    │
-│  ┌──────────────────────────────────────────┐          │
-│  │         ADAPTER LAYER                     │          │
-│  ├──────────────────┬───────────────────────┤          │
-│  │  HTTP Adapter    │   Envoy Adapter       │          │
-│  │  - handler.go    │   - processor.go      │          │
-│  │  - models.go     │   - translator.go     │          │
-│  │  - prompts.go    │                       │          │
-│  └────────┬─────────┴───────────┬───────────┘          │
-│           │                     │                       │
-│           └─────────┬───────────┘                       │
-│                     ▼                                   │
-│           ┌─────────────────────┐                       │
-│           │   CORE ENGINE       │  ◄── Single Source   │
-│           │   engine.go         │      of Truth        │
-│           │                     │                       │
-│           │  - ProcessRequest() │                       │
-│           │  - ProcessStream()  │                       │
-│           └──────────┬──────────┘                       │
-│                      │                                  │
-│                      ▼                                  │
-│           ┌─────────────────────┐                       │
-│           │   STATE LAYER       │                       │
-│           │   SessionStore      │                       │
-│           │   (in-memory)       │                       │
-│           └─────────────────────┘                       │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Key Benefits
-
-✅ **Single Implementation**: All Open Responses logic lives in `pkg/core/engine/`
-✅ **Protocol Agnostic**: Adapters only translate protocols, not business logic
-✅ **Extensible**: Easy to add new protocols (gRPC, WebSocket, etc.)
-✅ **Testable**: Can test core logic independently of protocol
-
-### What's in Each Layer?
-
-#### Core Engine (`pkg/core/engine/`)
-- ✅ Request validation
-- ✅ Response generation
-- ✅ Streaming logic
-- ✅ Tool calling
-- ✅ Conversation state management
-
-#### HTTP Adapter (`pkg/adapters/http/`)
-- Translates HTTP requests → `ResponseRequest`
-- Translates `Response` → HTTP JSON
-- Handles SSE streaming
-- Routes `/v1/responses`, `/v1/models`, etc.
-
-#### Envoy ExtProc Adapter (`pkg/adapters/envoy/`)
-- Translates Envoy ExtProc messages → `ResponseRequest`
-- Translates `Response` → Envoy `ImmediateResponse`
-- Implements gRPC ExtProc protocol
-- Handles Envoy lifecycle phases
-
----
-
-## Testing the Envoy ExtProc Adapter
-
-The Envoy adapter can be tested at multiple levels:
-
-### 1. Unit Tests (Protocol Translation)
-
-Test the translator logic that converts between Envoy messages and core types:
-
-```bash
-# Run Envoy adapter unit tests
-go test ./pkg/adapters/envoy/... -v
-
-# Run with coverage
-go test ./pkg/adapters/envoy/... -cover
-```
-
-**What's tested:**
-- ✅ Request extraction from ExtProc messages
-- ✅ Response formatting to ExtProc messages
-- ✅ Error response generation
-- ✅ Header manipulation
-- ✅ Status code translation
-
-**Example test:**
-```go
-func TestExtractResponseRequest(t *testing.T) {
-    req := &extproc.ProcessingRequest{
-        Request: &extproc.ProcessingRequest_RequestBody{
-            RequestBody: &extproc.HttpBody{
-                Body: []byte(`{"model":"llama3.2:3b","input":"Hello"}`),
-            },
-        },
-    }
-
-    got, err := ExtractResponseRequest(req)
-    // Verify extraction logic
-}
-```
-
-### 2. Integration Tests (End-to-End via Envoy)
-
-Test the full stack: Client → Envoy → ExtProc → Core Engine:
-
-```bash
-# Run Python integration tests through Envoy
-make test-integration-envoy
-```
-
-This runs the same Python integration test suite used for the HTTP adapter, but routes
-requests through Envoy's ExtProc filter. Only streaming tests are skipped (ExtProc uses
-`ImmediateResponse` which buffers the full response).
-
-**What's tested:**
-- ✅ All API endpoints (responses, conversations, files, prompts, vector stores, connectors)
-- ✅ Request flows through Envoy to ExtProc
-- ✅ ExtProc delegates to the HTTP handler via `httptest.ResponseRecorder`
-- ✅ Response returns through Envoy to client
-- ✅ Error handling at each boundary
-
-### 3. Debugging Integration Tests
-
-```bash
-# Start the gateway (HTTP + ExtProc in single process)
-OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
-  ./bin/openresponses-gw -config tests/envoy/config.yaml &
-
-# Start Envoy with the test config
-envoy -c tests/envoy/envoy.yaml &
-
-# Make requests through Envoy
-curl -X POST http://localhost:8081/v1/responses \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4","input":"Hello"}'
-
-# Check Envoy stats
-curl http://localhost:9901/stats | grep ext_proc
-```
-
----
-
-## Test Matrix
-
-| Test Type | HTTP Adapter | Envoy Adapter | What's Tested |
-|-----------|--------------|---------------|---------------|
-| **Conformance** | ✅ | ⚠️ Via HTTP | Spec compliance |
-| **Unit** | ❌ | ✅ | Protocol translation |
-| **Integration** | ✅ | ✅ | Full E2E flow |
-
-**Note**: Conformance tests currently run against the HTTP adapter. The Envoy adapter reuses the same core engine, so it inherits spec compliance.
-
----
-
 ## OpenAPI Conformance Testing
 
 The gateway includes an OpenAPI conformance checker that compares our API spec against OpenAI's official spec to ensure compatibility.
@@ -578,105 +320,21 @@ rm openai-spec.yaml && ./scripts/openapi_conformance.py
 ./scripts/openapi_conformance.py --verbose
 ```
 
-### What It Checks
-
-The conformance test compares three API categories:
-
-1. **Files API** - File upload, retrieval, deletion
-2. **Vector Stores API** - Vector store management and search
-3. **Responses API** - Response creation and retrieval
-
-For each category, it identifies:
-- ❌ Missing endpoints (in OpenAI but not in gateway)
-- ⚠️ Schema differences (different request/response structures)
-- ✅ Implemented endpoints
-
-### Interpreting Results
-
-```
-✅ 90-100%: Excellent - High OpenAI compatibility
-⚠️  70-89%: Good - Moderate gaps
-❌ 0-69%: Needs Work - Significant gaps
-```
-
-**Current Baseline (as of initial implementation):**
-- Files API: 0% (missing CRUD endpoints)
-- Vector Stores API: 0% (missing all endpoints)
-- Responses API: 25% (missing GET endpoint)
-- **Overall: 8.3%**
-
-See `conformance-results.json` in the project root for the latest results.
-
-### Adding to CI/CD
-
-```yaml
-# .github/workflows/conformance.yml
-- name: Check OpenAPI Conformance
-  run: |
-    uv run --with pyyaml ./scripts/openapi_conformance.py --output conformance.json
-
-    # Fail if below 70% threshold
-    python3 -c "
-    import json
-    with open('conformance.json') as f:
-        results = json.load(f)
-    scores = [r['score'] for r in results.values()]
-    avg = sum(scores) / len(scores)
-    if avg < 70.0:
-        raise SystemExit(f'Conformance {avg:.1f}% below 70% threshold')
-    "
-```
-
-### Pre-Commit Hook
-
-The OpenAPI conformance check is integrated with pre-commit hooks:
-
-**Automatic Check** (when `openapi.yaml` changes):
-```bash
-# Pre-commit will automatically run conformance check when you modify openapi.yaml
-git add openapi.yaml
-git commit -m "Update API spec"
-# Hook runs and shows conformance summary (non-blocking)
-```
-
-**Manual Check** (anytime):
-```bash
-# Run conformance check explicitly
-pre-commit run openapi-conformance --all-files
-
-# Or use Make target for full output
-make test-openapi-conformance
-```
-
-**Important Notes:**
-- The pre-commit hook is **non-blocking** - it won't prevent commits
-- It shows a conformance summary to inform you of schema differences
-- For detailed analysis, run `make test-openapi-conformance`
-- The hook caches the OpenAI spec locally for faster runs
-
----
-
 ## Running All Tests
 
 ```bash
-# 1. Unit tests (all adapters)
+# 1. Unit tests
 go test ./...
 
-# 2. Conformance tests (HTTP adapter)
+# 2. Conformance tests
 make test-conformance-auto
 
-# 3. Conformance tests (Envoy ExtProc adapter)
-make test-conformance-envoy
+# 3. Python integration tests
+make test-integration
 
-# 4. Python integration tests (HTTP adapter)
-make test-integration-python
-
-# 5. Python integration tests (Envoy adapter)
-make test-integration-envoy
-
-# 6. OpenAPI conformance (spec compatibility)
+# 4. OpenAPI conformance (spec compatibility)
 make test-openapi-conformance
 
-# 7. Pre-commit hooks
+# 5. Pre-commit hooks
 pre-commit run --all-files
 ```

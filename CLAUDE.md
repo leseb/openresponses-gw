@@ -7,8 +7,8 @@
 ## Quick reference
 
 ```bash
-make build                    # Build single gateway binary (HTTP + ExtProc)
-make run                      # Build and run (HTTP :8080 + ExtProc :10000)
+make build                    # Build the gateway binary
+make run                      # Build and run (HTTP :8080)
 make test                     # Unit tests (go test -v -race ./...)
 make lint                     # golangci-lint
 make gen-openapi              # Regenerate docs/openapi.yaml (needs swag on PATH)
@@ -24,7 +24,7 @@ Always use `uv run` to execute Python — never bare `python` or `pip`.
 ```bash
 uv run --with pyyaml python scripts/fix-openapi-nullable.py docs/openapi.yaml
 uv run pytest tests/integration/ -v
-make test-integration-python  # wraps uv run pytest
+make test-integration  # wraps uv run pytest
 ```
 
 ## Tools that must be on PATH
@@ -60,11 +60,10 @@ enum constraints. For union types that swag can't express, add post-processing i
 
 ```
 cmd/
-  server/          → Single binary: HTTP + optional gRPC ExtProc (--extproc-port)
+  server/          → HTTP server binary
 pkg/
   adapters/
     http/          → HTTP handlers, SSE streaming, OpenAPI serving
-    envoy/         → gRPC ExtProc processor (shares engine with HTTP)
   core/
     engine/        → Main orchestrator: LLM calls, agentic tool loops, streaming
     schema/        → API type definitions (add swagger tags here)
@@ -86,7 +85,6 @@ scripts/
 - **Request flow**: HTTP handler → `engine.ProcessRequest()` → `api.ResponsesOpenAIClient` → vLLM/OpenAI
 - **Streaming flow**: HTTP handler → `engine.ProcessRequestStream()` → SSE events channel → `handleStreamingResponse()` flushes to client
 - **Agentic loop**: Engine iterates up to 10 times, executing server-side tools (MCP, file_search) between LLM calls
-- **ExtProc adapter**: Shares engine/stores with HTTP adapter in a single process. Does NOT support streaming — uses `httptest.NewRecorder()` which buffers full response.
 
 ## Conventions
 

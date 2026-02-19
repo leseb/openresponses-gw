@@ -1398,8 +1398,6 @@ info:
 
     - **Extended APIs**: Conversations, Prompts, Files, Vector Stores, Connectors
 
-    - **Dual Mode**: Standalone HTTP server or Envoy ExtProc integration
-
 
     Streaming: All 24 event types from Open Responses spec
 

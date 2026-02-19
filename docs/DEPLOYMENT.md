@@ -1,6 +1,6 @@
 # Deployment
 
-## Standalone HTTP Server
+## HTTP Server
 
 Simple Go binary, no external dependencies (except storage).
 
@@ -16,44 +16,9 @@ Or with a config file:
 ./bin/openresponses-gw --config config.yaml
 ```
 
-## Envoy External Processor
+## Behind a Reverse Proxy
 
-The same binary also serves as an Envoy ExtProc filter. Pass `--extproc-port` (or set `extproc.port` in config) to enable the gRPC listener alongside the HTTP server. See `examples/envoy/` for configuration examples.
-
-```yaml
-# envoy.yaml
-http_filters:
-- name: envoy.filters.http.ext_proc
-  typed_config:
-    grpc_service:
-      envoy_grpc:
-        cluster_name: openresponses_gw
-```
-
-Quick start with Envoy:
-
-```bash
-# Build and start the gateway (HTTP + ExtProc in one process)
-make build
-OPENAI_API_ENDPOINT="http://localhost:8000/v1" OPENAI_API_KEY="unused" \
-  ./bin/openresponses-gw -extproc-port 10000 &
-
-# Start Envoy with the example config
-envoy -c examples/envoy/envoy.yaml &
-
-# Make requests through Envoy
-curl -X POST http://localhost:8081/v1/responses \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4","input":"Hello"}'
-```
-
-## Docker
-
-A Dockerfile is available at `deployments/docker/Dockerfile.envoy-extproc`.
-
-## Extensibility
-
-The adapter design is extensible — new gateway adapters can be added under `pkg/adapters/`. Each adapter translates between the gateway's protocol and the core engine, which is fully gateway-agnostic.
+The gateway can be deployed behind any reverse proxy (Envoy, nginx, HAProxy) as a regular upstream service for TLS termination, load balancing, rate limiting, and observability. For inference-aware routing with Envoy, consider [Gateway API Inference Extension (GIE)](https://gateway-api-inference-extension.sigs.k8s.io/).
 
 ## Backend Configuration
 

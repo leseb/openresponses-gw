@@ -1,4 +1,4 @@
-.PHONY: help build test lint clean run run-standalone-http
+.PHONY: help build test lint clean run
 
 # Variables
 BINARY_NAME=openresponses-gw
@@ -35,7 +35,7 @@ init: ## Initialize project
 	$(GOMOD) tidy
 	@echo "$(GREEN)✓ Project initialized$(NC)"
 
-build: ## Build the gateway binary (HTTP + ExtProc)
+build: ## Build the gateway binary
 	@echo "$(GREEN)Building gateway...$(NC)"
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) ./$(CMD_DIR)/server
@@ -73,12 +73,8 @@ clean: ## Clean build artifacts
 	rm -f coverage.txt coverage.html
 	@echo "$(GREEN)✓ Cleaned$(NC)"
 
-run: build ## Build and run (HTTP on :8082, ExtProc on :10000) for use with Envoy
-	@echo "$(GREEN)Starting gateway (HTTP :8082 + ExtProc :10000)...$(NC)"
-	./$(BIN_DIR)/$(BINARY_NAME) -config tests/envoy/config.yaml
-
-run-standalone-http: build ## Build and run HTTP-only mode (port :8080, no ExtProc/Envoy)
-	@echo "$(GREEN)Starting gateway (HTTP :8080, standalone)...$(NC)"
+run: build ## Build and run (HTTP on :8080)
+	@echo "$(GREEN)Starting gateway (HTTP :8080)...$(NC)"
 	./$(BIN_DIR)/$(BINARY_NAME)
 
 gen-openapi: ## Generate OpenAPI spec from Go annotations
@@ -134,23 +130,14 @@ test-conformance-custom: build ## Run conformance tests with custom model
 	API_KEY="${API_KEY:-none}"; \
 	./tests/scripts/test-conformance-with-server.sh "$$MODEL" "$$PORT" "$$API_KEY"
 
-test-conformance-envoy: build ## Run conformance tests through Envoy ExtProc
-	@echo "$(GREEN)Running conformance tests through Envoy...$(NC)"
-	@which envoy > /dev/null || (echo "$(RED)envoy not installed. See: https://www.envoyproxy.io/docs/envoy/latest/start/install$(NC)" && exit 1)
-	@MODEL="${MODEL:-ollama/gpt-oss:20b}"; \
-	API_KEY="${API_KEY:-none}"; \
-	./tests/scripts/test-conformance-with-envoy.sh "$$MODEL" "$$API_KEY"
-
-test-integration: ## Run integration tests through Envoy (requires gateway + Envoy + vLLM)
-	@echo "$(GREEN)Running integration tests through Envoy...$(NC)"
+test-integration: ## Run integration tests (requires gateway + vLLM)
+	@echo "$(GREEN)Running integration tests...$(NC)"
 	@echo "$(YELLOW)Prerequisites (must be running separately):$(NC)"
 	@echo "$(YELLOW)  1. vLLM on port 8000$(NC)"
-	@echo "$(YELLOW)  2. Gateway: bin/openresponses-gw --config tests/envoy/config.yaml$(NC)"
-	@echo "$(YELLOW)  3. Envoy:   envoy -c tests/envoy/envoy.yaml --log-level warning$(NC)"
+	@echo "$(YELLOW)  2. Gateway: bin/openresponses-gw$(NC)"
 	@echo "$(YELLOW)Override backend: OPENRESPONSES_BACKEND_API=responses make test-integration$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
-	OPENRESPONSES_BASE_URL=http://localhost:8081/v1 \
-	OPENRESPONSES_ADAPTER=envoy \
+	OPENRESPONSES_BASE_URL=http://localhost:8080/v1 \
 	uv run --project tests/integration pytest tests/integration/ -v
 
 vllm-field-tracking: ## Show and save vLLM vs gateway field tracking for /v1/responses

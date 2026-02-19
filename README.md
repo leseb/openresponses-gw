@@ -60,8 +60,6 @@ curl -X POST http://localhost:8080/v1/responses \
 
 To use OpenAI instead, set `OPENAI_API_ENDPOINT="https://api.openai.com/v1"` and `OPENAI_API_KEY` to your API key.
 
-For Envoy deployment, see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
-
 ## Development
 
 ```bash
