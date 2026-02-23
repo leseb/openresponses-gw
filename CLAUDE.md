@@ -70,7 +70,7 @@ pkg/
     api/           → Backend client interfaces (vLLM/OpenAI)
     config/        → YAML + env var configuration
     services/      → Vector store ingestion/search coordination
-  storage/         → Persistence backends (memory, SQLite)
+  storage/         → Persistence backends (memory, SQLite, PostgreSQL)
   filestore/       → File storage backends (memory, filesystem, S3)
   vectorstore/     → Vector search backends (memory, Milvus)
   mcp/             → Model Context Protocol client

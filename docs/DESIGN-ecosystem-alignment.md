@@ -83,7 +83,7 @@ What vSR does not implement — and what defines the full Responses API surface:
 |------------|-----|-----------------|
 | Responses ↔ Chat Completions translation | Yes | Yes |
 | `previous_response_id` chaining | Yes | Yes |
-| Response persistence | Yes (memory, Redis) | Yes (memory, SQLite) |
+| Response persistence | Yes (memory, Redis) | Yes (memory, SQLite, PostgreSQL) |
 | Vector store backends | Memory, Milvus, Llama Stack | Memory, Milvus |
 | Files API | Yes | Yes |
 | Vector Stores API | Yes | Yes |
@@ -113,6 +113,115 @@ that sit above format translation:
 This is the project's unique contribution to the ecosystem. vSR provides
 Responses API format compatibility; openresponses-gw provides the full
 stateful, agentic, streaming Responses API surface.
+
+### Comparison with Llama Stack
+
+[Llama Stack](https://github.com/meta-llama/llama-stack) is Meta's full-stack
+platform for building AI applications. It implements the Responses API alongside
+a broad set of supporting APIs. An honest comparison reveals that Llama Stack is
+more feature-complete in nearly every dimension — it is a mature, multi-provider
+platform while openresponses-gw is a focused gateway. Understanding the gaps
+helps prioritize development.
+
+#### Responses API core
+
+| Capability | Llama Stack | openresponses-gw |
+|------------|-------------|-----------------|
+| Responses ↔ Chat Completions translation | Yes | Yes |
+| `previous_response_id` chaining | Yes | Yes |
+| Response persistence | Yes (SQLite, Postgres) | Yes (memory, SQLite, PostgreSQL) |
+| SSE streaming | 36 event types | 24 event types |
+| Agentic tool loops (multi-turn) | Yes (configurable max) | Yes (up to 10 iterations) |
+| `tool_choice` options | `auto`, `required`, `none`, named function | `auto`, `required`, `none` (no named function) |
+| Structured output (`text.format`) | `json_schema`, `json_object` | `json_schema`, `json_object` |
+| Reasoning (`reasoning.effort`) | Mapped to `thinking.budget_tokens` | Mapped to `thinking.budget_tokens` |
+| `prompt` parameter (template reference) | Yes — resolves prompt by ID, substitutes variables | No |
+| `instructions` parameter | Yes | Yes |
+| `parallel_tool_calls` | Forwarded to backend | Not implemented |
+| `max_output_tokens` | Yes | Yes |
+| `temperature`, `top_p` | Yes | Yes |
+| Incremental persistence during streaming | Yes — saves state after each tool loop iteration | No — persists only after full completion |
+
+#### Server-side tool execution
+
+| Tool | Llama Stack | openresponses-gw |
+|------|-------------|-----------------|
+| `file_search` | Yes — embeds query, searches vector store, injects ranked results | Yes — same pattern |
+| `web_search` | Yes — executes via Brave/Tavily, injects results | No — accepted but not executed |
+| MCP tools | Yes — with human-in-the-loop approval flows and tool listing reuse | Yes — basic execution only |
+| `code_interpreter` | Not in Responses API path | Not implemented |
+| `computer_use` | Not in Responses API path | Not implemented |
+
+#### Vector Stores API
+
+| Capability | Llama Stack | openresponses-gw |
+|------------|-------------|-----------------|
+| Vector store backends | 10+ (Faiss, ChromaDB, Milvus, Qdrant, pgvector, SQLite-vec, Weaviate, inline) | 2 (memory, Milvus) |
+| Search types | Vector, keyword, hybrid | Vector only |
+| Search filters | Working implementation (comparison + compound filters) | Schema accepted but **silently ignored** |
+| Chunking strategies | Auto, static (configurable) | Auto, static |
+| Embedding providers | Multiple (sentence-transformers, OpenAI, inline) | Single configurable endpoint |
+| Ranking/reranking | Yes (configurable) | No |
+| `file_search` annotations in output | Yes — includes file_id, filename, score | Yes — includes file_id, filename, score |
+
+The search filter gap is a correctness issue: openresponses-gw accepts filter
+parameters in search requests and returns results without applying them, which
+can produce silently incorrect results.
+
+#### Files API
+
+| Capability | Llama Stack | openresponses-gw |
+|------------|-------------|-----------------|
+| Upload/retrieve/delete/list | Yes | Yes |
+| Storage backends | Disk, memory, S3-compatible | Filesystem, memory, S3 |
+| Content extraction | PDF, HTML, text, CSV, JSON, JSONL | Text and JSON only |
+| Purpose filtering | `assistants`, `fine-tune`, `user_data`, `responses` | `assistants`, `user_data` |
+
+#### Higher-level APIs
+
+| API | Llama Stack | openresponses-gw |
+|-----|-------------|-----------------|
+| Conversations (CRUD + items) | No (uses `previous_response_id` chain) | Yes |
+| Prompts (versioned templates) | Yes — via `prompt` parameter on Responses API | Yes — standalone CRUD API |
+| Connectors (MCP registry) | Configured via provider config | Yes — CRUD API |
+| Safety / Guardrails | Yes — Llama Guard, prompt injection detection, code scanning | No |
+| Access control | ABAC with resource-level `owner_type`/`owner_id` | No |
+
+#### Architectural differences
+
+| Aspect | Llama Stack | openresponses-gw |
+|--------|-------------|-----------------|
+| Language | Python (async) | Go |
+| Deployment model | Multi-provider framework with pluggable backends | Single-binary HTTP service |
+| Provider ecosystem | 30+ providers across inference, safety, memory, tools | Single backend (vLLM/OpenAI-compatible) |
+| API specification | Hand-maintained OpenAPI spec | Auto-generated with conformance testing against OpenAI spec |
+| Request path | Client → Llama Stack → vLLM (via provider) | Client → openresponses-gw → vLLM (direct HTTP) |
+
+Both projects sit in the request path the same way: they receive Responses API
+requests, translate them, and make backend inference calls. Neither is "thinner"
+than the other. Both can be deployed behind Envoy/GIE if desired — that is a
+deployment choice, not an architectural property of either project.
+
+#### Key takeaways
+
+1. **Llama Stack is more complete**: more vector store backends, working search
+   filters, keyword/hybrid search, web_search execution, MCP approval flows,
+   guardrails, ABAC, prompt parameter resolution, incremental streaming
+   persistence.
+
+2. **openresponses-gw's advantages are narrower**: Go single-binary deployment
+   (smaller image, no Python runtime), auto-generated OpenAPI spec with
+   conformance testing against the upstream OpenAI spec, and focused simplicity
+   (fewer concepts and dependencies).
+
+3. **Gaps to address**: search filters (currently silently ignored — correctness
+   issue), keyword/hybrid search, web_search execution, prompt parameter support,
+   incremental persistence during streaming, named function tool_choice.
+
+4. **Different positioning**: Llama Stack is a full application platform with
+   multi-provider support, safety, and access control. openresponses-gw is a
+   focused Responses API service for environments that want to add Responses API
+   support to existing vLLM deployments without adopting a full platform.
 
 ## Why an ExtProc Adapter Is the Wrong Abstraction
 
@@ -246,42 +355,60 @@ Client (Responses API)
 +---------------------------------------------+
 ```
 
-openresponses-gw runs as an **HTTP service behind GIE**, not inside Envoy's
-filter chain. Benefits:
+openresponses-gw runs as an **HTTP service**, not inside Envoy's filter chain.
+It can be deployed behind GIE/Envoy or standalone.
 
-- **All Envoy infrastructure for free** — TLS, auth, rate limiting,
-  observability, circuit breaking apply uniformly without any code in our project
-- **GIE scheduling** — inference-aware load balancing on backend calls
-  (KV-cache affinity, LoRA routing) without any integration work
+When deployed behind Envoy:
+
+- **Envoy infrastructure applies to inbound traffic** — TLS termination, auth,
+  rate limiting, observability on client-facing requests
 - **Full streaming and tool loops** — no ImmediateResponse hacks, no body
   buffering constraints, full SSE pass-through
-- **Clean separation** — GIE handles network/scheduling; we handle
-  protocol/state
 
-The gateway can also run standalone (without GIE/Envoy) for development, testing,
-or deployments that don't need inference-aware scheduling.
+Note: GIE's inference-aware scheduling (KV-cache affinity, LoRA routing) does
+**not** automatically apply to openresponses-gw's backend calls to vLLM. Those
+calls are direct HTTP requests from our process. To get GIE scheduling on
+backend calls, you would need to route them through the GIE-managed Envoy by
+pointing the backend URL at the Envoy endpoint — a deployment configuration
+choice, not an architectural property. Llama Stack or any other service could
+be configured the same way.
+
+The service can also run standalone (without GIE/Envoy) for development,
+testing, or simpler deployments.
 
 ## Ecosystem Synergies
 
 | Integration | Value |
 |-------------|-------|
-| **GIE** | Deploy as an `InferencePool` backend. GIE schedules our backend calls to vLLM with inference-aware load balancing. Multi-model routing and LoRA affinity without code. |
-| **Semantic Router (vSR)** | Deployed behind GIE+vSR, our backend calls get semantically routed to the optimal model in a multi-model pool. vSR handles API translation for external providers (OpenAI, Anthropic); we handle stateful Responses API semantics. |
+| **GIE** | Deploy behind GIE-managed Envoy. GIE handles inference-aware scheduling for inbound traffic. Backend calls from openresponses-gw to vLLM only benefit from GIE scheduling if explicitly routed through the Envoy endpoint. |
+| **Semantic Router (vSR)** | vSR handles API translation for external providers (OpenAI, Anthropic) and model selection as a BBR plugin. openresponses-gw handles the stateful Responses API surface (streaming, tool loops, conversations). Both can coexist behind the same Envoy. |
 | **MCP Gateway** | They aggregate and federate MCP servers; we consume MCP tools in agentic loops. Our MCP connector points at their gateway instead of individual servers. |
-| **Agentic Networking** | Our MCP tool calls pass through their policy layer for tool-level authorization. They enforce which tools; we handle the agentic loop. |
+| **Agentic Networking** | Our MCP tool calls can pass through their policy layer for tool-level authorization. They enforce which tools; we handle the agentic loop. |
 | **WG AI Gateway** | As the Payload Processing and Backend CRD proposals mature, they may provide declarative alternatives for some of our translation and egress logic. |
 
 ## Decision
 
 The ExtProc adapter has been removed. openresponses-gw is an HTTP service that
-provides the stateful Responses API tier. It sits alongside GIE, vSR, MCP
-Gateway, and Agentic Networking as a complementary component in the Kubernetes
-AI inference stack. Each project owns a distinct layer:
+implements the Responses API — stateful conversations, agentic tool loops,
+streaming, and protocol translation. It is not a gateway in the traditional
+sense (it does not route, load-balance, or enforce policy); it is a focused
+Responses API service that can be deployed standalone or behind any reverse
+proxy.
 
-- **GIE**: scheduling and routing (ExtProc + BBR plugins)
+It sits alongside other projects in the Kubernetes AI inference ecosystem, each
+covering a distinct concern:
+
+- **GIE**: inference-aware scheduling and routing (ExtProc + BBR plugins)
 - **vSR**: model selection and API translation (BBR plugin within GIE)
 - **MCP Gateway**: tool aggregation and federation
 - **Agentic Networking**: tool-level authorization
-- **openresponses-gw**: stateful Responses API, agentic loops, protocol translation
+- **Llama Stack**: full Responses API platform with multi-provider support,
+  safety, and access control
+- **openresponses-gw**: focused Responses API service for existing vLLM
+  deployments
 
 The HTTP server is the right abstraction for stateful, agentic API surfaces.
+The project's viability depends on closing the feature gaps identified in the
+Llama Stack comparison — particularly search filter correctness, search
+capabilities, and web_search execution — while maintaining the operational
+simplicity that is its primary advantage.

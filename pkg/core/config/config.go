@@ -23,8 +23,8 @@ type Config struct {
 
 // SessionStoreConfig contains session store backend configuration
 type SessionStoreConfig struct {
-	Type string `yaml:"type"` // "sqlite" (only supported backend)
-	DSN  string `yaml:"dsn"`  // SQLite DSN: ":memory:" (default) or file path, e.g. "data/responses.db"
+	Type string `yaml:"type"` // "sqlite" (default) or "postgres"
+	DSN  string `yaml:"dsn"`  // SQLite: ":memory:" (default) or file path; PostgreSQL: "postgres://user:pass@host:5432/dbname?sslmode=disable"
 }
 
 // ServerConfig contains HTTP server configuration

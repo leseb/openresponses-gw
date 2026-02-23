@@ -31,3 +31,10 @@ engine:
 # file_store:
 #   type: filesystem
 #   base_dir: /tmp/gw-files
+
+# Optional: session store backend
+# session_store:
+#   type: sqlite                          # "sqlite" (default) or "postgres"
+#   dsn: data/responses.db
+#   # type: postgres
+#   # dsn: postgres://user:pass@host:5432/dbname?sslmode=disable

@@ -13,7 +13,7 @@ Welcome to the Open Responses Gateway! This guide will get you up and running in
 ✅ **Core Architecture**
 - Gateway-agnostic core engine
 - HTTP adapter with streaming support
-- In-memory storage (development mode) and SQLite (persistent)
+- In-memory storage (development mode), SQLite, and PostgreSQL (persistent)
 - Request/response handling
 - Configuration management
 - Structured logging
@@ -281,7 +281,7 @@ The following are areas with ongoing development:
 ✅ Health checks
 ✅ Structured logging
 ✅ Configuration from YAML and env vars
-✅ In-memory and SQLite session storage
+✅ In-memory, SQLite, and PostgreSQL session storage
 
 ## Next Steps
 
@@ -364,5 +364,5 @@ make clean              # Remove build artifacts
 
 ## What's Next?
 
-**Storage:** In-memory (default) or SQLite (persistent)
+**Storage:** In-memory (default), SQLite, or PostgreSQL (persistent)
 **Contributors Welcome:** See open issues and [CONTRIBUTING.md](../CONTRIBUTING.md)

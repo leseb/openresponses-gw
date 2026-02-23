@@ -140,6 +140,16 @@ test-integration: ## Run integration tests (requires gateway + vLLM)
 	OPENRESPONSES_BASE_URL=http://localhost:8080/v1 \
 	uv run --project tests/integration pytest tests/integration/ -v
 
+test-integration-postgres: ## Run integration tests with PostgreSQL session store
+	@echo "$(GREEN)Running integration tests with PostgreSQL backend...$(NC)"
+	@echo "$(YELLOW)Prerequisites (must be running separately):$(NC)"
+	@echo "$(YELLOW)  1. vLLM on port 8000$(NC)"
+	@echo "$(YELLOW)  2. PostgreSQL (e.g. docker run -d -p 5432:5432 -e POSTGRES_USER=testuser -e POSTGRES_PASSWORD=testpass -e POSTGRES_DB=testdb postgres:16)$(NC)"
+	@echo "$(YELLOW)  3. Gateway: SESSION_STORE_TYPE=postgres SESSION_STORE_DSN=\"postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable\" bin/openresponses-gw$(NC)"
+	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)
+	OPENRESPONSES_BASE_URL=http://localhost:8080/v1 \
+	uv run --project tests/integration pytest tests/integration/ -v
+
 vllm-field-tracking: ## Show and save vLLM vs gateway field tracking for /v1/responses
 	@echo "$(GREEN)Running vLLM field tracking...$(NC)"
 	@which uv > /dev/null || (echo "$(RED)uv not installed. Run: brew install uv$(NC)" && exit 1)

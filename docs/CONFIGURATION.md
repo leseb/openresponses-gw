@@ -158,21 +158,32 @@ export FILE_STORE_S3_REGION=us-east-1
 
 ## Session Store Configuration
 
-By default, sessions, conversations, and responses are stored in memory and lost on restart. You can switch to a persistent SQLite backend via environment variables or YAML config.
+By default, sessions, conversations, and responses are stored in memory and lost on restart. You can switch to a persistent backend via environment variables or YAML config.
 
 ### Environment Variables
 
 ```bash
+# SQLite
 export SESSION_STORE_TYPE=sqlite
 export SESSION_STORE_DSN=data/responses.db
+
+# PostgreSQL
+export SESSION_STORE_TYPE=postgres
+export SESSION_STORE_DSN="postgres://user:pass@host:5432/dbname?sslmode=disable"
 ```
 
 ### YAML Configuration
 
 ```yaml
+# SQLite
 session_store:
-  type: sqlite              # "memory" (default) or "sqlite"
+  type: sqlite              # "sqlite" (default) or "postgres"
   dsn: data/responses.db    # SQLite file path
+
+# PostgreSQL
+session_store:
+  type: postgres
+  dsn: postgres://user:pass@host:5432/dbname?sslmode=disable
 ```
 
 ### Backends
@@ -180,9 +191,10 @@ session_store:
 | Backend | Persistence | Use Case |
 |---------|-------------|----------|
 | `memory` (default) | None — data lost on restart | Development, testing |
-| `sqlite` | Local disk (pure Go, no CGO) | Production, single-node deployments |
+| `sqlite` | Local disk (pure Go, no CGO) | Single-node deployments |
+| `postgres` | PostgreSQL database (via `pgx/v5`) | Production, multi-node deployments |
 
-The SQLite backend uses WAL mode for concurrent read/write performance and stores JSON columns for complex fields (request, output, usage, etc.).
+The SQLite backend uses WAL mode for concurrent read/write performance. The PostgreSQL backend supports connection pooling and concurrent writers, making it suitable for deployments with multiple replicas. Both store JSON columns for complex fields (request, output, usage, etc.).
 
 ---
 
@@ -209,8 +221,8 @@ export EMBEDDING_MODEL=text-embedding-3-small  # default
 export MILVUS_ADDRESS=localhost:19530
 
 # Optional — persistent session store (default: in-memory)
-export SESSION_STORE_TYPE=sqlite
-export SESSION_STORE_DSN=data/responses.db
+export SESSION_STORE_TYPE=sqlite          # or "postgres"
+export SESSION_STORE_DSN=data/responses.db  # or "postgres://user:pass@host:5432/dbname?sslmode=disable"
 
 # Run
 ./bin/openresponses-gw-server
@@ -241,7 +253,7 @@ engine:
   timeout: 60s
 
 session_store:
-  type: sqlite               # "memory" (default) or "sqlite"
+  type: sqlite               # "sqlite" (default) or "postgres"
   dsn: data/responses.db
 ```
 

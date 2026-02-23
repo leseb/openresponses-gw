@@ -202,6 +202,7 @@ pkg/
 │   └── http/          # HTTP server
 ├── storage/           # Storage implementations
 │   ├── sqlite/        # SQLite session store
+│   ├── postgres/      # PostgreSQL session store
 │   └── memory/        # In-memory stores (prompts, connectors, vector stores)
 ├── filestore/         # File storage backends
 │   ├── memory/        # In-memory file store

@@ -50,6 +50,7 @@ or `/v1/responses`. The gateway adds state management, tool execution, and stora
 │                         Storage Layer                        │
 │  • In-Memory Store (default)                                 │
 │  • SQLite Store (persistent, pure Go)                        │
+│  • PostgreSQL Store (persistent, pgx/v5)                     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,6 +93,7 @@ Pluggable storage backends (`pkg/storage/`):
 
 - **memory/** — In-memory store for sessions, files, vectors, conversations, and prompts (default)
 - **sqlite/** — SQLite persistent store for sessions, conversations, and responses (pure Go via `modernc.org/sqlite`, no CGO required)
+- **postgres/** — PostgreSQL persistent store for sessions, conversations, and responses (via `pgx/v5`, supports connection pooling and concurrent writers)
 
 ## Deployment
 

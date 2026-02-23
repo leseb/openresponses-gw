@@ -32,32 +32,53 @@ Connect to any OpenAI-compatible backend via environment variables:
 
 ## Session Store Configuration
 
-By default, sessions, conversations, and responses are stored in memory. For persistence across restarts, use the SQLite backend:
+By default, sessions, conversations, and responses are stored in memory. For persistence across restarts, use SQLite or PostgreSQL:
 
 ```bash
+# SQLite
 export SESSION_STORE_TYPE=sqlite
 export SESSION_STORE_DSN=data/responses.db
+
+# PostgreSQL
+export SESSION_STORE_TYPE=postgres
+export SESSION_STORE_DSN="postgres://user:pass@host:5432/dbname?sslmode=disable"
 ```
 
 Or in `config.yaml`:
 
 ```yaml
+# SQLite
 session_store:
   type: sqlite
   dsn: data/responses.db
+
+# PostgreSQL
+session_store:
+  type: postgres
+  dsn: postgres://user:pass@host:5432/dbname?sslmode=disable
 ```
 
 | Backend | Persistence | Use Case |
 |---------|-------------|----------|
 | `memory` (default) | None — data lost on restart | Development, testing |
-| `sqlite` | Local disk (pure Go, no CGO) | Production, single-node deployments |
+| `sqlite` | Local disk (pure Go, no CGO) | Single-node deployments |
+| `postgres` | PostgreSQL database (via `pgx/v5`) | Production, multi-node deployments |
 
-When using Docker, mount a volume for the SQLite database:
+When using Docker with SQLite, mount a volume for the database:
 
 ```bash
 docker run -p 8080:8080 \
   -e SESSION_STORE_TYPE=sqlite \
   -e SESSION_STORE_DSN=/data/responses.db \
   -v $(pwd)/data:/data \
+  openresponses-gw:latest
+```
+
+When using Docker with PostgreSQL:
+
+```bash
+docker run -p 8080:8080 \
+  -e SESSION_STORE_TYPE=postgres \
+  -e SESSION_STORE_DSN="postgres://user:pass@host:5432/dbname?sslmode=disable" \
   openresponses-gw:latest
 ```
