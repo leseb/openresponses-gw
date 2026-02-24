@@ -1,0 +1,43 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeout: 60s
+
+engine:
+  model_endpoint: https://api.openai.com/v1
+  # api_key loaded from OPENAI_API_KEY environment variable
+  max_tokens: 4096
+  timeout: 60s
+
+# Optional: embedding service for vector search (RAG)
+# embedding:
+#   endpoint: https://api.openai.com/v1   # or EMBEDDING_ENDPOINT env var
+#   api_key: sk-...                       # or EMBEDDING_API_KEY env var
+#   model: text-embedding-3-small         # default
+#   dimensions: 1536                      # default
+
+# Optional: vector store backend
+# vector_store:
+#   type: milvus                          # "memory" (default) or "milvus"
+#   milvus_address: localhost:19530       # or MILVUS_ADDRESS env var
+
+# Optional: file storage backend
+# file_store:
+#   type: memory                          # "memory" (default), "filesystem", or "s3"
+#   base_dir: /tmp/gw-files              # filesystem only
+#   # s3_bucket: my-bucket               # S3/MinIO only
+#   # s3_region: us-east-1
+#   # s3_prefix: files/
+#   # s3_endpoint: http://localhost:9000  # for MinIO
+
+# Optional: web search provider (enables server-side web_search tool)
+# web_search:
+#   provider: brave                       # "brave" or "tavily"
+#   api_key: BSA...                       # or WEB_SEARCH_API_KEY env var
+
+# Optional: session store backend
+# session_store:
+#   type: sqlite                          # "sqlite" (default) or "postgres"
+#   dsn: data/responses.db                # SQLite file path
+#   # type: postgres
+#   # dsn: postgres://user:pass@host:5432/dbname?sslmode=disable

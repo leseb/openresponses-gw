@@ -32,6 +32,11 @@ engine:
 #   type: filesystem
 #   base_dir: /tmp/gw-files
 
+# Optional: web search provider
+# web_search:
+#   provider: brave                       # "brave" or "tavily"
+#   api_key: BSA...                       # or WEB_SEARCH_API_KEY env var
+
 # Optional: session store backend
 # session_store:
 #   type: sqlite                          # "sqlite" (default) or "postgres"
