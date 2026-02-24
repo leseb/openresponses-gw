@@ -90,7 +90,9 @@ What vSR does not implement — and what defines the full Responses API surface:
 | SSE streaming (24 event types) | No | Yes |
 | Agentic tool loops (multi-turn) | No | Yes (up to 10 iterations) |
 | Server-side `file_search` execution | No (delegates to upstream or pre-injects via RAG plugin) | Yes (local vector store query + embedding) |
+| Server-side `web_search` execution | No | Yes (Brave, Tavily) |
 | MCP tool execution in agentic loop | No (MCP used for classification) | Yes |
+| Citation annotations | No | Yes (url_citation, file_citation) |
 | Prompts API | No | Yes |
 | Conversations API (CRUD) | No | Yes |
 | Connectors API (MCP registry) | No | Yes |
@@ -102,11 +104,13 @@ that sit above format translation:
   `response.output_text.delta`, `response.completed`, etc.) enabling real-time
   incremental delivery
 - **Agentic loops**: the engine calls the LLM, intercepts tool calls
-  (`file_search`, MCP), executes them server-side, feeds results back, and
-  repeats — up to 10 iterations per request
+  (`file_search`, `web_search`, MCP), executes them server-side, feeds results
+  back, and repeats — up to 10 iterations per request
 - **Server-side tool execution**: `file_search` queries are embedded and run
-  against vector stores locally; MCP tools are dispatched to registered
-  connectors
+  against vector stores locally; `web_search` queries are executed via Brave or
+  Tavily; MCP tools are dispatched to registered connectors
+- **Citation annotations**: `url_citation` (from web_search) and `file_citation`
+  (from file_search) annotations attached to output text
 - **Higher-level APIs**: Prompts (versioned templates), Conversations (CRUD +
   item management), Connectors (MCP server registry)
 
@@ -147,7 +151,7 @@ helps prioritize development.
 | Tool | Llama Stack | openresponses-gw |
 |------|-------------|-----------------|
 | `file_search` | Yes — embeds query, searches vector store, injects ranked results | Yes — same pattern |
-| `web_search` | Yes — executes via Brave/Tavily, injects results | No — accepted but not executed |
+| `web_search` | Yes — executes via Brave/Tavily, injects results | Yes — executes via Brave/Tavily, injects results, attaches url_citation annotations |
 | MCP tools | Yes — with human-in-the-loop approval flows and tool listing reuse | Yes — basic execution only |
 | `code_interpreter` | Not in Responses API path | Not implemented |
 | `computer_use` | Not in Responses API path | Not implemented |
@@ -174,7 +178,7 @@ can produce silently incorrect results.
 |------------|-------------|-----------------|
 | Upload/retrieve/delete/list | Yes | Yes |
 | Storage backends | Disk, memory, S3-compatible | Filesystem, memory, S3 |
-| Content extraction | PDF, HTML, text, CSV, JSON, JSONL | Text and JSON only |
+| Content extraction | PDF, HTML, text, CSV, JSON, JSONL | PDF, HTML, text, CSV, JSON, JSONL |
 | Purpose filtering | `assistants`, `fine-tune`, `user_data`, `responses` | `assistants`, `user_data` |
 
 #### Higher-level APIs
@@ -204,33 +208,84 @@ deployment choice, not an architectural property of either project.
 
 #### Key takeaways
 
-1. **Llama Stack is more complete**: more vector store backends, working search
-   filters, keyword/hybrid search, web_search execution, MCP approval flows,
+1. **Llama Stack is more complete in some areas**: more vector store backends,
+   working search filters, keyword/hybrid search, MCP approval flows,
    guardrails, ABAC, prompt parameter resolution, incremental streaming
    persistence.
 
-2. **openresponses-gw's advantages are narrower**: Go single-binary deployment
-   (smaller image, no Python runtime), auto-generated OpenAPI spec with
-   conformance testing against the upstream OpenAI spec, and focused simplicity
-   (fewer concepts and dependencies).
+2. **openresponses-gw has closed several gaps**: web_search execution (Brave,
+   Tavily), content extraction (PDF, HTML, CSV, JSON/JSONL), citation
+   annotations (url_citation, file_citation), pass-through inference fields
+   (seed, stop, service_tier), and a generic provider registry for all pluggable
+   backends. Go single-binary deployment, auto-generated OpenAPI spec with
+   conformance testing, and focused simplicity remain architectural advantages.
 
-3. **Gaps to address**: search filters (currently silently ignored — correctness
-   issue), keyword/hybrid search, web_search execution, prompt parameter support,
-   incremental persistence during streaming, named function tool_choice.
+3. **Remaining gaps**: search filters (currently silently ignored — correctness
+   issue), keyword/hybrid search, prompt parameter support, incremental
+   persistence during streaming, named function tool_choice, MCP approval flows.
 
 4. **Different positioning**: Llama Stack is a full application platform with
    multi-provider support, safety, and access control. openresponses-gw is a
    focused Responses API service for environments that want to add Responses API
    support to existing vLLM deployments without adopting a full platform.
 
-## Why an ExtProc Adapter Is the Wrong Abstraction
+## Why an HTTP Service Is Preferred Over ExtProc
 
-### 1. We already bypass Envoy for the valuable features
+> **Update (2026-02-23):** Envoy v1.37.0 introduced
+> [`StreamedImmediateResponse`](https://www.envoyproxy.io/docs/envoy/v1.37.0/api-v3/service/ext_proc/v3/external_processor.proto#envoy-v3-api-msg-service-ext-proc-v3-streamedimmediateresponse),
+> which allows an ExtProc to stream locally-generated responses incrementally.
+> This removes the streaming limitation that was the strongest technical
+> argument against ExtProc during prototyping (the old `ImmediateResponse`
+> buffered the entire response). The vSR project is pursuing this for streaming
+> Chat Completions
+> ([vllm-project/semantic-router#1082](https://github.com/vllm-project/semantic-router/issues/1082)).
+>
+> With `StreamedImmediateResponse`, ExtProc is **technically viable** for
+> everything openresponses-gw does — including SSE streaming and agentic tool
+> loops. The remaining arguments below are **architectural preferences**
+> (decoupling, simplicity, independent failure domains) rather than hard
+> technical constraints. Both ExtProc and HTTP upstream achieve the same
+> deployment topology (behind Envoy with auth and rate limiting); the HTTP
+> service is simpler and more decoupled.
 
-Streaming and agentic tool loops use `ImmediateResponse` — the ExtProc makes
-backend calls directly, skipping Envoy's load balancing, retries, and
-observability. For the most valuable features, we are an HTTP server with extra
-steps.
+### 1. Outbound calls bypass Envoy — solvable, but converges to HTTP upstream
+
+The ExtProc makes its own HTTP calls to inference backends, MCP servers,
+embedding APIs, and search providers. These outbound calls bypass Envoy's
+backend management — no load balancing, no retries, no observability from
+Envoy's perspective. With `StreamedImmediateResponse`, client-facing SSE
+streaming flows through Envoy properly, but the backend calls that generate
+that content do not.
+
+**This is solvable.** Envoy supports per-route ExtProc configuration via
+[`ExtProcPerRoute`](https://www.envoyproxy.io/docs/envoy/v1.37.0/api-v3/extensions/filters/http/ext_proc/v3/ext_proc.proto#envoy-v3-api-msg-extensions-filters-http-ext-proc-v3-extprocperroute).
+The approach:
+
+1. Enable the Responses API ExtProc filter globally on the listener.
+2. Add a per-route override on `/v1/chat/completions` (and other backend paths)
+   that sets `disabled: true`, disabling the ExtProc for those routes. These
+   routes are handled by BBR+vSR as normal inference traffic.
+3. The ExtProc, when processing a `/v1/responses` request, makes its backend
+   LLM calls to `localhost:<envoy-port>/v1/chat/completions`. Because the
+   ExtProc is disabled on that route, the request flows through Envoy's normal
+   proxy pipeline (BBR, vSR, load balancing, observability) without triggering
+   a recursive ExtProc invocation.
+4. Alternatively, Envoy
+   [internal listeners](https://www.envoyproxy.io/docs/envoy/v1.37.0/configuration/other_features/internal_listener)
+   could route ExtProc outbound calls through a separate filter chain within
+   the same Envoy process, avoiding the external network hop entirely.
+
+This gives the ExtProc access to Envoy's backend management for its outbound
+calls. However, **the resulting topology converges to the same architecture as
+the HTTP service approach**: in both cases, a service behind Envoy makes backend
+calls that flow through Envoy. The ExtProc version routes through per-route
+filter chain rules and gRPC transport; the HTTP upstream version routes through
+standard HTTP upstream configuration. The functional outcome is identical — the
+difference is transport complexity (gRPC + per-route rules vs. plain HTTP).
+
+An HTTP upstream service has the same outbound routing option (point the backend
+URL at the Envoy endpoint) without requiring per-route ExtProc disabling rules
+or internal listener configuration.
 
 ### 2. GIE owns the ExtProc space
 
@@ -274,7 +329,7 @@ transformations. openresponses-gw's core operations are none of these things:
 
 | Capability | What it needs | BBR plugin support |
 |------------|--------------|-------------------|
-| **SSE streaming** | Incremental event forwarding from backend to client | No — `Execute()` operates on complete request bodies. No streaming hook exists. The old ExtProc adapter already proved this: it had to use `ImmediateResponse` to bypass the filter chain for streaming, buffering all events before delivery. |
+| **SSE streaming** | Incremental event forwarding from backend to client | No — `Execute()` operates on complete request bodies. No streaming hook exists in the BBR plugin interface. (Note: Envoy v1.37.0's `StreamedImmediateResponse` solves this at the ExtProc protocol level, but BBR plugins do not have access to it — they return bytes, not streaming responses.) |
 | **Agentic tool loops** | Multiple sequential backend calls per single client request (call LLM → tool call → execute tool → call LLM → ..., up to 10 iterations) | No — `Execute()` is called once per request. There is no loop primitive, no ability to make outbound calls, and no mechanism to interleave backend requests with tool execution. |
 | **Response processing** | Save conversation state, rewrite IDs, manage lifecycle events, append to vector stores after the backend responds | No — `Execute()` only processes the inbound request body. The signature has no response hook. |
 | **Persistent state** | SQLite/memory stores for conversations and responses, Milvus connections for vector search, MCP client sessions, file storage backends (S3, filesystem) | No — BBR plugins are stateless transformations. Embedding database connections, storage backends, and long-lived client sessions inside a request processing plugin conflates concerns and couples failure modes. |
@@ -307,7 +362,7 @@ does for its supported providers.
 | BBR capability gap | What we need | Consequence of adding it |
 |-------------------|-------------|------------------------|
 | **Response hooks** | Process responses after the backend replies (save state, rewrite IDs, manage lifecycle events) | Doubles the plugin interface surface; plugins become bidirectional filters rather than request transformers |
-| **Streaming primitives** | Incremental SSE event forwarding between backend and client, or a "take over this request" escape hatch | Fundamentally changes BBR's execution model from synchronous body transformation to asynchronous event streaming |
+| **Streaming primitives** | Incremental SSE event forwarding between backend and client, or a "take over this request" escape hatch | Fundamentally changes BBR's execution model from synchronous body transformation to asynchronous event streaming. (Note: `StreamedImmediateResponse` provides this at the ExtProc level but not within BBR's plugin chain.) |
 | **Outbound call capability** | Make HTTP calls to backends, MCP servers, embedding APIs during `Execute()` | Turns plugins from pure transformations into networked services with their own failure modes, timeouts, and retry logic |
 | **Persistent state access** | Shared storage interface for conversations, responses, vector stores, files | Introduces statefulness into a stateless plugin chain; requires lifecycle management (connections, migrations, cleanup) |
 | **Multi-call orchestration** | Execute multiple sequential backend calls per client request (agentic tool loops) | Requires a loop primitive that does not exist; the plugin would need to control the request lifecycle, not just transform a body |
@@ -408,7 +463,8 @@ covering a distinct concern:
   deployments
 
 The HTTP server is the right abstraction for stateful, agentic API surfaces.
-The project's viability depends on closing the feature gaps identified in the
-Llama Stack comparison — particularly search filter correctness, search
-capabilities, and web_search execution — while maintaining the operational
-simplicity that is its primary advantage.
+Several feature gaps identified in the original Llama Stack comparison have been
+closed (web_search execution, content extraction, citation annotations,
+pass-through inference fields, provider registry). The remaining gaps — search
+filter correctness, keyword/hybrid search, MCP approval flows, and incremental
+streaming persistence — are the next priorities for reaching full parity.
