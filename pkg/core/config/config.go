@@ -19,6 +19,13 @@ type Config struct {
 	VectorStore  VectorStoreConfig  `yaml:"vector_store"`
 	FileStore    FileStoreConfig    `yaml:"file_store"`
 	SessionStore SessionStoreConfig `yaml:"session_store"`
+	WebSearch    WebSearchConfig    `yaml:"web_search"`
+}
+
+// WebSearchConfig contains web search provider configuration
+type WebSearchConfig struct {
+	Provider string `yaml:"provider"` // "brave" or "tavily"
+	APIKey   string `yaml:"api_key"`
 }
 
 // SessionStoreConfig contains session store backend configuration
@@ -141,6 +148,14 @@ func Load(path string) (*Config, error) {
 		cfg.SessionStore.DSN = v
 	}
 
+	// Web search env overrides
+	if v := os.Getenv("WEB_SEARCH_PROVIDER"); v != "" {
+		cfg.WebSearch.Provider = v
+	}
+	if v := os.Getenv("WEB_SEARCH_API_KEY"); v != "" {
+		cfg.WebSearch.APIKey = v
+	}
+
 	// Apply defaults
 	applyEngineDefaults(&cfg.Engine)
 	applyEmbeddingDefaults(&cfg.Embedding)
@@ -198,6 +213,11 @@ func Default() *Config {
 	}
 	applyEngineDefaults(&engCfg)
 
+	wsCfg := WebSearchConfig{
+		Provider: os.Getenv("WEB_SEARCH_PROVIDER"),
+		APIKey:   os.Getenv("WEB_SEARCH_API_KEY"),
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
@@ -209,6 +229,7 @@ func Default() *Config {
 		VectorStore:  vsCfg,
 		FileStore:    fsCfg,
 		SessionStore: ssCfg,
+		WebSearch:    wsCfg,
 	}
 }
 

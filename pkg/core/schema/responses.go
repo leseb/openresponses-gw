@@ -61,10 +61,15 @@ type ResponseRequest struct {
 	PresencePenalty *float64 `json:"presence_penalty,omitempty"`
 
 	// Inference parameters forwarded to the backend (vLLM)
-	Truncation        *string    `json:"truncation,omitempty"`
-	ParallelToolCalls *bool      `json:"parallel_tool_calls,omitempty"`
-	Text              *TextField `json:"text,omitempty"`
-	TopLogprobs       *int       `json:"top_logprobs,omitempty"`
+	Truncation        *string     `json:"truncation,omitempty"`
+	ParallelToolCalls *bool       `json:"parallel_tool_calls,omitempty"`
+	Text              *TextField  `json:"text,omitempty"`
+	TopLogprobs       *int        `json:"top_logprobs,omitempty"`
+	Seed              *int        `json:"seed,omitempty"`
+	Stop              interface{} `json:"stop,omitempty" swaggertype:"object"` // string or []string
+
+	// Service tier preference
+	ServiceTier *string `json:"service_tier,omitempty"`
 
 	// Whether the gateway should persist the response (gateway-managed)
 	Store *bool `json:"store,omitempty"`
@@ -128,6 +133,9 @@ type Response struct {
 	ParallelToolCalls bool      `json:"parallel_tool_calls"` // required, default true
 	Text              TextField `json:"text"`                // required, default {format:{type:"text"}}
 	TopLogprobs       int       `json:"top_logprobs"`        // required, default 0
+
+	// Service tier (echoed from request)
+	ServiceTier *string `json:"service_tier"` // nullable
 
 	// Gateway-managed persistence flag
 	Store bool `json:"store"` // required, default true
@@ -368,12 +376,15 @@ type TextField struct {
 }
 
 // Annotation represents a citation produced by tool execution (web search, file search).
+// Type is either "url_citation" (web_search) or "file_citation" (file_search).
 type Annotation struct {
-	Type       string `json:"type"`
-	StartIndex int    `json:"start_index"`
-	EndIndex   int    `json:"end_index"`
-	URL        string `json:"url"`
-	Title      string `json:"title"`
+	Type       string  `json:"type"`
+	StartIndex int     `json:"start_index"`
+	EndIndex   int     `json:"end_index"`
+	URL        string  `json:"url,omitempty"`
+	Title      string  `json:"title,omitempty"`
+	FileID     *string `json:"file_id,omitempty"`
+	Filename   *string `json:"filename,omitempty"`
 }
 
 // Streaming Event Types (24 event types per Open Responses spec)

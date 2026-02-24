@@ -18,6 +18,8 @@ type ChatCompletionRequest struct {
 	ParallelToolCalls *bool                `json:"parallel_tool_calls,omitempty"`
 	TopLogprobs       *int                 `json:"top_logprobs,omitempty"`
 	Logprobs          *bool                `json:"logprobs,omitempty"`
+	Seed              *int                 `json:"seed,omitempty"`
+	Stop              interface{}          `json:"stop,omitempty"`
 	StreamOptions     *ChatStreamOptions   `json:"stream_options,omitempty"`
 }
 
@@ -80,12 +82,13 @@ type ChatCompletionToolCallFunction struct {
 
 // ChatCompletionResponse represents a non-streaming response from /v1/chat/completions.
 type ChatCompletionResponse struct {
-	ID      string                 `json:"id"`
-	Object  string                 `json:"object"`
-	Model   string                 `json:"model"`
-	Created int64                  `json:"created"`
-	Choices []ChatCompletionChoice `json:"choices"`
-	Usage   *ChatCompletionUsage   `json:"usage,omitempty"`
+	ID          string                 `json:"id"`
+	Object      string                 `json:"object"`
+	Model       string                 `json:"model"`
+	Created     int64                  `json:"created"`
+	Choices     []ChatCompletionChoice `json:"choices"`
+	Usage       *ChatCompletionUsage   `json:"usage,omitempty"`
+	ServiceTier *string                `json:"service_tier,omitempty"`
 }
 
 // ChatCompletionChoice represents a choice in a non-streaming response.

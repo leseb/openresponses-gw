@@ -320,6 +320,8 @@ func ConvertToChatRequest(req *ResponsesAPIRequest) *ChatCompletionRequest {
 		FrequencyPenalty:  req.FrequencyPenalty,
 		PresencePenalty:   req.PresencePenalty,
 		ParallelToolCalls: req.ParallelToolCalls,
+		Seed:              req.Seed,
+		Stop:              req.Stop,
 	}
 
 	// Handle logprobs

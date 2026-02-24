@@ -37,6 +37,8 @@ type ResponsesAPIRequest struct {
 	Store             *bool           `json:"store,omitempty"`
 	Include           []string        `json:"include,omitempty"`
 	TopLogprobs       *int            `json:"top_logprobs,omitempty"`
+	Seed              *int            `json:"seed,omitempty"`
+	Stop              interface{}     `json:"stop,omitempty"`
 }
 
 // ToolParam defines a function tool sent to the backend.

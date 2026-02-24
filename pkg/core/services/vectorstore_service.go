@@ -9,6 +9,7 @@ import (
 
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/filestore"
+	"github.com/leseb/openresponses-gw/pkg/filestore/extractor"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 )
 
@@ -65,7 +66,19 @@ func (s *VectorStoreService) IngestFile(ctx context.Context, vectorStoreID, file
 		return fmt.Errorf("read file %s: %w", fileID, err)
 	}
 
-	text := string(content)
+	// Extract text using format-aware extraction (PDF, HTML, CSV, JSON, etc.)
+	var text string
+	file, fileErr := s.files.GetFile(ctx, fileID)
+	if fileErr == nil && file.Filename != "" {
+		extracted, extractErr := extractor.ExtractText(content, file.Filename)
+		if extractErr == nil {
+			text = extracted
+		} else {
+			text = string(content) // fallback to raw text
+		}
+	} else {
+		text = string(content)
+	}
 	if text == "" {
 		return nil
 	}

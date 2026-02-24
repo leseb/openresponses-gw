@@ -34,20 +34,34 @@ type VectorSearcher interface {
 	Search(ctx context.Context, vectorStoreID, query string, topK int) ([]vectorstore.SearchResult, error)
 }
 
+// WebSearcher performs web searches.
+// Implemented by websearch.Provider.
+type WebSearcher interface {
+	Search(ctx context.Context, query string, maxResults int) ([]WebSearchResult, error)
+}
+
+// WebSearchResult represents a single web search result.
+type WebSearchResult struct {
+	Title   string
+	URL     string
+	Snippet string
+}
+
 // Engine is the core orchestration engine for the Responses API.
 // It calls a /v1/responses-compatible backend for inference and adds
-// persistence, conversations, MCP tools, file_search, and prompts.
+// persistence, conversations, MCP tools, file_search, web_search, and prompts.
 type Engine struct {
 	config       *config.EngineConfig
 	sessions     state.SessionStore
 	llm          api.ResponsesAPIClient
 	connectors   ConnectorLookup // nil-safe: nil means no MCP support
 	vectorSearch VectorSearcher  // nil-safe: nil means no file_search support
+	webSearch    WebSearcher     // nil-safe: nil means no web_search support
 }
 
 // New creates a new Engine instance.
-// The connectors and vectorSearch parameters are optional (nil disables the feature).
-func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup, vectorSearch VectorSearcher) (*Engine, error) {
+// The connectors, vectorSearch, and webSearch parameters are optional (nil disables the feature).
+func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup, vectorSearch VectorSearcher, webSearch WebSearcher) (*Engine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -72,6 +86,7 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		llm:          llm,
 		connectors:   connectors,
 		vectorSearch: vectorSearch,
+		webSearch:    webSearch,
 	}, nil
 }
 
@@ -124,6 +139,9 @@ func echoRequestParams(resp *schema.Response, req *schema.ResponseRequest) {
 	if req.TopLogprobs != nil {
 		resp.TopLogprobs = *req.TopLogprobs
 	}
+	// Service tier (echoed from request)
+	resp.ServiceTier = req.ServiceTier
+
 	// Gateway-managed persistence flag
 	if req.Store != nil {
 		resp.Store = *req.Store
@@ -375,6 +393,8 @@ func buildResponsesAPIRequest(model string, messages []api.Message, req *schema.
 	}
 	apiReq.Include = req.Include
 	apiReq.TopLogprobs = req.TopLogprobs
+	apiReq.Seed = req.Seed
+	apiReq.Stop = req.Stop
 
 	// Reasoning
 	if req.Reasoning != nil && req.Reasoning.Effort != nil {
@@ -1059,7 +1079,8 @@ func (e *Engine) expandFileSearchTools(tools []schema.ResponsesToolParam) (
 }
 
 // executeFileSearch runs a file_search tool call against all configured vector stores.
-func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, query string) string {
+// Returns the formatted text result and the raw search results for annotation tracking.
+func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, query string) (string, []vectorstore.SearchResult) {
 	var allResults []vectorstore.SearchResult
 	for _, vsID := range cfg.VectorStoreIDs {
 		results, err := e.vectorSearch.Search(ctx, vsID, query, cfg.MaxNumResults)
@@ -1070,7 +1091,7 @@ func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, qu
 	}
 
 	if len(allResults) == 0 {
-		return "No relevant results found."
+		return "No relevant results found.", nil
 	}
 
 	// Format results as text
@@ -1081,7 +1102,150 @@ func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, qu
 		}
 		fmt.Fprintf(&sb, "[File: %s, Score: %.4f]\n%s", r.FileID, r.Score, r.Content)
 	}
-	return sb.String()
+	return sb.String(), allResults
+}
+
+// webSearchConfig holds the configuration for a web_search tool.
+type webSearchConfig struct {
+	MaxResults int
+}
+
+// expandWebSearchTools replaces web_search tool entries with a synthetic
+// function tool and records the configuration for server-side execution.
+func (e *Engine) expandWebSearchTools(tools []schema.ResponsesToolParam) (
+	[]schema.ResponsesToolParam, map[string]webSearchConfig,
+) {
+	if e.webSearch == nil {
+		return tools, nil
+	}
+
+	var expanded []schema.ResponsesToolParam
+	configs := map[string]webSearchConfig{}
+
+	for _, t := range tools {
+		if t.Type != "web_search" {
+			expanded = append(expanded, t)
+			continue
+		}
+
+		// Map search_context_size to max results
+		maxResults := 5 // default: medium
+		if t.SearchContextSize != nil {
+			switch *t.SearchContextSize {
+			case "low":
+				maxResults = 3
+			case "high":
+				maxResults = 10
+			}
+		}
+		configs["web_search"] = webSearchConfig{
+			MaxResults: maxResults,
+		}
+
+		// Replace with a synthetic function tool
+		desc := "Search the web for current information based on a query."
+		expanded = append(expanded, schema.ResponsesToolParam{
+			Type:        "function",
+			Name:        "web_search",
+			Description: &desc,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "The search query to find relevant web content.",
+					},
+				},
+				"required":             []string{"query"},
+				"additionalProperties": false,
+			},
+		})
+	}
+
+	if len(configs) == 0 {
+		return tools, nil
+	}
+
+	return expanded, configs
+}
+
+// executeWebSearch runs a web search and formats the results for the LLM.
+func (e *Engine) executeWebSearch(ctx context.Context, cfg webSearchConfig, query string) (string, []WebSearchResult) {
+	results, err := e.webSearch.Search(ctx, query, cfg.MaxResults)
+	if err != nil {
+		return fmt.Sprintf("Web search error: %v", err), nil
+	}
+
+	if len(results) == 0 {
+		return "No web search results found.", nil
+	}
+
+	var sb strings.Builder
+	for i, r := range results {
+		if i > 0 {
+			sb.WriteString("\n---\n")
+		}
+		fmt.Fprintf(&sb, "[%s](%s)\n%s", r.Title, r.URL, r.Snippet)
+	}
+	return sb.String(), results
+}
+
+// searchSource represents a citation source from tool execution.
+type searchSource struct {
+	Type     string // "url_citation" or "file_citation"
+	URL      string
+	Title    string
+	FileID   string
+	Filename string
+}
+
+// attachAnnotations adds citation annotations to all output_text content parts.
+func attachAnnotations(output []schema.ItemField, sources []searchSource) {
+	if len(sources) == 0 {
+		return
+	}
+
+	// Deduplicate sources
+	seen := make(map[string]bool)
+	var unique []searchSource
+	for _, s := range sources {
+		key := s.Type + "|" + s.URL + "|" + s.FileID
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, s)
+		}
+	}
+
+	for i := range output {
+		if output[i].Type != "message" {
+			continue
+		}
+		for j := range output[i].Content {
+			cp := &output[i].Content[j]
+			if cp.Type != "output_text" || cp.Text == nil {
+				continue
+			}
+			textLen := len(*cp.Text)
+			if textLen == 0 {
+				continue
+			}
+			for _, s := range unique {
+				ann := schema.Annotation{
+					Type:       s.Type,
+					StartIndex: 0,
+					EndIndex:   textLen,
+				}
+				if s.Type == "url_citation" {
+					ann.URL = s.URL
+					ann.Title = s.Title
+				} else if s.Type == "file_citation" {
+					ann.FileID = &s.FileID
+					ann.Filename = &s.Filename
+				}
+				cp.Annotations = append(cp.Annotations, ann)
+			}
+		}
+	}
 }
 
 // parseJSONArgs parses a JSON string into a map for MCP tool call arguments.
@@ -1163,6 +1327,12 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
 	}
 
+	// 7c. Expand web_search tools into function tools
+	var webSearchConfigs map[string]webSearchConfig
+	if len(expandedTools) > 0 {
+		expandedTools, webSearchConfigs = e.expandWebSearchTools(expandedTools)
+	}
+
 	// 8. Agentic loop
 	maxIters := defaultMaxToolCalls
 	if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
@@ -1171,6 +1341,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 
 	accumulatedOutputTokens := 0
 	var allOutput []schema.ItemField
+	var allSources []searchSource
 
 	for iter := 0; iter < maxIters; iter++ {
 		// Build Responses API request
@@ -1207,6 +1378,7 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 			for _, tc := range toolCalls {
 				mcpClient, isMCP := mcpToolNames[tc.Name]
 				fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
+				wsCfg, isWebSearch := webSearchConfigs[tc.Name]
 
 				if isMCP {
 					// Execute MCP tool server-side
@@ -1259,7 +1431,65 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 				} else if isFileSearch {
 					args := parseJSONArgs(tc.Arguments)
 					query, _ := args["query"].(string)
-					outputStr := e.executeFileSearch(ctx, fsCfg, query)
+					outputStr, fsResults := e.executeFileSearch(ctx, fsCfg, query)
+
+					// Collect file_citation sources
+					for _, r := range fsResults {
+						allSources = append(allSources, searchSource{
+							Type:   "file_citation",
+							FileID: r.FileID,
+						})
+					}
+
+					completedStatus := "completed"
+					callID := tc.CallID
+					funcName := tc.Name
+					funcArgs := tc.Arguments
+
+					allOutput = append(allOutput, schema.ItemField{
+						Type:      "function_call",
+						ID:        generateID("fc_"),
+						CallID:    &callID,
+						Name:      &funcName,
+						Arguments: &funcArgs,
+						Status:    &completedStatus,
+					})
+					allOutput = append(allOutput, schema.ItemField{
+						Type:   "function_call_output",
+						ID:     generateID("fco_"),
+						CallID: &callID,
+						Output: &outputStr,
+					})
+
+					messages = append(messages, api.Message{
+						Role: "assistant",
+						ToolCalls: []api.ToolCall{{
+							ID:   tc.CallID,
+							Type: "function",
+							Function: api.ToolCallFunction{
+								Name:      tc.Name,
+								Arguments: tc.Arguments,
+							},
+						}},
+					})
+					messages = append(messages, api.Message{
+						Role:       "tool",
+						Content:    outputStr,
+						ToolCallID: tc.CallID,
+					})
+				} else if isWebSearch {
+					args := parseJSONArgs(tc.Arguments)
+					query, _ := args["query"].(string)
+					outputStr, wsResults := e.executeWebSearch(ctx, wsCfg, query)
+
+					// Collect url_citation sources
+					for _, r := range wsResults {
+						allSources = append(allSources, searchSource{
+							Type:  "url_citation",
+							URL:   r.URL,
+							Title: r.Title,
+						})
+					}
 
 					completedStatus := "completed"
 					callID := tc.CallID
@@ -1364,7 +1594,10 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 		break
 	}
 
-	// 9. Set output
+	// 9. Attach annotations from search sources
+	attachAnnotations(allOutput, allSources)
+
+	// 10. Set output
 	resp.Output = allOutput
 	if resp.Output == nil {
 		resp.Output = make([]schema.ItemField, 0)
@@ -1518,6 +1751,12 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			expandedTools, fileSearchConfigs = e.expandFileSearchTools(expandedTools)
 		}
 
+		// Expand web_search tools
+		var webSearchConfigs map[string]webSearchConfig
+		if len(expandedTools) > 0 {
+			expandedTools, webSearchConfigs = e.expandWebSearchTools(expandedTools)
+		}
+
 		// Agentic loop
 		maxIters := defaultMaxToolCalls
 		if req.MaxToolCalls != nil && *req.MaxToolCalls > 0 {
@@ -1525,6 +1764,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		}
 
 		var allOutput []schema.ItemField
+		var allSources []searchSource
 
 		for iter := 0; iter < maxIters; iter++ {
 			// Build Responses API request
@@ -1699,6 +1939,7 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				for _, tc := range toolCalls {
 					mcpClient, isMCP := mcpToolNames[tc.Name]
 					fsCfg, isFileSearch := fileSearchConfigs[tc.Name]
+					wsCfg, isWebSearch := webSearchConfigs[tc.Name]
 
 					if isMCP {
 						hasServerSide = true
@@ -1771,7 +2012,84 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 						hasServerSide = true
 						args := parseJSONArgs(tc.Arguments)
 						query, _ := args["query"].(string)
-						outputStr := e.executeFileSearch(ctx, fsCfg, query)
+						outputStr, fsResults := e.executeFileSearch(ctx, fsCfg, query)
+
+						// Collect file_citation sources
+						for _, r := range fsResults {
+							allSources = append(allSources, searchSource{
+								Type:   "file_citation",
+								FileID: r.FileID,
+							})
+						}
+
+						completedStatus := "completed"
+						callID := tc.CallID
+						funcName := tc.Name
+						funcArgs := tc.Arguments
+
+						allOutput = append(allOutput, schema.ItemField{
+							Type:      "function_call",
+							ID:        generateID("fc_"),
+							CallID:    &callID,
+							Name:      &funcName,
+							Arguments: &funcArgs,
+							Status:    &completedStatus,
+						})
+
+						outputItem := schema.ItemField{
+							Type:   "function_call_output",
+							ID:     generateID("fco_"),
+							CallID: &callID,
+							Output: &outputStr,
+						}
+						allOutput = append(allOutput, outputItem)
+
+						events <- &schema.ResponseOutputItemAddedStreamingEvent{
+							Type:           "response.output_item.added",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+						events <- &schema.ResponseOutputItemDoneStreamingEvent{
+							Type:           "response.output_item.done",
+							SequenceNumber: seqNum,
+							OutputIndex:    len(allOutput) - 1,
+							Item:           outputItem,
+						}
+						seqNum++
+
+						messages = append(messages, api.Message{
+							Role: "assistant",
+							ToolCalls: []api.ToolCall{{
+								ID:   tc.CallID,
+								Type: "function",
+								Function: api.ToolCallFunction{
+									Name:      tc.Name,
+									Arguments: tc.Arguments,
+								},
+							}},
+						})
+						messages = append(messages, api.Message{
+							Role:       "tool",
+							Content:    outputStr,
+							ToolCallID: tc.CallID,
+						})
+
+					} else if isWebSearch {
+						hasServerSide = true
+						args := parseJSONArgs(tc.Arguments)
+						query, _ := args["query"].(string)
+						outputStr, wsResults := e.executeWebSearch(ctx, wsCfg, query)
+
+						// Collect url_citation sources
+						for _, r := range wsResults {
+							allSources = append(allSources, searchSource{
+								Type:  "url_citation",
+								URL:   r.URL,
+								Title: r.Title,
+							})
+						}
 
 						completedStatus := "completed"
 						callID := tc.CallID
@@ -1897,6 +2215,37 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 			}
 
 			break
+		}
+
+		// Attach annotations from search sources
+		attachAnnotations(allOutput, allSources)
+
+		// Emit annotation streaming events
+		for i := range allOutput {
+			if allOutput[i].Type != "message" {
+				continue
+			}
+			for j := range allOutput[i].Content {
+				cp := allOutput[i].Content[j]
+				if cp.Type != "output_text" {
+					continue
+				}
+				for _, ann := range cp.Annotations {
+					events <- &schema.ResponseOutputTextAnnotationAddedStreamingEvent{
+						Type:         "response.output_text_annotation.added",
+						ResponseID:   respID,
+						OutputIndex:  i,
+						ContentIndex: j,
+						Annotation: schema.ContentPart{
+							Type:        "output_text_annotation",
+							StartIndex:  &ann.StartIndex,
+							EndIndex:    &ann.EndIndex,
+							Annotations: []schema.Annotation{ann},
+						},
+					}
+					seqNum++
+				}
+			}
 		}
 
 		// Update response

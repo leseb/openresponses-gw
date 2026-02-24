@@ -29,6 +29,7 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
 	milvusbackend "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
+	"github.com/leseb/openresponses-gw/pkg/websearch"
 )
 
 var (
@@ -205,12 +206,27 @@ func main() {
 		logger.Info("Initialized vector store service")
 	}
 
+	// Initialize web search provider (optional)
+	var webSearchProvider engine.WebSearcher
+	if cfg.WebSearch.Provider != "" && cfg.WebSearch.APIKey != "" {
+		switch cfg.WebSearch.Provider {
+		case "brave":
+			webSearchProvider = &webSearchAdapter{provider: websearch.NewBraveProvider(cfg.WebSearch.APIKey)}
+			logger.Info("Initialized Brave web search provider")
+		case "tavily":
+			webSearchProvider = &webSearchAdapter{provider: websearch.NewTavilyProvider(cfg.WebSearch.APIKey)}
+			logger.Info("Initialized Tavily web search provider")
+		default:
+			logger.Warn("Unknown web search provider", "provider", cfg.WebSearch.Provider)
+		}
+	}
+
 	// Initialize engine (pass vectorStoreService as VectorSearcher)
 	var vectorSearcher engine.VectorSearcher
 	if vectorStoreService != nil {
 		vectorSearcher = vectorStoreService
 	}
-	eng, err := engine.New(&cfg.Engine, store, connectorsStore, vectorSearcher)
+	eng, err := engine.New(&cfg.Engine, store, connectorsStore, vectorSearcher, webSearchProvider)
 	if err != nil {
 		logger.Error("Failed to initialize engine", "error", err)
 		os.Exit(1)
@@ -257,4 +273,25 @@ func main() {
 	}
 
 	logger.Info("Server stopped gracefully")
+}
+
+// webSearchAdapter adapts websearch.Provider to engine.WebSearcher.
+type webSearchAdapter struct {
+	provider websearch.Provider
+}
+
+func (a *webSearchAdapter) Search(ctx context.Context, query string, maxResults int) ([]engine.WebSearchResult, error) {
+	results, err := a.provider.Search(ctx, query, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]engine.WebSearchResult, len(results))
+	for i, r := range results {
+		out[i] = engine.WebSearchResult{
+			Title:   r.Title,
+			URL:     r.URL,
+			Snippet: r.Snippet,
+		}
+	}
+	return out, nil
 }

@@ -40,6 +40,10 @@ components:
       properties:
         end_index:
           type: integer
+        file_id:
+          type: string
+        filename:
+          type: string
         start_index:
           type: integer
         title:
@@ -756,6 +760,9 @@ components:
           anyOf:
           - $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningConfig'
           - type: "null"
+        service_tier:
+          description: Service tier (echoed from request)
+          type: string
         status:
           description: 'Status: "queued", "in_progress", "completed", "failed", "incomplete"'
           type: string
@@ -834,6 +841,14 @@ components:
           type: string
         reasoning:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningParam'
+        seed:
+          type: integer
+        service_tier:
+          description: Service tier preference
+          type: string
+        stop:
+          description: string or []string
+          type: object
         store:
           description: Whether the gateway should persist the response (gateway-managed)
           type: boolean
