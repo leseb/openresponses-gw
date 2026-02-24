@@ -30,6 +30,15 @@ Connect to any OpenAI-compatible backend via environment variables:
 | Ollama | `http://localhost:11434/v1` | Not needed |
 | vLLM | `http://your-server:8000/v1` | Optional |
 
+## Web Search Configuration
+
+Enable server-side web_search tool execution:
+
+```bash
+export WEB_SEARCH_PROVIDER=brave   # or "tavily"
+export WEB_SEARCH_API_KEY="BSA..." # provider API key
+```
+
 ## Session Store Configuration
 
 By default, sessions, conversations, and responses are stored in memory. For persistence across restarts, use SQLite or PostgreSQL:

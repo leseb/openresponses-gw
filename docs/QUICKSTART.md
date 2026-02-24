@@ -264,12 +264,12 @@ make lint
 └── deployments/           # Docker
 ```
 
-## Current Limitations
+## Supported Features
 
-The following are areas with ongoing development:
-
-- ❌ Tool execution (file search, web search, etc.) — partially implemented
-- ❌ Advanced RAG pipelines
+- Server-side tool execution: file_search, web_search (Brave/Tavily), MCP tools
+- Content extraction for vector ingestion: PDF, HTML, CSV, JSON/JSONL
+- Citation annotations: url_citation (web_search), file_citation (file_search)
+- Pass-through inference fields: seed, stop, service_tier
 
 ## What Works Now
 

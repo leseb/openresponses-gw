@@ -18,7 +18,7 @@ or `/v1/responses`. The gateway adds state management, tool execution, and stora
 ┌─────────────────────────▼────────────────────────────────────┐
 │                  Core Engine (Stateful Tier)                  │
 │  • Response & Conversation storage                           │
-│  • Agentic tool loop (MCP, file_search)                      │
+│  • Agentic tool loop (MCP, file_search, web_search)          │
 │  • Connectors (MCP registry)                                 │
 │  • Files + Vector Stores                                     │
 │  • Prompts API                                               │
@@ -64,7 +64,7 @@ The HTTP adapter (`pkg/adapters/http/`) provides routing, SSE streaming, and Ope
 
 Gateway-agnostic business logic (`pkg/core/`):
 
-- **engine/** — Main orchestration: forwards requests to the inference backend, handles agentic tool calling loops (MCP, file_search), manages streaming by forwarding native SSE events
+- **engine/** — Main orchestration: forwards requests to the inference backend, handles agentic tool calling loops (MCP, file_search, web_search), manages streaming by forwarding native SSE events, attaches citation annotations to output text
 - **schema/** — API type definitions for Responses, Files, Vector Stores, Conversations, Prompts
 - **config/** — Configuration loading from YAML files and environment variables
 - **api/** — Backend client interface and format conversion:
@@ -83,9 +83,28 @@ Pluggable vector search backends (`pkg/vectorstore/`):
 - **memory/** — No-op backend (default when vector search is not configured)
 - **milvus/** — Milvus implementation with HNSW index and cosine similarity
 
-**VectorStoreService** (`pkg/core/services/`) coordinates the full ingestion pipeline: read file content → chunk text → embed via OpenAI-compatible API → insert into backend. Search follows the reverse path: embed query → vector similarity search → return ranked results.
+**VectorStoreService** (`pkg/core/services/`) coordinates the full ingestion pipeline: read file content → extract text (PDF, HTML, CSV, JSON/JSONL via `pkg/filestore/extractor/`) → chunk text → embed via OpenAI-compatible API → insert into backend. Search follows the reverse path: embed query → vector similarity search → return ranked results.
 
 **Engine integration:** The engine intercepts `file_search` tool calls (like MCP tools) and executes them server-side when a `VectorSearcher` is configured.
+
+### Web Search Layer
+
+Pluggable web search providers (`pkg/websearch/`):
+
+- **Provider interface** — `Search(ctx, query, maxResults) ([]SearchResult, error)`
+- **Brave** — Brave Search API (`X-Subscription-Token` auth)
+- **Tavily** — Tavily Search API (body `api_key` auth)
+
+**Engine integration:** The engine intercepts `web_search` tool calls, expands them into synthetic function tools, executes searches server-side, and feeds results back to the LLM. `SearchContextSize` maps to max results: low=3, medium=5 (default), high=10.
+
+### Annotations
+
+When `file_search` or `web_search` tools produce results, the engine attaches citation annotations to the final output text:
+
+- **`url_citation`** — from web_search results (URL + title)
+- **`file_citation`** — from file_search results (file ID)
+
+In streaming mode, `response.output_text_annotation.added` events are emitted after the text is complete.
 
 ### Storage Layer
 
@@ -115,14 +134,16 @@ The gateway can be deployed behind any reverse proxy (Envoy, nginx, HAProxy) as 
 1. Request arrives at the HTTP server
 2. Handler parses and validates the request
 3. Core engine resolves conversation context (previous_response_id)
-4. `file_search` and MCP tools are expanded into function definitions
+4. `file_search`, `web_search`, and MCP tools are expanded into function definitions
 5. Engine sends the request to the inference backend via `ResponsesAPIClient`:
    - `ChatCompletionsAdapter` (default): translates to `/v1/chat/completions` format
    - `OpenAIResponsesClient`: forwards to `/v1/responses` as-is
 6. For tool calls: engine executes the agentic loop (call → result → call)
    - MCP tools: executed via MCP client
    - file_search: query embedded → vector search → results fed back to LLM
+   - web_search: query sent to Brave/Tavily → results fed back to LLM
    - Client-side function tools: returned to the caller for execution
-7. SSE events from the backend are normalized and forwarded through the adapter
-8. Gateway manages response lifecycle events (created, completed)
-9. Session state is persisted after streaming completes
+7. Citation annotations (url_citation, file_citation) attached to output text
+8. SSE events from the backend are normalized and forwarded through the adapter
+9. Gateway manages response lifecycle events (created, completed)
+10. Session state is persisted after streaming completes

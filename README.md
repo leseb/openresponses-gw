@@ -3,7 +3,7 @@
 ![CI](https://github.com/leseb/openresponses-gw/actions/workflows/ci.yml/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/leseb/openresponses-gw)](https://goreportcard.com/report/github.com/leseb/openresponses-gw)
 
-The **stateful layer** for the [Open Responses API](https://github.com/openresponses/openresponses) — adds persistence, conversations, file search, MCP tools, and prompts on top of any `/v1/responses`-compatible inference backend.
+The **stateful layer** for the [Open Responses API](https://github.com/openresponses/openresponses) — adds persistence, conversations, file search, web search, MCP tools, content extraction, and prompts on top of any `/v1/responses`-compatible inference backend.
 
 ## Why
 
@@ -14,8 +14,10 @@ production deployment also needs:
 
 - **Persistent storage** — responses and conversations survive restarts
 - **Files & Vector Stores** — upload documents, chunk, embed, and search (RAG)
-- **Server-side tool execution** — file_search over vector stores, MCP tool
-  calling via registered connectors
+- **Content extraction** — PDF, HTML, CSV, JSON/JSONL files extracted to text for vector ingestion
+- **Server-side tool execution** — file_search over vector stores, web_search
+  via Brave or Tavily, MCP tool calling via registered connectors
+- **Citations** — url_citation and file_citation annotations on output text
 - **Conversations API** — multi-turn state management across requests
 - **Prompts API** — versioned prompt templates
 
@@ -35,6 +37,7 @@ run `make vllm-field-tracking` to see the full report.
                - files & vectors    └────────────────┘
                - MCP connectors
                - file_search
+               - web_search
                - prompts
 ```
 

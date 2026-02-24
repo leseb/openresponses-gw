@@ -93,6 +93,63 @@ docker run -d --name milvus \
 
 ---
 
+## Web Search Configuration
+
+To enable server-side `web_search` tool execution, configure a web search provider. The gateway supports Brave Search and Tavily.
+
+### Environment Variables
+
+```bash
+# Brave Search
+export WEB_SEARCH_PROVIDER=brave
+export WEB_SEARCH_API_KEY="BSA..."   # Brave API subscription token
+
+# Tavily Search
+export WEB_SEARCH_PROVIDER=tavily
+export WEB_SEARCH_API_KEY="tvly-..." # Tavily API key
+```
+
+### YAML Configuration
+
+```yaml
+web_search:
+  provider: brave            # "brave" or "tavily"
+  api_key: BSA...            # prefer WEB_SEARCH_API_KEY env var
+```
+
+### How It Works
+
+1. **Tool expansion:** When a `web_search` tool is included in a Responses API request and a provider is configured, the engine replaces it with a synthetic function tool.
+
+2. **Search execution:** When the LLM calls `web_search`, the engine executes the search server-side via the configured provider and feeds the results back to the LLM.
+
+3. **Result sizing:** The `search_context_size` parameter controls result count: `low`=3 results, `medium`=5 (default), `high`=10.
+
+4. **Citations:** Search results are attached as `url_citation` annotations on the final output text.
+
+### Without Configuration
+
+If no `WEB_SEARCH_PROVIDER` is set, the web search feature is disabled and `web_search` tools are passed through to the LLM as-is.
+
+---
+
+## Content Extraction
+
+When files are added to a vector store, the gateway automatically extracts text based on the file extension:
+
+| Extension | Extraction Method |
+|-----------|-------------------|
+| `.pdf` | Page-by-page text extraction |
+| `.html`, `.htm` | Strip tags, skip script/style elements |
+| `.csv` | Tab-separated fields, newline-separated rows |
+| `.json` | Pretty-printed JSON |
+| `.jsonl` | Pretty-printed per line |
+| Other | Plain text pass-through |
+
+No configuration needed — extraction is automatic during file ingestion.
+
+---
+
 ## File Store Configuration
 
 By default, uploaded files are stored in memory and lost on restart. You can switch to a persistent backend via environment variables or YAML config.
@@ -219,6 +276,10 @@ export EMBEDDING_MODEL=text-embedding-3-small  # default
 
 # Optional — vector store backend (auto-selects Milvus when set)
 export MILVUS_ADDRESS=localhost:19530
+
+# Optional — web search (enables server-side web_search tool)
+export WEB_SEARCH_PROVIDER=brave  # or "tavily"
+export WEB_SEARCH_API_KEY=BSA...
 
 # Optional — persistent session store (default: in-memory)
 export SESSION_STORE_TYPE=sqlite          # or "postgres"
@@ -409,6 +470,9 @@ curl -X POST http://localhost:8080/v1/responses \
 | `max_output_tokens` | int | Max response tokens | 4096 |
 | `stream` | bool | Enable streaming | false |
 | `previous_response_id` | string | For multi-turn | - |
+| `seed` | int | Deterministic sampling seed | - |
+| `stop` | string/[]string | Stop sequences | - |
+| `service_tier` | string | Service tier preference | - |
 
 ---
 
@@ -493,6 +557,8 @@ docker run -p 8080:8080 \
   -e EMBEDDING_ENDPOINT=https://api.openai.com/v1 \
   -e EMBEDDING_API_KEY=sk-... \
   -e MILVUS_ADDRESS=host.docker.internal:19530 \
+  -e WEB_SEARCH_PROVIDER=brave \
+  -e WEB_SEARCH_API_KEY=BSA... \
   -e FILE_STORE_TYPE=s3 \
   -e FILE_STORE_S3_BUCKET=my-bucket \
   -e FILE_STORE_S3_REGION=us-east-1 \
