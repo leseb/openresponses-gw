@@ -23,6 +23,17 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/filestore"
 )
 
+func init() {
+	filestore.Providers.Register("s3", func(ctx context.Context, params map[string]string) (filestore.FileStore, error) {
+		return New(ctx, Options{
+			Bucket:   params["bucket"],
+			Region:   params["region"],
+			Prefix:   params["prefix"],
+			Endpoint: params["endpoint"],
+		})
+	})
+}
+
 // compile-time check
 var _ filestore.FileStore = (*Store)(nil)
 

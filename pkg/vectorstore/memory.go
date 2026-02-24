@@ -5,6 +5,12 @@ package vectorstore
 
 import "context"
 
+func init() {
+	Providers.Register("memory", func(_ context.Context, _ map[string]string) (Backend, error) {
+		return NewMemoryBackend(), nil
+	})
+}
+
 // MemoryBackend is a no-op Backend implementation used when no real vector
 // store is configured. All methods return nil (success) without doing anything.
 type MemoryBackend struct{}

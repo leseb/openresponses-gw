@@ -3,7 +3,15 @@
 
 package websearch
 
-import "context"
+import (
+	"context"
+
+	"github.com/leseb/openresponses-gw/pkg/provider"
+)
+
+// Providers is the registry of web search provider implementations.
+// Brave and Tavily are registered automatically via init().
+var Providers = provider.NewRegistry[Provider]("web_search")
 
 // SearchResult represents a single web search result.
 type SearchResult struct {

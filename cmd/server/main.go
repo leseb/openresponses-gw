@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,16 +21,19 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/core/services"
 	"github.com/leseb/openresponses-gw/pkg/core/state"
 	"github.com/leseb/openresponses-gw/pkg/filestore"
-	"github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
-	fsmemory "github.com/leseb/openresponses-gw/pkg/filestore/memory"
-	fss3 "github.com/leseb/openresponses-gw/pkg/filestore/s3"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
-	"github.com/leseb/openresponses-gw/pkg/storage/postgres"
-	"github.com/leseb/openresponses-gw/pkg/storage/sqlite"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
-	milvusbackend "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
 	"github.com/leseb/openresponses-gw/pkg/websearch"
+
+	// Blank imports register provider implementations via init().
+	// Remove any of these to exclude the provider from the binary.
+	_ "github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
+	_ "github.com/leseb/openresponses-gw/pkg/filestore/memory"
+	_ "github.com/leseb/openresponses-gw/pkg/filestore/s3"
+	_ "github.com/leseb/openresponses-gw/pkg/storage/postgres"
+	_ "github.com/leseb/openresponses-gw/pkg/storage/sqlite"
+	_ "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
 )
 
 var (
@@ -105,28 +109,19 @@ func main() {
 	if *port != 0 {
 		cfg.Server.Port = *port
 	}
-	// Initialize session store
-	var store state.SessionStore
-	switch cfg.SessionStore.Type {
-	case "postgres":
-		pgStore, pgErr := postgres.New(cfg.SessionStore.DSN)
-		if pgErr != nil {
-			logger.Error("Failed to initialize PostgreSQL session store", "error", pgErr)
-			os.Exit(1)
-		}
-		defer pgStore.Close()
-		store = pgStore
-		logger.Info("Initialized PostgreSQL session store", "dsn", cfg.SessionStore.DSN)
-	default:
-		sqliteStore, sqliteErr := sqlite.New(cfg.SessionStore.DSN)
-		if sqliteErr != nil {
-			logger.Error("Failed to initialize SQLite session store", "error", sqliteErr)
-			os.Exit(1)
-		}
-		defer sqliteStore.Close()
-		store = sqliteStore
-		logger.Info("Initialized SQLite session store", "dsn", cfg.SessionStore.DSN)
+	// Initialize session store via provider registry
+	initCtx := context.Background()
+	store, err := state.Providers.New(initCtx, cfg.SessionStore.Type, map[string]string{
+		"dsn": cfg.SessionStore.DSN,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize session store", "error", err)
+		os.Exit(1)
 	}
+	if closer, ok := store.(io.Closer); ok {
+		defer closer.Close()
+	}
+	logger.Info("Initialized session store", "type", cfg.SessionStore.Type)
 
 	// Initialize connectors store (needed by engine for MCP tool support)
 	connectorsStore := memory.NewConnectorsStore()
@@ -136,35 +131,20 @@ func main() {
 	promptsStore := memory.NewPromptsStore()
 	logger.Info("Initialized prompts store")
 
-	// Initialize files store
-	var filesStore filestore.FileStore
-	switch cfg.FileStore.Type {
-	case "filesystem":
-		fs, fsErr := filesystem.New(cfg.FileStore.BaseDir)
-		if fsErr != nil {
-			logger.Error("Failed to initialize filesystem file store", "error", fsErr)
-			os.Exit(1)
-		}
-		filesStore = fs
-		logger.Info("Initialized filesystem file store", "base_dir", cfg.FileStore.BaseDir)
-	case "s3":
-		s3Store, s3Err := fss3.New(context.Background(), fss3.Options{
-			Bucket:   cfg.FileStore.S3Bucket,
-			Region:   cfg.FileStore.S3Region,
-			Prefix:   cfg.FileStore.S3Prefix,
-			Endpoint: cfg.FileStore.S3Endpoint,
-		})
-		if s3Err != nil {
-			logger.Error("Failed to initialize S3 file store", "error", s3Err)
-			os.Exit(1)
-		}
-		filesStore = s3Store
-		logger.Info("Initialized S3 file store", "bucket", cfg.FileStore.S3Bucket)
-	default:
-		filesStore = fsmemory.New()
-		logger.Info("Initialized in-memory file store")
+	// Initialize files store via provider registry
+	filesStore, err := filestore.Providers.New(initCtx, cfg.FileStore.Type, map[string]string{
+		"base_dir": cfg.FileStore.BaseDir,
+		"bucket":   cfg.FileStore.S3Bucket,
+		"region":   cfg.FileStore.S3Region,
+		"prefix":   cfg.FileStore.S3Prefix,
+		"endpoint": cfg.FileStore.S3Endpoint,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize file store", "error", err)
+		os.Exit(1)
 	}
 	defer filesStore.Close(context.Background())
+	logger.Info("Initialized file store", "type", cfg.FileStore.Type)
 
 	// Initialize vector stores store
 	vectorStoresStore := memory.NewVectorStoresStore()
@@ -182,23 +162,16 @@ func main() {
 		logger.Info("Initialized embedding client", "endpoint", cfg.Embedding.Endpoint, "model", cfg.Embedding.Model)
 	}
 
-	// Initialize vector store backend
-	initCtx := context.Background()
-	var vsBackend vectorstore.Backend
-	switch cfg.VectorStore.Type {
-	case "milvus":
-		mb, err := milvusbackend.NewBackend(initCtx, cfg.VectorStore.MilvusAddress)
-		if err != nil {
-			logger.Error("Failed to connect to Milvus", "error", err)
-			os.Exit(1)
-		}
-		defer mb.Close(context.Background())
-		vsBackend = mb
-		logger.Info("Initialized Milvus vector store backend", "address", cfg.VectorStore.MilvusAddress)
-	default:
-		vsBackend = vectorstore.NewMemoryBackend()
-		logger.Info("Initialized memory vector store backend")
+	// Initialize vector store backend via provider registry
+	vsBackend, err := vectorstore.Providers.New(initCtx, cfg.VectorStore.Type, map[string]string{
+		"address": cfg.VectorStore.MilvusAddress,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize vector store backend", "error", err)
+		os.Exit(1)
 	}
+	defer vsBackend.Close(context.Background())
+	logger.Info("Initialized vector store backend", "type", cfg.VectorStore.Type)
 
 	// Initialize vector store service (nil if embedding not configured)
 	vectorStoreService := services.NewVectorStoreService(filesStore, embedder, vsBackend)
@@ -206,19 +179,18 @@ func main() {
 		logger.Info("Initialized vector store service")
 	}
 
-	// Initialize web search provider (optional)
+	// Initialize web search provider via registry (optional)
 	var webSearchProvider engine.WebSearcher
 	if cfg.WebSearch.Provider != "" && cfg.WebSearch.APIKey != "" {
-		switch cfg.WebSearch.Provider {
-		case "brave":
-			webSearchProvider = &webSearchAdapter{provider: websearch.NewBraveProvider(cfg.WebSearch.APIKey)}
-			logger.Info("Initialized Brave web search provider")
-		case "tavily":
-			webSearchProvider = &webSearchAdapter{provider: websearch.NewTavilyProvider(cfg.WebSearch.APIKey)}
-			logger.Info("Initialized Tavily web search provider")
-		default:
-			logger.Warn("Unknown web search provider", "provider", cfg.WebSearch.Provider)
+		wsProvider, wsErr := websearch.Providers.New(initCtx, cfg.WebSearch.Provider, map[string]string{
+			"api_key": cfg.WebSearch.APIKey,
+		})
+		if wsErr != nil {
+			logger.Error("Failed to initialize web search provider", "error", wsErr)
+			os.Exit(1)
 		}
+		webSearchProvider = &webSearchAdapter{provider: wsProvider}
+		logger.Info("Initialized web search provider", "provider", cfg.WebSearch.Provider)
 	}
 
 	// Initialize engine (pass vectorStoreService as VectorSearcher)

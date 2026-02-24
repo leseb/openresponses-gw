@@ -13,6 +13,12 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
+func init() {
+	vectorstore.Providers.Register("milvus", func(ctx context.Context, params map[string]string) (vectorstore.Backend, error) {
+		return NewBackend(ctx, params["address"])
+	})
+}
+
 const (
 	fieldChunkID   = "chunk_id"
 	fieldFileID    = "file_id"

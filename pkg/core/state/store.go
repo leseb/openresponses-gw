@@ -6,7 +6,16 @@ package state
 import (
 	"context"
 	"time"
+
+	"github.com/leseb/openresponses-gw/pkg/provider"
 )
+
+// Providers is the registry of session store backend implementations.
+// Import implementation packages with blank imports to register them:
+//
+//	import _ "github.com/leseb/openresponses-gw/pkg/storage/sqlite"
+//	import _ "github.com/leseb/openresponses-gw/pkg/storage/postgres"
+var Providers = provider.NewRegistry[SessionStore]("session_store")
 
 // SessionStore defines the interface for state storage
 type SessionStore interface {

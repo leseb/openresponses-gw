@@ -15,6 +15,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func init() {
+	state.Providers.Register("sqlite", func(_ context.Context, params map[string]string) (state.SessionStore, error) {
+		return New(params["dsn"])
+	})
+}
+
 // Store is a SQLite-backed implementation of SessionStore.
 type Store struct {
 	db *sql.DB

@@ -114,6 +114,35 @@ Pluggable storage backends (`pkg/storage/`):
 - **sqlite/** — SQLite persistent store for sessions, conversations, and responses (pure Go via `modernc.org/sqlite`, no CGO required)
 - **postgres/** — PostgreSQL persistent store for sessions, conversations, and responses (via `pgx/v5`, supports connection pooling and concurrent writers)
 
+## Provider Registry
+
+All pluggable backends (file stores, vector stores, session stores, web search) use a generic **factory registry** (`pkg/provider/`). This follows the `database/sql` driver pattern:
+
+1. Each subsystem defines a typed `Registry` and a `Provider` interface
+2. Implementations self-register via `init()` functions
+3. The server activates implementations via **blank imports** — remove an import to exclude a provider from the binary
+4. At startup, `Registry.New(ctx, name, params)` instantiates the configured backend
+
+```go
+// pkg/provider/registry.go — generic, reused by all subsystems
+type Factory[T any] func(ctx context.Context, params map[string]string) (T, error)
+type Registry[T any] struct { ... }
+func (r *Registry[T]) Register(name string, f Factory[T])
+func (r *Registry[T]) New(ctx context.Context, name string, params map[string]string) (T, error)
+func (r *Registry[T]) Available() []string
+```
+
+**Registries:**
+
+| Subsystem | Registry | Registered Providers |
+|-----------|----------|---------------------|
+| File store | `filestore.Providers` | `memory`, `filesystem`, `s3` |
+| Vector store | `vectorstore.Providers` | `memory`, `milvus` |
+| Session store | `state.Providers` | `sqlite`, `postgres` |
+| Web search | `websearch.Providers` | `brave`, `tavily` |
+
+**Adding a new provider:** Create a package that implements the subsystem interface and calls `Registry.Register()` in an `init()` function. Then add a blank import in `cmd/server/main.go`.
+
 ## Deployment
 
 The gateway runs as a standalone HTTP server. Clients connect directly. The gateway handles the full request lifecycle: parsing, state resolution, backend calls, tool loops, streaming, and response assembly.

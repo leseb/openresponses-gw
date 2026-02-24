@@ -12,6 +12,16 @@ import (
 	"net/http"
 )
 
+func init() {
+	Providers.Register("tavily", func(_ context.Context, params map[string]string) (Provider, error) {
+		apiKey := params["api_key"]
+		if apiKey == "" {
+			return nil, fmt.Errorf("tavily: api_key parameter is required")
+		}
+		return NewTavilyProvider(apiKey), nil
+	})
+}
+
 // TavilyProvider performs web searches using the Tavily Search API.
 type TavilyProvider struct {
 	apiKey     string

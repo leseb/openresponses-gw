@@ -12,6 +12,12 @@ import (
 	"github.com/leseb/openresponses-gw/pkg/filestore"
 )
 
+func init() {
+	filestore.Providers.Register("memory", func(_ context.Context, _ map[string]string) (filestore.FileStore, error) {
+		return New(), nil
+	})
+}
+
 // compile-time check
 var _ filestore.FileStore = (*Store)(nil)
 

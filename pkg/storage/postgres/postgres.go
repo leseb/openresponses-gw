@@ -15,6 +15,12 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func init() {
+	state.Providers.Register("postgres", func(_ context.Context, params map[string]string) (state.SessionStore, error) {
+		return New(params["dsn"])
+	})
+}
+
 // Store is a PostgreSQL-backed implementation of SessionStore.
 type Store struct {
 	db *sql.DB

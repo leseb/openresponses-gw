@@ -13,6 +13,16 @@ import (
 	"strconv"
 )
 
+func init() {
+	Providers.Register("brave", func(_ context.Context, params map[string]string) (Provider, error) {
+		apiKey := params["api_key"]
+		if apiKey == "" {
+			return nil, fmt.Errorf("brave: api_key parameter is required")
+		}
+		return NewBraveProvider(apiKey), nil
+	})
+}
+
 // BraveProvider performs web searches using the Brave Search API.
 type BraveProvider struct {
 	apiKey     string

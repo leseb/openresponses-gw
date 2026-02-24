@@ -3,7 +3,17 @@
 
 package vectorstore
 
-import "context"
+import (
+	"context"
+
+	"github.com/leseb/openresponses-gw/pkg/provider"
+)
+
+// Providers is the registry of vector store backend implementations.
+// Import implementation packages with blank imports to register them:
+//
+//	import _ "github.com/leseb/openresponses-gw/pkg/vectorstore/milvus"
+var Providers = provider.NewRegistry[Backend]("vector_store")
 
 // Chunk represents a piece of text with its embedding, ready for insertion.
 type Chunk struct {

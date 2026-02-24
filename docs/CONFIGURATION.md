@@ -625,6 +625,39 @@ OPENAI_API_KEY=sk-... docker-compose up
 
 ---
 
+## Provider Registry
+
+All pluggable backends use a generic provider registry. Providers self-register via `init()` and are activated by blank imports in `cmd/server/main.go`. To add a new backend, create a package that implements the subsystem interface and registers itself:
+
+```go
+package mybackend
+
+import "github.com/leseb/openresponses-gw/pkg/filestore"
+
+func init() {
+    filestore.Providers.Register("mybackend", func(ctx context.Context, params map[string]string) (filestore.FileStore, error) {
+        return New(params["connection_string"])
+    })
+}
+```
+
+Then add a blank import in `cmd/server/main.go`:
+
+```go
+_ "github.com/leseb/openresponses-gw/pkg/filestore/mybackend"
+```
+
+Available registries and their providers:
+
+| Subsystem | Config field | Available providers |
+|-----------|-------------|---------------------|
+| File store | `file_store.type` | `memory`, `filesystem`, `s3` |
+| Vector store | `vector_store.type` | `memory`, `milvus` |
+| Session store | `session_store.type` | `sqlite`, `postgres` |
+| Web search | `web_search.provider` | `brave`, `tavily` |
+
+---
+
 ## Next Steps
 
 - See [QUICKSTART.md](./QUICKSTART.md) for testing examples

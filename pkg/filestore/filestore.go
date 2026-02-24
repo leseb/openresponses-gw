@@ -7,10 +7,20 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/leseb/openresponses-gw/pkg/provider"
 )
 
 // ErrFileNotFound is returned when a file does not exist.
 var ErrFileNotFound = errors.New("file not found")
+
+// Providers is the registry of file store backend implementations.
+// Import implementation packages with blank imports to register them:
+//
+//	import _ "github.com/leseb/openresponses-gw/pkg/filestore/memory"
+//	import _ "github.com/leseb/openresponses-gw/pkg/filestore/filesystem"
+//	import _ "github.com/leseb/openresponses-gw/pkg/filestore/s3"
+var Providers = provider.NewRegistry[FileStore]("file_store")
 
 // File represents a stored file with metadata and content.
 type File struct {
