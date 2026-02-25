@@ -50,6 +50,7 @@ type VectorStoreFile struct {
 	CreatedAt        time.Time
 	LastError        *VectorStoreFileError
 	ChunkingStrategy *ChunkingStrategy
+	Attributes       map[string]interface{} // File attributes for filtering
 }
 
 // VectorStoreFileError represents an error processing a file

@@ -637,6 +637,21 @@ components:
           description: Version number, starts at 1
           type: integer
       type: object
+    github_com_leseb_openresponses-gw_pkg_core_schema.PromptReference:
+      description: Prompt reference for template resolution (mutually exclusive with instructions)
+      properties:
+        id:
+          description: Prompt ID
+          type: string
+        variables:
+          additionalProperties:
+            type: string
+          description: Template variable values
+          type: object
+        version:
+          description: 'Specific version (default: latest/default)'
+          type: integer
+      type: object
     github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningBudget:
       properties:
         token_budget:
@@ -839,6 +854,8 @@ components:
         previous_response_id:
           description: Previous response ID for multi-turn conversations
           type: string
+        prompt:
+          $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.PromptReference'
         reasoning:
           $ref: '#/components/schemas/github_com_leseb_openresponses-gw_pkg_core_schema.ReasoningParam'
         seed:

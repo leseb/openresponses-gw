@@ -31,7 +31,7 @@ type ConnectorLookup interface {
 // VectorSearcher performs vector similarity search.
 // Implemented by services.VectorStoreService.
 type VectorSearcher interface {
-	Search(ctx context.Context, vectorStoreID, query string, topK int) ([]vectorstore.SearchResult, error)
+	Search(ctx context.Context, vectorStoreID, query string, topK int, filterExpr string) ([]vectorstore.SearchResult, error)
 }
 
 // WebSearcher performs web searches.
@@ -47,6 +47,12 @@ type WebSearchResult struct {
 	Snippet string
 }
 
+// PromptResolver resolves stored prompt templates.
+type PromptResolver interface {
+	GetPrompt(ctx context.Context, promptID string) (*memory.Prompt, error)
+	GetPromptVersion(ctx context.Context, promptID string, version int) (*memory.Prompt, error)
+}
+
 // Engine is the core orchestration engine for the Responses API.
 // It calls a /v1/responses-compatible backend for inference and adds
 // persistence, conversations, MCP tools, file_search, web_search, and prompts.
@@ -57,11 +63,12 @@ type Engine struct {
 	connectors   ConnectorLookup // nil-safe: nil means no MCP support
 	vectorSearch VectorSearcher  // nil-safe: nil means no file_search support
 	webSearch    WebSearcher     // nil-safe: nil means no web_search support
+	prompts      PromptResolver  // nil-safe: nil means no prompt resolution
 }
 
 // New creates a new Engine instance.
-// The connectors, vectorSearch, and webSearch parameters are optional (nil disables the feature).
-func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup, vectorSearch VectorSearcher, webSearch WebSearcher) (*Engine, error) {
+// The connectors, vectorSearch, webSearch, and prompts parameters are optional (nil disables the feature).
+func New(cfg *config.EngineConfig, store state.SessionStore, connectors ConnectorLookup, vectorSearch VectorSearcher, webSearch WebSearcher, prompts ...PromptResolver) (*Engine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -80,6 +87,11 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		llm = api.NewChatCompletionsAdapter(cfg.ModelEndpoint, cfg.APIKey)
 	}
 
+	var promptResolver PromptResolver
+	if len(prompts) > 0 {
+		promptResolver = prompts[0]
+	}
+
 	return &Engine{
 		config:       cfg,
 		sessions:     store,
@@ -87,12 +99,43 @@ func New(cfg *config.EngineConfig, store state.SessionStore, connectors Connecto
 		connectors:   connectors,
 		vectorSearch: vectorSearch,
 		webSearch:    webSearch,
+		prompts:      promptResolver,
 	}, nil
 }
 
 // Store returns the session store
 func (e *Engine) Store() state.SessionStore {
 	return e.sessions
+}
+
+// resolvePromptRef resolves a prompt reference in the request, rendering the
+// template with the provided variables and setting the result as Instructions.
+// Returns an error if both Prompt and Instructions are set.
+func (e *Engine) resolvePromptRef(ctx context.Context, req *schema.ResponseRequest) error {
+	if req.Prompt == nil {
+		return nil
+	}
+	if req.Instructions != nil {
+		return fmt.Errorf("prompt and instructions are mutually exclusive")
+	}
+	if e.prompts == nil {
+		return fmt.Errorf("prompt resolution is not configured")
+	}
+
+	var prompt *memory.Prompt
+	var err error
+	if req.Prompt.Version != nil {
+		prompt, err = e.prompts.GetPromptVersion(ctx, req.Prompt.ID, *req.Prompt.Version)
+	} else {
+		prompt, err = e.prompts.GetPrompt(ctx, req.Prompt.ID)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get prompt %q: %w", req.Prompt.ID, err)
+	}
+
+	rendered := memory.RenderPrompt(prompt.Template, req.Prompt.Variables)
+	req.Instructions = &rendered
+	return nil
 }
 
 // BackendAPI returns the configured backend API mode ("chat_completions" or "responses").
@@ -1083,7 +1126,7 @@ func (e *Engine) expandFileSearchTools(tools []schema.ResponsesToolParam) (
 func (e *Engine) executeFileSearch(ctx context.Context, cfg fileSearchConfig, query string) (string, []vectorstore.SearchResult) {
 	var allResults []vectorstore.SearchResult
 	for _, vsID := range cfg.VectorStoreIDs {
-		results, err := e.vectorSearch.Search(ctx, vsID, query, cfg.MaxNumResults)
+		results, err := e.vectorSearch.Search(ctx, vsID, query, cfg.MaxNumResults, "")
 		if err != nil {
 			continue
 		}
@@ -1274,6 +1317,11 @@ func (e *Engine) ProcessRequest(ctx context.Context, req *schema.ResponseRequest
 	// 1. Validate request
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// 1b. Resolve prompt template if specified
+	if err := e.resolvePromptRef(ctx, req); err != nil {
+		return nil, fmt.Errorf("prompt resolution: %w", err)
 	}
 
 	// 2. Generate response ID
@@ -1654,6 +1702,11 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
+	// Resolve prompt template if specified
+	if err := e.resolvePromptRef(ctx, req); err != nil {
+		return nil, fmt.Errorf("prompt resolution: %w", err)
+	}
+
 	events := make(chan interface{}, 10)
 
 	go func() {
@@ -2010,9 +2063,36 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 					} else if isFileSearch {
 						hasServerSide = true
+						fsItemID := generateID("fs_")
+						fsOutputIndex := len(allOutput)
+
+						// Emit file_search call lifecycle events
+						events <- &schema.ResponseFileSearchCallInProgressStreamingEvent{
+							Type:           "response.file_search_call.in_progress",
+							SequenceNumber: seqNum,
+							OutputIndex:    fsOutputIndex,
+							ItemID:         fsItemID,
+						}
+						seqNum++
+						events <- &schema.ResponseFileSearchCallSearchingStreamingEvent{
+							Type:           "response.file_search_call.searching",
+							SequenceNumber: seqNum,
+							OutputIndex:    fsOutputIndex,
+							ItemID:         fsItemID,
+						}
+						seqNum++
+
 						args := parseJSONArgs(tc.Arguments)
 						query, _ := args["query"].(string)
 						outputStr, fsResults := e.executeFileSearch(ctx, fsCfg, query)
+
+						events <- &schema.ResponseFileSearchCallCompletedStreamingEvent{
+							Type:           "response.file_search_call.completed",
+							SequenceNumber: seqNum,
+							OutputIndex:    fsOutputIndex,
+							ItemID:         fsItemID,
+						}
+						seqNum++
 
 						// Collect file_citation sources
 						for _, r := range fsResults {
@@ -2078,9 +2158,36 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 
 					} else if isWebSearch {
 						hasServerSide = true
+						wsItemID := generateID("ws_")
+						wsOutputIndex := len(allOutput)
+
+						// Emit web_search call lifecycle events
+						events <- &schema.ResponseWebSearchCallInProgressStreamingEvent{
+							Type:           "response.web_search_call.in_progress",
+							SequenceNumber: seqNum,
+							OutputIndex:    wsOutputIndex,
+							ItemID:         wsItemID,
+						}
+						seqNum++
+						events <- &schema.ResponseWebSearchCallSearchingStreamingEvent{
+							Type:           "response.web_search_call.searching",
+							SequenceNumber: seqNum,
+							OutputIndex:    wsOutputIndex,
+							ItemID:         wsItemID,
+						}
+						seqNum++
+
 						args := parseJSONArgs(tc.Arguments)
 						query, _ := args["query"].(string)
 						outputStr, wsResults := e.executeWebSearch(ctx, wsCfg, query)
+
+						events <- &schema.ResponseWebSearchCallCompletedStreamingEvent{
+							Type:           "response.web_search_call.completed",
+							SequenceNumber: seqNum,
+							OutputIndex:    wsOutputIndex,
+							ItemID:         wsItemID,
+						}
+						seqNum++
 
 						// Collect url_citation sources
 						for _, r := range wsResults {
@@ -2178,6 +2285,17 @@ func (e *Engine) ProcessRequestStream(ctx context.Context, req *schema.ResponseR
 				}
 
 				if hasServerSide && len(clientSideCalls) == 0 {
+					// Intermediate save: persist progress after server-side tool execution
+					_ = e.sessions.SaveResponse(ctx, &state.Response{
+						ID:                 resp.ID,
+						ConversationID:     conversationID,
+						PreviousResponseID: prevRespID,
+						Request:            req,
+						Output:             allOutput,
+						Status:             "in_progress",
+						Messages:           messagesToConversationMessages(messages),
+						CreatedAt:          time.Unix(resp.CreatedAt, 0),
+					})
 					// All calls were server-side — continue agentic loop
 					continue
 				}
@@ -2308,6 +2426,81 @@ func timePtr(t *int64) *time.Time {
 	return &tm
 }
 
+// convertStoredOutput converts the stored output (which may be []schema.ItemField
+// from an in-memory store, or []interface{} from a JSON-round-tripped database store)
+// back to []schema.ItemField.
+func convertStoredOutput(stored interface{}) []schema.ItemField {
+	if stored == nil {
+		return make([]schema.ItemField, 0)
+	}
+
+	// Direct type assertion (in-memory store path)
+	if output, ok := stored.([]schema.ItemField); ok {
+		return output
+	}
+
+	// JSON round-trip path: re-marshal and unmarshal into typed struct
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return make([]schema.ItemField, 0)
+	}
+	var output []schema.ItemField
+	if err := json.Unmarshal(raw, &output); err != nil {
+		return make([]schema.ItemField, 0)
+	}
+	return output
+}
+
+// convertStoredUsage converts the stored usage (which may be *schema.UsageField
+// from an in-memory store, or map[string]interface{} from a JSON-round-tripped
+// database store) back to *schema.UsageField.
+func convertStoredUsage(stored interface{}) *schema.UsageField {
+	if stored == nil {
+		return nil
+	}
+
+	// Direct type assertion (in-memory store path)
+	if usage, ok := stored.(*schema.UsageField); ok {
+		return usage
+	}
+
+	// JSON round-trip path
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return nil
+	}
+	var usage schema.UsageField
+	if err := json.Unmarshal(raw, &usage); err != nil {
+		return nil
+	}
+	return &usage
+}
+
+// convertStoredRequest converts the stored request (which may be *schema.ResponseRequest
+// from an in-memory store, or map[string]interface{} from a JSON-round-tripped
+// database store) back to *schema.ResponseRequest.
+func convertStoredRequest(stored interface{}) *schema.ResponseRequest {
+	if stored == nil {
+		return nil
+	}
+
+	// Direct type assertion (in-memory store path)
+	if req, ok := stored.(*schema.ResponseRequest); ok {
+		return req
+	}
+
+	// JSON round-trip path
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return nil
+	}
+	var req schema.ResponseRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil
+	}
+	return &req
+}
+
 // convertToolsToResponse converts request tools to response tools
 func convertToolsToResponse(reqTools []schema.ResponsesToolParam) []schema.ResponsesTool {
 	if len(reqTools) == 0 {
@@ -2353,23 +2546,21 @@ func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Re
 	}
 
 	// Convert state.Response to schema.Response
+	req := convertStoredRequest(stateResp.Request)
+
 	var model string
-	if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil && req.Model != nil {
+	if req != nil && req.Model != nil {
 		model = *req.Model
 	}
 
 	schemaResp := schema.NewResponse(stateResp.ID, model)
 	schemaResp.Status = stateResp.Status
 
-	// Type assert Output
-	if output, ok := stateResp.Output.([]schema.ItemField); ok {
-		schemaResp.Output = output
-	}
+	// Restore Output from stored state (may be []schema.ItemField or JSON-deserialized []interface{})
+	schemaResp.Output = convertStoredOutput(stateResp.Output)
 
-	// Type assert Usage
-	if usage, ok := stateResp.Usage.(*schema.UsageField); ok {
-		schemaResp.Usage = usage
-	}
+	// Restore Usage from stored state
+	schemaResp.Usage = convertStoredUsage(stateResp.Usage)
 
 	schemaResp.CreatedAt = stateResp.CreatedAt.Unix()
 	if stateResp.CompletedAt != nil {
@@ -2378,7 +2569,7 @@ func (e *Engine) GetResponse(ctx context.Context, responseID string) (*schema.Re
 	}
 
 	// Echo request parameters if available
-	if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil {
+	if req != nil {
 		schemaResp.PreviousResponseID = req.PreviousResponseID
 		schemaResp.Instructions = req.Instructions
 
@@ -2422,20 +2613,17 @@ func (e *Engine) ListResponses(ctx context.Context, after, before string, limit 
 	// Convert state.Response to schema.Response
 	responses := make([]*schema.Response, 0, len(stateResponses))
 	for _, stateResp := range stateResponses {
+		req := convertStoredRequest(stateResp.Request)
+
 		var modelName string
-		if req, ok := stateResp.Request.(*schema.ResponseRequest); ok && req != nil && req.Model != nil {
+		if req != nil && req.Model != nil {
 			modelName = *req.Model
 		}
 
 		schemaResp := schema.NewResponse(stateResp.ID, modelName)
 		schemaResp.Status = stateResp.Status
-
-		if output, ok := stateResp.Output.([]schema.ItemField); ok {
-			schemaResp.Output = output
-		}
-		if usage, ok := stateResp.Usage.(*schema.UsageField); ok {
-			schemaResp.Usage = usage
-		}
+		schemaResp.Output = convertStoredOutput(stateResp.Output)
+		schemaResp.Usage = convertStoredUsage(stateResp.Usage)
 
 		schemaResp.CreatedAt = stateResp.CreatedAt.Unix()
 		if stateResp.CompletedAt != nil {

@@ -128,7 +128,8 @@ func (s *VectorStoreService) RemoveFile(ctx context.Context, vectorStoreID, file
 }
 
 // Search embeds the query and performs vector similarity search.
-func (s *VectorStoreService) Search(ctx context.Context, vectorStoreID, query string, topK int) ([]vectorstore.SearchResult, error) {
+// filterExpr is an optional backend-specific filter expression (e.g. Milvus boolean expression).
+func (s *VectorStoreService) Search(ctx context.Context, vectorStoreID, query string, topK int, filterExpr string) ([]vectorstore.SearchResult, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -147,5 +148,5 @@ func (s *VectorStoreService) Search(ctx context.Context, vectorStoreID, query st
 	}
 
 	// Search
-	return s.backend.Search(ctx, vectorStoreID, vectors[0], topK)
+	return s.backend.Search(ctx, vectorStoreID, vectors[0], topK, filterExpr)
 }

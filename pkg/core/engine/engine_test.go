@@ -27,7 +27,7 @@ type dummyVectorSearcher struct {
 	err     error
 }
 
-func (d *dummyVectorSearcher) Search(_ context.Context, _, _ string, _ int) ([]vectorstore.SearchResult, error) {
+func (d *dummyVectorSearcher) Search(_ context.Context, _, _ string, _ int, _ string) ([]vectorstore.SearchResult, error) {
 	return d.results, d.err
 }
 

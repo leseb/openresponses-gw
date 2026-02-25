@@ -47,7 +47,8 @@ type Backend interface {
 	DeleteFileChunks(ctx context.Context, vectorStoreID, fileID string) error
 
 	// Search performs a vector similarity search and returns the top-K results.
-	Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int) ([]SearchResult, error)
+	// filterExpr is an optional backend-specific filter expression (e.g. Milvus boolean expression).
+	Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int, filterExpr string) ([]SearchResult, error)
 
 	// Close releases any resources held by the backend.
 	Close(ctx context.Context) error

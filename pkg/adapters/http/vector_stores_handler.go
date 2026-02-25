@@ -382,6 +382,7 @@ func (h *Handler) handleAddVectorStoreFile(w http.ResponseWriter, r *http.Reques
 		Status:           initialStatus,
 		CreatedAt:        now,
 		ChunkingStrategy: chunkingStrategy,
+		Attributes:       req.Attributes,
 	}
 
 	err := h.vectorStoresStore.AddVectorStoreFile(r.Context(), vsFile)
@@ -552,6 +553,7 @@ func convertToSchemaVectorStoreFile(vsFile *memory.VectorStoreFile) schema.Vecto
 		CreatedAt:        vsFile.CreatedAt.Unix(),
 		LastError:        lastError,
 		ChunkingStrategy: chunkingStrategy,
+		Attributes:       vsFile.Attributes,
 	}
 }
 
@@ -737,10 +739,58 @@ func (h *Handler) handleSearchVectorStore(w http.ResponseWriter, r *http.Request
 		topK = req.TopK
 	}
 
+	// Resolve filters against file attributes to build a backend filter expression
+	filterExpr := ""
+	rawFilter := req.Filters
+	if rawFilter == nil {
+		rawFilter = req.Filter // deprecated alias
+	}
+	if rawFilter != nil {
+		parsedFilter, parseErr := schema.ParseFilter(rawFilter)
+		if parseErr != nil {
+			h.writeError(w, http.StatusBadRequest, "invalid_filter", parseErr.Error())
+			return
+		}
+
+		// List all files in this vector store and evaluate the filter
+		allFiles, _, listErr := h.vectorStoresStore.ListVectorStoreFilesPaginated(r.Context(), vsID, "", "", 10000, "asc", "")
+		if listErr != nil {
+			h.logger.Error("Failed to list files for filter resolution", "error", listErr)
+			h.writeError(w, http.StatusInternalServerError, "filter_error", listErr.Error())
+			return
+		}
+
+		var matchingFileIDs []string
+		for _, vsFile := range allFiles {
+			attrs := vsFile.Attributes
+			if attrs == nil {
+				attrs = map[string]interface{}{}
+			}
+			if schema.EvaluateFilter(parsedFilter, attrs) {
+				matchingFileIDs = append(matchingFileIDs, vsFile.FileID)
+			}
+		}
+
+		filterExpr = schema.BuildMilvusExpr(matchingFileIDs)
+		// If filter matches no files, return empty results
+		if len(matchingFileIDs) == 0 {
+			searchResp := schema.SearchVectorStoreResponse{
+				Object:      "vector_store.search_results.page",
+				SearchQuery: []string{queryStr},
+				Data:        []schema.VectorStoreSearchResult{},
+				HasMore:     false,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(searchResp)
+			return
+		}
+	}
+
 	var results []vectorstore.SearchResult
 	if h.vectorStoreService != nil {
 		var searchErr error
-		results, searchErr = h.vectorStoreService.Search(r.Context(), vsID, queryStr, topK)
+		results, searchErr = h.vectorStoreService.Search(r.Context(), vsID, queryStr, topK, filterExpr)
 		if searchErr != nil {
 			h.logger.Error("Vector store search failed", "error", searchErr, "vector_store_id", vsID)
 			h.writeError(w, http.StatusInternalServerError, "search_error", searchErr.Error())

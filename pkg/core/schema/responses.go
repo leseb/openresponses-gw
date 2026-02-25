@@ -76,6 +76,21 @@ type ResponseRequest struct {
 
 	// Whether to stream the response (HTTP-specific, not in spec but required for SSE)
 	Stream bool `json:"stream,omitempty"`
+
+	// Prompt reference for template resolution (mutually exclusive with instructions)
+	Prompt *PromptReference `json:"prompt,omitempty"`
+}
+
+// PromptReference references a stored prompt template with optional variable values.
+type PromptReference struct {
+	// Prompt ID
+	ID string `json:"id"`
+
+	// Specific version (default: latest/default)
+	Version *int `json:"version,omitempty"`
+
+	// Template variable values
+	Variables map[string]string `json:"variables,omitempty"`
 }
 
 // Response represents a response from the API
@@ -569,6 +584,54 @@ type ResponseOutputTextAnnotationAddedStreamingEvent struct {
 	OutputIndex  int         `json:"output_index"`
 	ContentIndex int         `json:"content_index"`
 	Annotation   ContentPart `json:"annotation"`
+}
+
+// ResponseFileSearchCallInProgressStreamingEvent - response.file_search_call.in_progress
+type ResponseFileSearchCallInProgressStreamingEvent struct {
+	Type           string `json:"type"` // "response.file_search_call.in_progress"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
+}
+
+// ResponseFileSearchCallSearchingStreamingEvent - response.file_search_call.searching
+type ResponseFileSearchCallSearchingStreamingEvent struct {
+	Type           string `json:"type"` // "response.file_search_call.searching"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
+}
+
+// ResponseFileSearchCallCompletedStreamingEvent - response.file_search_call.completed
+type ResponseFileSearchCallCompletedStreamingEvent struct {
+	Type           string `json:"type"` // "response.file_search_call.completed"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
+}
+
+// ResponseWebSearchCallInProgressStreamingEvent - response.web_search_call.in_progress
+type ResponseWebSearchCallInProgressStreamingEvent struct {
+	Type           string `json:"type"` // "response.web_search_call.in_progress"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
+}
+
+// ResponseWebSearchCallSearchingStreamingEvent - response.web_search_call.searching
+type ResponseWebSearchCallSearchingStreamingEvent struct {
+	Type           string `json:"type"` // "response.web_search_call.searching"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
+}
+
+// ResponseWebSearchCallCompletedStreamingEvent - response.web_search_call.completed
+type ResponseWebSearchCallCompletedStreamingEvent struct {
+	Type           string `json:"type"` // "response.web_search_call.completed"
+	SequenceNumber int    `json:"sequence_number"`
+	OutputIndex    int    `json:"output_index"`
+	ItemID         string `json:"item_id"`
 }
 
 // ResponseFunctionCallArgumentsDeltaStreamingEvent - response.function_call_arguments.delta

@@ -36,7 +36,7 @@ func (m *MemoryBackend) DeleteFileChunks(ctx context.Context, vectorStoreID, fil
 	return nil
 }
 
-func (m *MemoryBackend) Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int) ([]SearchResult, error) {
+func (m *MemoryBackend) Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int, filterExpr string) ([]SearchResult, error) {
 	return nil, nil
 }
 

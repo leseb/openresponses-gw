@@ -198,7 +198,7 @@ func main() {
 	if vectorStoreService != nil {
 		vectorSearcher = vectorStoreService
 	}
-	eng, err := engine.New(&cfg.Engine, store, connectorsStore, vectorSearcher, webSearchProvider)
+	eng, err := engine.New(&cfg.Engine, store, connectorsStore, vectorSearcher, webSearchProvider, promptsStore)
 	if err != nil {
 		logger.Error("Failed to initialize engine", "error", err)
 		os.Exit(1)

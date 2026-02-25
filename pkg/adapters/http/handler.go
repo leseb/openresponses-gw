@@ -473,6 +473,18 @@ func extractEventType(event interface{}) string {
 		return e.Type
 	case *schema.ResponseOutputTextAnnotationAddedStreamingEvent:
 		return e.Type
+	case *schema.ResponseFileSearchCallInProgressStreamingEvent:
+		return e.Type
+	case *schema.ResponseFileSearchCallSearchingStreamingEvent:
+		return e.Type
+	case *schema.ResponseFileSearchCallCompletedStreamingEvent:
+		return e.Type
+	case *schema.ResponseWebSearchCallInProgressStreamingEvent:
+		return e.Type
+	case *schema.ResponseWebSearchCallSearchingStreamingEvent:
+		return e.Type
+	case *schema.ResponseWebSearchCallCompletedStreamingEvent:
+		return e.Type
 	case *schema.ResponseFunctionCallArgumentsDeltaStreamingEvent:
 		return e.Type
 	case *schema.ResponseFunctionCallArgumentsDoneStreamingEvent:

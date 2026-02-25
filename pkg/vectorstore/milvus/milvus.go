@@ -179,7 +179,7 @@ func (b *Backend) DeleteFileChunks(ctx context.Context, vectorStoreID, fileID st
 }
 
 // Search performs a vector similarity search in the given vector store.
-func (b *Backend) Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int) ([]vectorstore.SearchResult, error) {
+func (b *Backend) Search(ctx context.Context, vectorStoreID string, queryVector []float32, topK int, filterExpr string) ([]vectorstore.SearchResult, error) {
 	coll := collectionName(vectorStoreID)
 
 	exists, err := b.client.HasCollection(ctx, coll)
@@ -203,7 +203,7 @@ func (b *Backend) Search(ctx context.Context, vectorStoreID string, queryVector 
 		ctx,
 		coll,
 		nil,
-		"",
+		filterExpr,
 		[]string{fieldChunkID, fieldFileID, fieldContent},
 		[]entity.Vector{entity.FloatVector(queryVector)},
 		fieldEmbedding,
