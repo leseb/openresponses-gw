@@ -15,7 +15,7 @@ type Filter interface {
 
 // ComparisonFilter represents a single comparison operation on file attributes.
 type ComparisonFilter struct {
-	Type  string      `json:"type"`  // eq, ne, gt, gte, lt, lte
+	Type  string      `json:"type"` // eq, ne, gt, gte, lt, lte
 	Key   string      `json:"key"`
 	Value interface{} `json:"value"` // string, number, or bool
 }
