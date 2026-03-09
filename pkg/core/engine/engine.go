@@ -138,7 +138,7 @@ func (e *Engine) resolvePromptRef(ctx context.Context, req *schema.ResponseReque
 	return nil
 }
 
-// BackendAPI returns the configured backend API mode ("chat_completions" or "responses").
+// BackendAPI returns the configured backend API mode ("responses" or "chat_completions").
 func (e *Engine) BackendAPI() string {
 	return e.config.BackendAPI
 }

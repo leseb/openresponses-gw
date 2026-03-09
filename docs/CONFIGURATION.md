@@ -266,8 +266,8 @@ The gateway supports **3 ways** to configure the inference backend (in order of 
 export OPENAI_API_KEY=sk-your-key-here
 export OPENAI_API_ENDPOINT=https://api.openai.com/v1  # optional, this is the default
 
-# Optional — backend API mode (default: chat_completions)
-export BACKEND_API=chat_completions  # "chat_completions" (default) or "responses"
+# Optional — backend API mode (default: responses)
+export BACKEND_API=responses  # "responses" (default) or "chat_completions"
 
 # Optional — embedding service (enables vector search / RAG)
 export EMBEDDING_ENDPOINT=https://api.openai.com/v1
@@ -309,7 +309,7 @@ server:
 engine:
   model_endpoint: https://api.openai.com/v1
   api_key: sk-your-key-here  # Not recommended - use env vars instead
-  backend_api: chat_completions  # "chat_completions" (default) or "responses"
+  backend_api: responses  # "responses" (default) or "chat_completions"
   max_tokens: 4096
   timeout: 60s
 
@@ -349,8 +349,8 @@ The gateway supports two backend API modes, controlled by the `BACKEND_API` env 
 
 | Mode | Endpoint Called | Compatible Backends |
 |------|----------------|---------------------|
-| `chat_completions` (default) | `/v1/chat/completions` | vLLM, Ollama, TGI, OpenAI, any OpenAI-compatible server |
-| `responses` | `/v1/responses` | vLLM, Ollama, OpenAI |
+| `responses` (default) | `/v1/responses` | vLLM, Ollama, OpenAI |
+| `chat_completions` | `/v1/chat/completions` | vLLM, Ollama, TGI, OpenAI, any OpenAI-compatible server |
 
 ### vLLM
 

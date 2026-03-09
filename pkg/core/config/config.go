@@ -45,7 +45,7 @@ type ServerConfig struct {
 type EngineConfig struct {
 	ModelEndpoint string        `yaml:"model_endpoint"`
 	APIKey        string        `yaml:"api_key"`
-	BackendAPI    string        `yaml:"backend_api"` // "chat_completions" (default) or "responses"
+	BackendAPI    string        `yaml:"backend_api"` // "responses" (default) or "chat_completions"
 	MaxTokens     int           `yaml:"max_tokens"`
 	Timeout       time.Duration `yaml:"timeout"`
 }
@@ -235,7 +235,7 @@ func Default() *Config {
 
 func applyEngineDefaults(cfg *EngineConfig) {
 	if cfg.BackendAPI == "" {
-		cfg.BackendAPI = "chat_completions"
+		cfg.BackendAPI = "responses"
 	}
 }
 
