@@ -198,8 +198,9 @@ pkg/
 │   ├── api/           # Backend API clients
 │   ├── services/      # Vector store service
 │   └── state/         # State management interfaces
-├── adapters/          # Gateway-specific adapters
-│   └── http/          # HTTP server
+├── handlers/          # Request routing, SSE streaming, OpenAPI serving
+├── adapters/
+│   └── extproc/       # Envoy ExtProc gRPC adapter
 ├── storage/           # Storage implementations
 │   ├── sqlite/        # SQLite session store
 │   ├── postgres/      # PostgreSQL session store
@@ -212,12 +213,15 @@ pkg/
     └── milvus/        # Milvus backend
 ```
 
-### Adding a New Adapter
+### Adding a New Transport Adapter
+
+The ExtProc adapter (`pkg/adapters/extproc/`) translates between gRPC and
+the handler layer. To add a new transport (e.g., a different gRPC protocol):
 
 1. Create package in `pkg/adapters/`
-2. Implement `http.Handler` interface
+2. Accept `http.Handler` and delegate via `handler.ServeHTTP(w, req)`
 3. Add tests
-4. Add example in `examples/`
+4. Wire into `cmd/server/main.go`
 5. Update documentation
 
 ### Adding a New Storage Backend

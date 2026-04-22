@@ -8,9 +8,9 @@ or `/v1/responses`. The gateway adds state management, tool execution, and stora
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                       HTTP Server                            │
+│           ExtProc (gRPC :50051) or HTTP (:8080)              │
 │  ┌──────────────────────────────────────────────────┐        │
-│  │ HTTP Adapter (pkg/adapters/http/)                │        │
+│  │ Request Handlers (pkg/handlers/)                 │        │
 │  │  - Routing, SSE streaming, OpenAPI serving       │        │
 │  └──────────────────────┬───────────────────────────┘        │
 └─────────────────────────┼────────────────────────────────────┘
@@ -56,9 +56,13 @@ or `/v1/responses`. The gateway adds state management, tool execution, and stora
 
 ## Layers
 
-### HTTP Adapter
+### Request Handlers
 
-The HTTP adapter (`pkg/adapters/http/`) provides routing, SSE streaming, and OpenAPI spec serving. It translates HTTP requests into core engine calls and handles response formatting.
+The handler layer (`pkg/handlers/`) provides routing, SSE streaming, and OpenAPI spec serving. It translates HTTP requests into core engine calls and handles response formatting. Both server modes (ExtProc and standalone HTTP) use the same handler — the ExtProc adapter translates gRPC↔HTTP internally via a `ResponseWriter` that maps to `ImmediateResponse` or `StreamedImmediateResponse`.
+
+### ExtProc Adapter
+
+The ExtProc adapter (`pkg/adapters/extproc/`) implements Envoy's `ExternalProcessorServer` gRPC interface. It receives requests from Envoy, reconstructs them as `http.Request` objects, and delegates to the handler. For SSE streaming, `ResponseWriter.Flush()` sends each event as a `StreamedImmediateResponse` body chunk. Enable with `EXTPROC_ENABLED=true` (mutually exclusive with standalone HTTP).
 
 ### Core Engine
 
@@ -145,7 +149,19 @@ func (r *Registry[T]) Available() []string
 
 ## Deployment
 
-The gateway runs as a standalone HTTP server. Clients connect directly. The gateway handles the full request lifecycle: parsing, state resolution, backend calls, tool loops, streaming, and response assembly.
+The gateway supports two mutually exclusive server modes:
+
+**ExtProc mode** (`EXTPROC_ENABLED=true`) — runs as an Envoy ExtProc filter in the AI Gateway filter chain. All routes are handled via `StreamedImmediateResponse` (Envoy v1.37.0+). No HTTP listener.
+
+```
+┌────────┐         ┌──────────────────────────┐  gRPC   ┌──────────────┐         ┌─────────┐
+│ Client │──HTTP──▶│  Envoy                   │────────▶│  Gateway     │──HTTP──▶│ Backend │
+│        │◀──SSE───│  (auth, routing, EPP)    │◀────────│  ExtProc     │◀──SSE───│ (vLLM)  │
+└────────┘         └──────────────────────────┘         │  :50051      │         └─────────┘
+                                                        └──────────────┘
+```
+
+**Standalone mode** (default) — runs as a direct HTTP server. No Envoy required.
 
 ```
 ┌────────┐         ┌──────────────────────────┐         ┌─────────┐
@@ -154,13 +170,11 @@ The gateway runs as a standalone HTTP server. Clients connect directly. The gate
 └────────┘         └──────────────────────────┘         └─────────┘
 ```
 
-This supports full SSE streaming, all API endpoints (Responses, Files, Vector Stores, Conversations, Prompts), and the agentic tool loop.
-
-The gateway can be deployed behind any reverse proxy (Envoy, nginx, HAProxy) as a regular upstream service for TLS termination, load balancing, rate limiting, and observability. For inference-aware routing, consider [Gateway API Inference Extension (GIE)](https://gateway-api-inference-extension.sigs.k8s.io/) which handles Envoy-based model routing and scheduling.
+Both modes support full SSE streaming, all API endpoints (Responses, Files, Vector Stores, Conversations, Prompts), and the agentic tool loop. The ExtProc mode integrates with the Kubernetes AI Gateway stack ([GIE](https://gateway-api-inference-extension.sigs.k8s.io/), Kuadrant auth/rate-limiting, BBR body-based routing).
 
 ## Request Flow
 
-1. Request arrives at the HTTP server
+1. Request arrives (via Envoy ExtProc gRPC or direct HTTP)
 2. Handler parses and validates the request
 3. Core engine resolves conversation context (previous_response_id)
 4. `file_search`, `web_search`, and MCP tools are expanded into function definitions

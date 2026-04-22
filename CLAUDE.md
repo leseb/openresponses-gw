@@ -60,10 +60,11 @@ enum constraints. For union types that swag can't express, add post-processing i
 
 ```
 cmd/
-  server/          → HTTP server binary
+  server/          → Server binary (ExtProc gRPC or standalone HTTP)
 pkg/
+  handlers/        → Request routing, SSE streaming, OpenAPI serving
   adapters/
-    http/          → HTTP handlers, SSE streaming, OpenAPI serving
+    extproc/       → Envoy ExtProc gRPC adapter (StreamedImmediateResponse)
   core/
     engine/        → Main orchestrator: LLM calls, agentic tool loops, streaming
     schema/        → API type definitions (add swagger tags here)
@@ -80,10 +81,18 @@ scripts/
   vllm/                    → vLLM field tracking
 ```
 
+## Server modes
+
+- **ExtProc** (`EXTPROC_ENABLED=true`): gRPC server on `:50051`, all routes handled via Envoy ExtProc using StreamedImmediateResponse
+- **Standalone HTTP** (default): HTTP server on `:8080`, direct REST + SSE
+
+Both modes use the same `handlers.Handler` internally.
+
 ## Key patterns
 
-- **Request flow**: HTTP handler → `engine.ProcessRequest()` → `api.ResponsesOpenAIClient` → vLLM/OpenAI
-- **Streaming flow**: HTTP handler → `engine.ProcessRequestStream()` → SSE events channel → `handleStreamingResponse()` flushes to client
+- **Request flow**: Handler → `engine.ProcessRequest()` → `api.ResponsesOpenAIClient` → vLLM/OpenAI
+- **Streaming flow**: Handler → `engine.ProcessRequestStream()` → SSE events channel → `handleStreamingResponse()` flushes to client
+- **ExtProc flow**: Envoy → gRPC → ExtProc builds `http.Request` → `handler.ServeHTTP()` → ResponseWriter translates to StreamedImmediateResponse
 - **Agentic loop**: Engine iterates up to 10 times, executing server-side tools (MCP, file_search) between LLM calls
 
 ## Conventions

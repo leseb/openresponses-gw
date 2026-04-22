@@ -255,7 +255,8 @@ make lint
 │   │   ├── schema/         # API schemas
 │   │   ├── state/          # State interfaces
 │   │   └── config/         # Configuration
-│   ├── adapters/http/      # HTTP adapter
+│   ├── handlers/           # Request routing + SSE streaming
+│   ├── adapters/extproc/   # Envoy ExtProc gRPC adapter
 │   ├── storage/memory/     # In-memory storage
 │   ├── storage/sqlite/     # SQLite persistent storage
 │   └── observability/      # Logging, metrics
