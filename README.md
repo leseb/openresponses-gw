@@ -5,6 +5,12 @@
 
 The **stateful layer** for the [Open Responses API](https://github.com/openresponses/openresponses) — adds persistence, conversations, file search, web search, MCP tools, content extraction, and prompts on top of any `/v1/responses`-compatible inference backend.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-animated.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/architecture-animated.svg">
+  <img alt="Open Responses Gateway Architecture" src="docs/architecture-animated.svg">
+</picture>
+
 ## Why
 
 Inference servers like vLLM now expose the
