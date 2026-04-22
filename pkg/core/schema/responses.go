@@ -735,3 +735,73 @@ func (r *Response) MarkIncomplete(reason string) {
 		Reason: reason,
 	}
 }
+
+// ExtractEventType returns the SSE event type string for a streaming event.
+func ExtractEventType(event interface{}) string {
+	switch e := event.(type) {
+	case *ResponseCreatedStreamingEvent:
+		return e.Type
+	case *ResponseQueuedStreamingEvent:
+		return e.Type
+	case *ResponseInProgressStreamingEvent:
+		return e.Type
+	case *ResponseCompletedStreamingEvent:
+		return e.Type
+	case *ResponseFailedStreamingEvent:
+		return e.Type
+	case *ResponseIncompleteStreamingEvent:
+		return e.Type
+	case *ResponseOutputItemAddedStreamingEvent:
+		return e.Type
+	case *ResponseOutputItemDoneStreamingEvent:
+		return e.Type
+	case *ResponseContentPartAddedStreamingEvent:
+		return e.Type
+	case *ResponseContentPartDoneStreamingEvent:
+		return e.Type
+	case *ResponseOutputTextDeltaStreamingEvent:
+		return e.Type
+	case *ResponseOutputTextDoneStreamingEvent:
+		return e.Type
+	case *ResponseRefusalDeltaStreamingEvent:
+		return e.Type
+	case *ResponseRefusalDoneStreamingEvent:
+		return e.Type
+	case *ResponseReasoningDeltaStreamingEvent:
+		return e.Type
+	case *ResponseReasoningDoneStreamingEvent:
+		return e.Type
+	case *ResponseReasoningSummaryDeltaStreamingEvent:
+		return e.Type
+	case *ResponseReasoningSummaryDoneStreamingEvent:
+		return e.Type
+	case *ResponseReasoningSummaryPartAddedStreamingEvent:
+		return e.Type
+	case *ResponseReasoningSummaryPartDoneStreamingEvent:
+		return e.Type
+	case *ResponseOutputTextAnnotationAddedStreamingEvent:
+		return e.Type
+	case *ResponseFileSearchCallInProgressStreamingEvent:
+		return e.Type
+	case *ResponseFileSearchCallSearchingStreamingEvent:
+		return e.Type
+	case *ResponseFileSearchCallCompletedStreamingEvent:
+		return e.Type
+	case *ResponseWebSearchCallInProgressStreamingEvent:
+		return e.Type
+	case *ResponseWebSearchCallSearchingStreamingEvent:
+		return e.Type
+	case *ResponseWebSearchCallCompletedStreamingEvent:
+		return e.Type
+	case *ResponseFunctionCallArgumentsDeltaStreamingEvent:
+		return e.Type
+	case *ResponseFunctionCallArgumentsDoneStreamingEvent:
+		return e.Type
+	case *ErrorStreamingEvent:
+		return e.Type
+	case *RawStreamingEvent:
+		return e.EventType
+	default:
+		return "message"
+	}
+}

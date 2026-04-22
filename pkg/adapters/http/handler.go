@@ -416,7 +416,7 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, r *http.Request
 		}
 
 		// Extract event type for SSE event field
-		eventType := extractEventType(event)
+		eventType := schema.ExtractEventType(event)
 
 		// Write SSE event
 		fmt.Fprintf(w, "event: %s\n", eventType)
@@ -425,77 +425,6 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, r *http.Request
 	}
 
 	h.logger.Info("Streaming completed")
-}
-
-// extractEventType extracts the type field from an event using reflection
-func extractEventType(event interface{}) string {
-	// Use type assertion to get the type field
-	switch e := event.(type) {
-	case *schema.ResponseCreatedStreamingEvent:
-		return e.Type
-	case *schema.ResponseQueuedStreamingEvent:
-		return e.Type
-	case *schema.ResponseInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFailedStreamingEvent:
-		return e.Type
-	case *schema.ResponseIncompleteStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputItemAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputItemDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseContentPartAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseContentPartDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseRefusalDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseRefusalDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryPartAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryPartDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextAnnotationAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallSearchingStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallSearchingStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFunctionCallArgumentsDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseFunctionCallArgumentsDoneStreamingEvent:
-		return e.Type
-	case *schema.ErrorStreamingEvent:
-		return e.Type
-	case *schema.RawStreamingEvent:
-		return e.EventType
-	default:
-		return "message"
-	}
 }
 
 // writeError writes an error response

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 
 	filterv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -32,6 +33,9 @@ type Processor struct {
 
 // NewProcessor creates a new ExtProc processor.
 func NewProcessor(eng *engine.Engine, logger *logging.Logger) *Processor {
+	if logger == nil {
+		logger = &logging.Logger{Logger: slog.Default()}
+	}
 	return &Processor{
 		engine: eng,
 		logger: logger,
@@ -82,9 +86,7 @@ func (p *Processor) Process(stream extprocv3.ExternalProcessor_ProcessServer) er
 			body := v.RequestBody.GetBody()
 			if err := p.handleResponsesRequest(stream, body); err != nil {
 				p.logger.Error("Failed to handle responses request", "error", err)
-				if sendErr := stream.Send(errorResponse(500, "processing_error", err.Error())); sendErr != nil {
-					return fmt.Errorf("sending error response: %w", sendErr)
-				}
+				return err
 			}
 
 		default:
@@ -142,6 +144,7 @@ func (p *Processor) handleStreaming(ctx context.Context, stream extprocv3.Extern
 	if err := stream.Send(streamHeadersMsg(200, map[string]string{
 		"content-type":  "text/event-stream",
 		"cache-control": "no-cache",
+		"connection":    "keep-alive",
 	})); err != nil {
 		return fmt.Errorf("sending stream headers: %w", err)
 	}
@@ -153,7 +156,7 @@ func (p *Processor) handleStreaming(ctx context.Context, stream extprocv3.Extern
 			continue
 		}
 
-		eventType := extractEventType(event)
+		eventType := schema.ExtractEventType(event)
 		sseData := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, data)
 
 		if err := stream.Send(streamBodyMsg([]byte(sseData), false)); err != nil {
@@ -202,74 +205,5 @@ func requestBodyBuffered() *extprocv3.ProcessingResponse {
 		ModeOverride: &filterv3.ProcessingMode{
 			RequestBodyMode: filterv3.ProcessingMode_BUFFERED,
 		},
-	}
-}
-
-func extractEventType(event interface{}) string {
-	switch e := event.(type) {
-	case *schema.ResponseCreatedStreamingEvent:
-		return e.Type
-	case *schema.ResponseQueuedStreamingEvent:
-		return e.Type
-	case *schema.ResponseInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFailedStreamingEvent:
-		return e.Type
-	case *schema.ResponseIncompleteStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputItemAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputItemDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseContentPartAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseContentPartDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseRefusalDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseRefusalDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryPartAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseReasoningSummaryPartDoneStreamingEvent:
-		return e.Type
-	case *schema.ResponseOutputTextAnnotationAddedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallSearchingStreamingEvent:
-		return e.Type
-	case *schema.ResponseFileSearchCallCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallInProgressStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallSearchingStreamingEvent:
-		return e.Type
-	case *schema.ResponseWebSearchCallCompletedStreamingEvent:
-		return e.Type
-	case *schema.ResponseFunctionCallArgumentsDeltaStreamingEvent:
-		return e.Type
-	case *schema.ResponseFunctionCallArgumentsDoneStreamingEvent:
-		return e.Type
-	case *schema.ErrorStreamingEvent:
-		return e.Type
-	case *schema.RawStreamingEvent:
-		return e.EventType
-	default:
-		return "message"
 	}
 }

@@ -169,6 +169,9 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("EXTPROC_ENABLED"); v == "true" {
 		cfg.ExtProc.Enabled = true
 	}
+	if v := os.Getenv("EXTPROC_HOST"); v != "" {
+		cfg.ExtProc.Host = v
+	}
 	if v := os.Getenv("EXTPROC_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.ExtProc.Port = p
@@ -241,6 +244,9 @@ func Default() *Config {
 	epCfg := ExtProcConfig{}
 	if v := os.Getenv("EXTPROC_ENABLED"); v == "true" {
 		epCfg.Enabled = true
+	}
+	if v := os.Getenv("EXTPROC_HOST"); v != "" {
+		epCfg.Host = v
 	}
 	if v := os.Getenv("EXTPROC_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
