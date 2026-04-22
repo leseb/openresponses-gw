@@ -1,0 +1,519 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1420" font-family="'Archivo','Public Sans',-apple-system,BlinkMacSystemFont,sans-serif">
+  <style>
+    :root {
+      --bg: #0e1520;
+      --grid-stroke: #fff;
+      --grid-opacity: 0.03;
+      --lane-label: #4b6478;
+      --lane-divider: #1e2d3d;
+      --card-bg: #131e2a;
+      --card-stroke: #1e3040;
+      --step-bg: #111f2d;
+      --step-stroke: #1a3545;
+      --step-text: #7fb8c4;
+      --step-title: #5da8b0;
+      --arrow: #0d7377;
+      --arrow-return: #2dbdc2;
+      --arrow-backend: #e8a838;
+      --arrow-tool: #c75dcc;
+      --envoy-accent: #c48820;
+      --teal: #2dbdc2;
+      --muted: #3d5a6e;
+      --white: #e0f5f5;
+      --shadow-opacity: 0.12;
+      --phase-bg: #0a1018;
+      --phase-stroke: #1a3040;
+      --num-bg: #0d7377;
+      --num-text: #e0f5f5;
+      --grpc-color: #e8a838;
+      --http-color: #2dbdc2;
+      --sse-color: #6dcf6d;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8f9fa;
+        --grid-stroke: #000;
+        --grid-opacity: 0.03;
+        --lane-label: #6b7d8e;
+        --lane-divider: #d8dee4;
+        --card-bg: #ffffff;
+        --card-stroke: #d8dee4;
+        --step-bg: #f5f7f8;
+        --step-stroke: #d8dee4;
+        --step-text: #4a6570;
+        --step-title: #0b6165;
+        --arrow: #0d7377;
+        --arrow-return: #0b6165;
+        --arrow-backend: #9a6a10;
+        --arrow-tool: #9b3da0;
+        --envoy-accent: #9a6a10;
+        --teal: #0b6165;
+        --muted: #6b7d8e;
+        --white: #1a1a1a;
+        --shadow-opacity: 0.06;
+        --phase-bg: #f0f2f4;
+        --phase-stroke: #d8dee4;
+        --num-bg: #0d7377;
+        --num-text: #ffffff;
+        --grpc-color: #9a6a10;
+        --http-color: #0b6165;
+        --sse-color: #2d8a2d;
+      }
+    }
+  </style>
+  <defs>
+    <filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#000" flood-opacity="var(--shadow-opacity, 0.12)"/></filter>
+    <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--arrow)" stroke="none"/>
+    </marker>
+    <marker id="ah-grpc" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--grpc-color)" stroke="none"/>
+    </marker>
+    <marker id="ah-return" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--arrow-return)" stroke="none"/>
+    </marker>
+    <marker id="ah-backend" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--arrow-backend)" stroke="none"/>
+    </marker>
+    <marker id="ah-tool" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--arrow-tool)" stroke="none"/>
+    </marker>
+    <marker id="ah-sse" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="var(--sse-color)" stroke="none"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="1420" rx="8" fill="var(--bg)"/>
+  <g opacity="var(--grid-opacity)">
+    <pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40,0 L0,0 0,40" fill="none" stroke="var(--grid-stroke)" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1100" height="1420" fill="url(#g)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="550" y="30" text-anchor="middle" fill="var(--white)" font-size="14" font-weight="700" letter-spacing="1.5">REQUEST FLOW: POST /v1/responses (streaming + tool calling)</text>
+
+  <!-- ========== SWIM LANE HEADERS ========== -->
+  <text x="80" y="60" text-anchor="middle" fill="var(--lane-label)" font-size="10" font-weight="700" letter-spacing="1">CLIENT</text>
+  <text x="250" y="60" text-anchor="middle" fill="var(--envoy-accent)" font-size="10" font-weight="700" letter-spacing="1">ENVOY</text>
+  <text x="450" y="60" text-anchor="middle" fill="var(--grpc-color)" font-size="10" font-weight="700" letter-spacing="1">EXTPROC</text>
+  <text x="650" y="60" text-anchor="middle" fill="var(--teal)" font-size="10" font-weight="700" letter-spacing="1">HANDLERS</text>
+  <text x="850" y="60" text-anchor="middle" fill="var(--teal)" font-size="10" font-weight="700" letter-spacing="1">ENGINE</text>
+  <text x="1020" y="60" text-anchor="middle" fill="var(--arrow-backend)" font-size="10" font-weight="700" letter-spacing="1">BACKEND</text>
+
+  <!-- Lane dividers -->
+  <line x1="165" y1="50" x2="165" y2="1380" stroke="var(--lane-divider)" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.5"/>
+  <line x1="345" y1="50" x2="345" y2="1380" stroke="var(--lane-divider)" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.5"/>
+  <line x1="550" y1="50" x2="550" y2="1380" stroke="var(--lane-divider)" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.5"/>
+  <line x1="750" y1="50" x2="750" y2="1380" stroke="var(--lane-divider)" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.5"/>
+  <line x1="950" y1="50" x2="950" y2="1380" stroke="var(--lane-divider)" stroke-width="0.5" stroke-dasharray="4,4" opacity="0.5"/>
+
+  <!-- ========== PHASE 1: REQUEST INGRESS ========== -->
+  <rect x="15" y="75" width="1070" height="255" rx="6" fill="var(--phase-bg)" stroke="var(--phase-stroke)" stroke-width="0.5" opacity="0.5"/>
+  <text x="30" y="93" fill="var(--muted)" font-size="9" font-weight="700" letter-spacing="1">PHASE 1: REQUEST INGRESS</text>
+
+  <!-- Step 1: Client sends request -->
+  <g filter="url(#s)">
+    <rect x="25" y="105" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="38" cy="118" r="8" fill="var(--num-bg)"/>
+    <text x="38" y="122" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">1</text>
+    <text x="50" y="118" fill="var(--step-title)" font-size="8" font-weight="600">POST request</text>
+    <text x="35" y="135" fill="var(--step-text)" font-size="7">/v1/responses</text>
+    <text x="35" y="147" fill="var(--step-text)" font-size="7">stream: true</text>
+  </g>
+
+  <!-- Arrow 1→2 -->
+  <path d="M135,130 L195,130" stroke="var(--arrow)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+  <text x="165" y="125" text-anchor="middle" fill="var(--muted)" font-size="6.5">HTTPS</text>
+
+  <!-- Step 2: Envoy auth -->
+  <g filter="url(#s)">
+    <rect x="200" y="105" width="100" height="45" rx="4" fill="var(--step-bg)" stroke="var(--envoy-accent)" stroke-width="0.5"/>
+    <circle cx="213" cy="118" r="8" fill="var(--num-bg)"/>
+    <text x="213" y="122" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">2</text>
+    <text x="228" y="118" fill="var(--envoy-accent)" font-size="8" font-weight="600">Authorino</text>
+    <text x="210" y="135" fill="var(--step-text)" font-size="7">API key / OIDC / tier</text>
+  </g>
+
+  <!-- Arrow 2→3 -->
+  <path d="M250,150 L250,165" stroke="var(--envoy-accent)" stroke-width="1" fill="none" marker-end="url(#ah-backend)"/>
+
+  <!-- Step 3: Envoy rate limit -->
+  <g filter="url(#s)">
+    <rect x="200" y="170" width="100" height="45" rx="4" fill="var(--step-bg)" stroke="var(--envoy-accent)" stroke-width="0.5"/>
+    <circle cx="213" cy="183" r="8" fill="var(--num-bg)"/>
+    <text x="213" y="187" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">3</text>
+    <text x="228" y="183" fill="var(--envoy-accent)" font-size="8" font-weight="600">Limitador</text>
+    <text x="210" y="200" fill="var(--step-text)" font-size="7">Rate limit check</text>
+  </g>
+
+  <!-- Arrow 3→4 -->
+  <path d="M250,215 L250,230" stroke="var(--envoy-accent)" stroke-width="1" fill="none" marker-end="url(#ah-backend)"/>
+
+  <!-- Step 4: BBR -->
+  <g filter="url(#s)">
+    <rect x="200" y="235" width="100" height="45" rx="4" fill="var(--step-bg)" stroke="var(--envoy-accent)" stroke-width="0.5"/>
+    <circle cx="213" cy="248" r="8" fill="var(--num-bg)"/>
+    <text x="213" y="252" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">4</text>
+    <text x="228" y="248" fill="var(--envoy-accent)" font-size="8" font-weight="600">BBR ext_proc</text>
+    <text x="210" y="265" fill="var(--step-text)" font-size="7">Extract model → headers</text>
+  </g>
+
+  <!-- Arrow 4→5 -->
+  <path d="M300,258 L395,258" stroke="var(--grpc-color)" stroke-width="1.5" fill="none" marker-end="url(#ah-grpc)"/>
+  <text x="348" y="252" text-anchor="middle" fill="var(--grpc-color)" font-size="6.5">gRPC</text>
+
+  <!-- Step 5: ExtProc receives request_headers -->
+  <g filter="url(#s)">
+    <rect x="400" y="105" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--grpc-color)" stroke-width="0.5"/>
+    <circle cx="413" cy="118" r="8" fill="var(--num-bg)"/>
+    <text x="413" y="122" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">5</text>
+    <text x="428" y="118" fill="var(--grpc-color)" font-size="8" font-weight="600">Recv()</text>
+    <text x="410" y="135" fill="var(--step-text)" font-size="7">request_headers</text>
+    <text x="410" y="147" fill="var(--step-text)" font-size="7">:path, :method</text>
+  </g>
+
+  <!-- Arrow 5→6 -->
+  <path d="M455,160 L455,175" stroke="var(--grpc-color)" stroke-width="1" fill="none" marker-end="url(#ah-grpc)"/>
+
+  <!-- Step 6: ExtProc requests body -->
+  <g filter="url(#s)">
+    <rect x="400" y="180" width="110" height="45" rx="4" fill="var(--step-bg)" stroke="var(--grpc-color)" stroke-width="0.5"/>
+    <circle cx="413" cy="193" r="8" fill="var(--num-bg)"/>
+    <text x="413" y="197" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">6</text>
+    <text x="428" y="193" fill="var(--grpc-color)" font-size="8" font-weight="600">Send()</text>
+    <text x="410" y="210" fill="var(--step-text)" font-size="7">ModeOverride: BUFFERED</text>
+  </g>
+
+  <!-- Arrow 6→7 (return to envoy for body) -->
+  <path d="M400,200 L305,200" stroke="var(--grpc-color)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-grpc)"/>
+
+  <!-- Arrow envoy→extproc with body -->
+  <path d="M300,290 L400,290" stroke="var(--grpc-color)" stroke-width="1.5" fill="none" marker-end="url(#ah-grpc)"/>
+  <text x="350" y="285" text-anchor="middle" fill="var(--grpc-color)" font-size="6.5">request_body</text>
+
+  <!-- Step 7: ExtProc receives body -->
+  <g filter="url(#s)">
+    <rect x="400" y="240" width="110" height="68" rx="4" fill="var(--step-bg)" stroke="var(--grpc-color)" stroke-width="0.5"/>
+    <circle cx="413" cy="253" r="8" fill="var(--num-bg)"/>
+    <text x="413" y="257" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">7</text>
+    <text x="428" y="253" fill="var(--grpc-color)" font-size="8" font-weight="600">Recv()</text>
+    <text x="410" y="270" fill="var(--step-text)" font-size="7">request_body (JSON)</text>
+    <text x="410" y="282" fill="var(--step-text)" font-size="7">Build http.Request</text>
+    <text x="410" y="294" fill="var(--step-text)" font-size="7">from headers + body</text>
+  </g>
+
+  <!-- ========== PHASE 2: REQUEST HANDLING ========== -->
+  <rect x="15" y="340" width="1070" height="220" rx="6" fill="var(--phase-bg)" stroke="var(--phase-stroke)" stroke-width="0.5" opacity="0.5"/>
+  <text x="30" y="358" fill="var(--muted)" font-size="9" font-weight="700" letter-spacing="1">PHASE 2: REQUEST HANDLING</text>
+
+  <!-- Arrow 7→8 -->
+  <path d="M510,285 L595,285 L595,375" stroke="var(--http-color)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+  <text x="555" y="278" text-anchor="middle" fill="var(--http-color)" font-size="6.5">ServeHTTP(w, req)</text>
+
+  <!-- Step 8: Handler routes -->
+  <g filter="url(#s)">
+    <rect x="595" y="370" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="608" cy="383" r="8" fill="var(--num-bg)"/>
+    <text x="608" y="387" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">8</text>
+    <text x="623" y="383" fill="var(--step-title)" font-size="8" font-weight="600">Route match</text>
+    <text x="605" y="400" fill="var(--step-text)" font-size="7">POST /v1/responses</text>
+    <text x="605" y="412" fill="var(--step-text)" font-size="7">Parse JSON → Validate</text>
+  </g>
+
+  <!-- Arrow 8→9 -->
+  <path d="M650,425 L650,440" stroke="var(--arrow)" stroke-width="1" fill="none" marker-end="url(#ah)"/>
+
+  <!-- Step 9: Handler detects stream -->
+  <g filter="url(#s)">
+    <rect x="595" y="445" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="608" cy="458" r="8" fill="var(--num-bg)"/>
+    <text x="608" y="462" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">9</text>
+    <text x="623" y="458" fill="var(--step-title)" font-size="8" font-weight="600">stream=true</text>
+    <text x="605" y="475" fill="var(--step-text)" font-size="7">Set SSE headers</text>
+    <text x="605" y="487" fill="var(--step-text)" font-size="7">WriteHeader(200)</text>
+  </g>
+
+  <!-- Note: WriteHeader triggers StreamedImmediateResponse headers -->
+  <path d="M595,470 L455,470 L455,370" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-sse)"/>
+  <g filter="url(#s)">
+    <rect x="390" y="340" width="130" height="30" rx="4" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="455" y="352" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">StreamedImmediate</text>
+    <text x="455" y="363" text-anchor="middle" fill="var(--sse-color)" font-size="7">headers (:status 200)</text>
+  </g>
+
+  <!-- Arrow to Envoy -->
+  <path d="M390,355 L305,355" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-sse)"/>
+
+  <!-- Arrow 9→10 -->
+  <path d="M705,475 L795,475" stroke="var(--arrow)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+  <text x="750" y="468" text-anchor="middle" fill="var(--muted)" font-size="6.5">ProcessRequestStream()</text>
+
+  <!-- Step 10: Engine starts -->
+  <g filter="url(#s)">
+    <rect x="795" y="445" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="458" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="462" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">10</text>
+    <text x="823" y="458" fill="var(--step-title)" font-size="8" font-weight="600">Start stream</text>
+    <text x="805" y="475" fill="var(--step-text)" font-size="7">Create event chan</text>
+    <text x="805" y="487" fill="var(--step-text)" font-size="7">Emit response.created</text>
+  </g>
+
+  <!-- ========== PHASE 3: AGENTIC LOOP ========== -->
+  <rect x="15" y="570" width="1070" height="450" rx="6" fill="var(--phase-bg)" stroke="var(--phase-stroke)" stroke-width="0.5" opacity="0.5"/>
+  <text x="30" y="588" fill="var(--muted)" font-size="9" font-weight="700" letter-spacing="1">PHASE 3: AGENTIC TOOL LOOP (up to 10 iterations)</text>
+
+  <!-- Iteration 1 label -->
+  <rect x="780" y="595" width="180" height="18" rx="3" fill="var(--arrow-tool)" opacity="0.15"/>
+  <text x="870" y="608" text-anchor="middle" fill="var(--arrow-tool)" font-size="8" font-weight="700" letter-spacing="0.5">ITERATION 1</text>
+
+  <!-- Step 11: Engine calls LLM -->
+  <g filter="url(#s)">
+    <rect x="795" y="620" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="633" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="637" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">11</text>
+    <text x="823" y="633" fill="var(--step-title)" font-size="8" font-weight="600">Call LLM</text>
+    <text x="805" y="650" fill="var(--step-text)" font-size="7">CreateResponseStream()</text>
+    <text x="805" y="662" fill="var(--step-text)" font-size="7">with expanded tools</text>
+  </g>
+
+  <!-- Arrow 11→backend -->
+  <path d="M905,647 L965,647" stroke="var(--arrow-backend)" stroke-width="1.5" fill="none" marker-end="url(#ah-backend)"/>
+  <text x="935" y="640" text-anchor="middle" fill="var(--arrow-backend)" font-size="6.5">HTTP</text>
+
+  <!-- Step 12: Backend returns -->
+  <g filter="url(#s)">
+    <rect x="968" y="620" width="100" height="55" rx="4" fill="var(--step-bg)" stroke="var(--arrow-backend)" stroke-width="0.5"/>
+    <circle cx="981" cy="633" r="8" fill="var(--num-bg)"/>
+    <text x="981" y="637" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">12</text>
+    <text x="996" y="633" fill="var(--arrow-backend)" font-size="8" font-weight="600">vLLM / Ollama</text>
+    <text x="978" y="650" fill="var(--step-text)" font-size="7">/v1/chat/completions</text>
+    <text x="978" y="662" fill="var(--step-text)" font-size="7">SSE stream back</text>
+  </g>
+
+  <!-- Arrow backend→engine (SSE) -->
+  <path d="M968,670 L905,670 L905,690" stroke="var(--arrow-backend)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-backend)"/>
+
+  <!-- Step 13: Engine normalizes + detects tool_call -->
+  <g filter="url(#s)">
+    <rect x="795" y="695" width="110" height="68" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="708" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="712" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">13</text>
+    <text x="823" y="708" fill="var(--step-title)" font-size="8" font-weight="600">Normalize SSE</text>
+    <text x="805" y="725" fill="var(--step-text)" font-size="7">Patch response_id</text>
+    <text x="805" y="737" fill="var(--step-text)" font-size="7">Emit text deltas</text>
+    <text x="805" y="749" fill="var(--arrow-tool)" font-size="7" font-weight="600">Detect: tool_call!</text>
+  </g>
+
+  <!-- SSE events flowing back through handler → extproc → envoy → client -->
+  <path d="M795,730 L710,730" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+  <path d="M595,730 L510,730" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+  <path d="M395,730 L310,730" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+  <path d="M200,730 L140,730" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-sse)"/>
+
+  <g filter="url(#s)">
+    <rect x="560" y="715" width="85" height="30" rx="3" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="603" y="728" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">w.Write()</text>
+    <text x="603" y="739" text-anchor="middle" fill="var(--sse-color)" font-size="7">Flush()</text>
+  </g>
+  <g filter="url(#s)">
+    <rect x="350" y="715" width="90" height="30" rx="3" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="395" y="728" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">streamBodyMsg</text>
+    <text x="395" y="739" text-anchor="middle" fill="var(--sse-color)" font-size="7">SSE chunk</text>
+  </g>
+  <g filter="url(#s)">
+    <rect x="30" y="715" width="105" height="30" rx="3" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="83" y="728" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">event: text.delta</text>
+    <text x="83" y="739" text-anchor="middle" fill="var(--sse-color)" font-size="7">data: {"delta":"..."}</text>
+  </g>
+
+  <!-- Animated dots for SSE flow -->
+  <circle r="2.5" fill="var(--sse-color)" opacity="0.8">
+    <animateMotion dur="2s" repeatCount="indefinite" path="M795,730 L140,730"/>
+  </circle>
+  <circle r="2.5" fill="var(--sse-color)" opacity="0.6">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="0.7s" path="M795,730 L140,730"/>
+  </circle>
+
+  <!-- Step 14: Execute tool -->
+  <g filter="url(#s)">
+    <rect x="795" y="780" width="110" height="68" rx="4" fill="var(--step-bg)" stroke="var(--arrow-tool)" stroke-width="0.5"/>
+    <circle cx="808" cy="793" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="797" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">14</text>
+    <text x="823" y="793" fill="var(--arrow-tool)" font-size="8" font-weight="600">Execute tool</text>
+    <text x="805" y="810" fill="var(--step-text)" font-size="7">file_search → Milvus</text>
+    <text x="805" y="822" fill="var(--step-text)" font-size="7">web_search → Brave</text>
+    <text x="805" y="834" fill="var(--step-text)" font-size="7">MCP → tool server</text>
+  </g>
+
+  <!-- Tool call events flowing back -->
+  <path d="M795,815 L140,815" stroke="var(--arrow-tool)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-tool)"/>
+  <g filter="url(#s)">
+    <rect x="30" y="803" width="105" height="24" rx="3" fill="var(--step-bg)" stroke="var(--arrow-tool)" stroke-width="0.5"/>
+    <text x="83" y="814" text-anchor="middle" fill="var(--arrow-tool)" font-size="7" font-weight="600">file_search.searching</text>
+    <text x="83" y="823" text-anchor="middle" fill="var(--arrow-tool)" font-size="7">file_search.completed</text>
+  </g>
+
+  <!-- Iteration 2 label -->
+  <rect x="780" y="860" width="180" height="18" rx="3" fill="var(--arrow-tool)" opacity="0.15"/>
+  <text x="870" y="873" text-anchor="middle" fill="var(--arrow-tool)" font-size="8" font-weight="700" letter-spacing="0.5">ITERATION 2 (with tool results)</text>
+
+  <!-- Step 15: Loop back to LLM -->
+  <g filter="url(#s)">
+    <rect x="795" y="885" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="898" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="902" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">15</text>
+    <text x="823" y="898" fill="var(--step-title)" font-size="8" font-weight="600">Re-call LLM</text>
+    <text x="805" y="915" fill="var(--step-text)" font-size="7">Messages + tool output</text>
+    <text x="805" y="927" fill="var(--step-text)" font-size="7">→ final text response</text>
+  </g>
+
+  <!-- Arrow to backend again -->
+  <path d="M905,912 L965,912" stroke="var(--arrow-backend)" stroke-width="1.5" fill="none" marker-end="url(#ah-backend)"/>
+
+  <!-- Step 16: Backend final response -->
+  <g filter="url(#s)">
+    <rect x="968" y="885" width="100" height="55" rx="4" fill="var(--step-bg)" stroke="var(--arrow-backend)" stroke-width="0.5"/>
+    <circle cx="981" cy="898" r="8" fill="var(--num-bg)"/>
+    <text x="981" y="902" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">16</text>
+    <text x="996" y="898" fill="var(--arrow-backend)" font-size="8" font-weight="600">vLLM / Ollama</text>
+    <text x="978" y="915" fill="var(--step-text)" font-size="7">Final text response</text>
+    <text x="978" y="927" fill="var(--step-text)" font-size="7">with citations</text>
+  </g>
+
+  <!-- Loop arrow back -->
+  <path d="M968,935 L850,935 L850,960" stroke="var(--arrow-backend)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-backend)"/>
+
+  <!-- Step 17: Final text deltas -->
+  <g filter="url(#s)">
+    <rect x="795" y="965" width="110" height="45" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="978" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="982" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">17</text>
+    <text x="823" y="978" fill="var(--step-title)" font-size="8" font-weight="600">Final deltas</text>
+    <text x="805" y="995" fill="var(--step-text)" font-size="7">Emit text + annotations</text>
+  </g>
+
+  <!-- Final text SSE events -->
+  <path d="M795,985 L140,985" stroke="var(--sse-color)" stroke-width="1" fill="none" stroke-dasharray="3,2" marker-end="url(#ah-sse)"/>
+  <circle r="2.5" fill="var(--sse-color)" opacity="0.8">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="0.3s" path="M795,985 L140,985"/>
+  </circle>
+  <g filter="url(#s)">
+    <rect x="30" y="973" width="105" height="24" rx="3" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="83" y="984" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">text.delta (streaming)</text>
+    <text x="83" y="993" text-anchor="middle" fill="var(--sse-color)" font-size="7">annotation.added</text>
+  </g>
+
+  <!-- ========== PHASE 4: COMPLETION ========== -->
+  <rect x="15" y="1030" width="1070" height="295" rx="6" fill="var(--phase-bg)" stroke="var(--phase-stroke)" stroke-width="0.5" opacity="0.5"/>
+  <text x="30" y="1048" fill="var(--muted)" font-size="9" font-weight="700" letter-spacing="1">PHASE 4: COMPLETION &amp; PERSISTENCE</text>
+
+  <!-- Step 18: Engine emits completed -->
+  <g filter="url(#s)">
+    <rect x="795" y="1060" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="1073" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="1077" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">18</text>
+    <text x="823" y="1073" fill="var(--step-title)" font-size="8" font-weight="600">Complete</text>
+    <text x="805" y="1090" fill="var(--step-text)" font-size="7">Emit response.completed</text>
+    <text x="805" y="1102" fill="var(--step-text)" font-size="7">Close event channel</text>
+  </g>
+
+  <!-- response.completed SSE event -->
+  <path d="M795,1090 L140,1090" stroke="var(--sse-color)" stroke-width="1.5" fill="none" marker-end="url(#ah-sse)"/>
+  <g filter="url(#s)">
+    <rect x="30" y="1078" width="105" height="24" rx="3" fill="var(--step-bg)" stroke="var(--sse-color)" stroke-width="0.5"/>
+    <text x="83" y="1089" text-anchor="middle" fill="var(--sse-color)" font-size="7" font-weight="600">response.completed</text>
+    <text x="83" y="1098" text-anchor="middle" fill="var(--sse-color)" font-size="7">{response: {...}}</text>
+  </g>
+
+  <!-- Step 19: Engine persists -->
+  <g filter="url(#s)">
+    <rect x="795" y="1130" width="110" height="55" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="808" cy="1143" r="8" fill="var(--num-bg)"/>
+    <text x="808" y="1147" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">19</text>
+    <text x="823" y="1143" fill="var(--step-title)" font-size="8" font-weight="600">Persist</text>
+    <text x="805" y="1160" fill="var(--step-text)" font-size="7">Save to session store</text>
+    <text x="805" y="1172" fill="var(--step-text)" font-size="7">Append conversation</text>
+  </g>
+
+  <!-- Step 20: Handler returns, finish() called -->
+  <g filter="url(#s)">
+    <rect x="595" y="1130" width="110" height="45" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="608" cy="1143" r="8" fill="var(--num-bg)"/>
+    <text x="608" y="1147" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">20</text>
+    <text x="623" y="1143" fill="var(--step-title)" font-size="8" font-weight="600">ServeHTTP returns</text>
+    <text x="605" y="1160" fill="var(--step-text)" font-size="7">Handler loop done</text>
+  </g>
+
+  <!-- Arrow back to extproc -->
+  <path d="M595,1152 L515,1152" stroke="var(--http-color)" stroke-width="1" fill="none" marker-end="url(#ah)"/>
+
+  <!-- Step 21: ExtProc sends end_of_stream -->
+  <g filter="url(#s)">
+    <rect x="390" y="1130" width="120" height="55" rx="4" fill="var(--step-bg)" stroke="var(--grpc-color)" stroke-width="0.5"/>
+    <circle cx="403" cy="1143" r="8" fill="var(--num-bg)"/>
+    <text x="403" y="1147" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">21</text>
+    <text x="420" y="1143" fill="var(--grpc-color)" font-size="8" font-weight="600">finish()</text>
+    <text x="400" y="1160" fill="var(--step-text)" font-size="7">streamBodyMsg(nil,</text>
+    <text x="400" y="1172" fill="var(--step-text)" font-size="7">  endOfStream: true)</text>
+  </g>
+
+  <!-- Arrow to envoy -->
+  <path d="M390,1158 L310,1158" stroke="var(--grpc-color)" stroke-width="1.5" fill="none" marker-end="url(#ah-grpc)"/>
+
+  <!-- Step 22: Envoy closes connection -->
+  <g filter="url(#s)">
+    <rect x="200" y="1130" width="100" height="45" rx="4" fill="var(--step-bg)" stroke="var(--envoy-accent)" stroke-width="0.5"/>
+    <circle cx="213" cy="1143" r="8" fill="var(--num-bg)"/>
+    <text x="213" y="1147" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">22</text>
+    <text x="228" y="1143" fill="var(--envoy-accent)" font-size="8" font-weight="600">Close stream</text>
+    <text x="210" y="1160" fill="var(--step-text)" font-size="7">HTTP response done</text>
+  </g>
+
+  <!-- Arrow to client -->
+  <path d="M200,1158 L140,1158" stroke="var(--arrow)" stroke-width="1.5" fill="none" marker-end="url(#ah)"/>
+
+  <!-- Step 23: Client receives -->
+  <g filter="url(#s)">
+    <rect x="25" y="1130" width="110" height="45" rx="4" fill="var(--step-bg)" stroke="var(--step-stroke)" stroke-width="0.5"/>
+    <circle cx="38" cy="1143" r="8" fill="var(--num-bg)"/>
+    <text x="38" y="1147" text-anchor="middle" fill="var(--num-text)" font-size="8" font-weight="700">23</text>
+    <text x="53" y="1143" fill="var(--step-title)" font-size="8" font-weight="600">Stream ends</text>
+    <text x="35" y="1160" fill="var(--step-text)" font-size="7">All 24 events received</text>
+  </g>
+
+  <!-- ========== LEGEND ========== -->
+  <g transform="translate(30, 1210)">
+    <rect width="1040" height="85" rx="6" fill="var(--phase-bg)" stroke="var(--phase-stroke)" stroke-width="0.5"/>
+    <text x="15" y="20" fill="var(--muted)" font-size="9" font-weight="700" letter-spacing="0.5">LEGEND</text>
+
+    <line x1="15" y1="40" x2="55" y2="40" stroke="var(--arrow)" stroke-width="1.5"/>
+    <text x="62" y="43" fill="var(--step-text)" font-size="8">Internal call</text>
+
+    <line x1="150" y1="40" x2="190" y2="40" stroke="var(--grpc-color)" stroke-width="1.5"/>
+    <text x="197" y="43" fill="var(--step-text)" font-size="8">gRPC (ExtProc protocol)</text>
+
+    <line x1="370" y1="40" x2="410" y2="40" stroke="var(--arrow-backend)" stroke-width="1.5"/>
+    <text x="417" y="43" fill="var(--step-text)" font-size="8">HTTP to backend</text>
+
+    <line x1="550" y1="40" x2="590" y2="40" stroke="var(--sse-color)" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="597" y="43" fill="var(--step-text)" font-size="8">SSE events (streaming)</text>
+
+    <line x1="770" y1="40" x2="810" y2="40" stroke="var(--arrow-tool)" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="817" y="43" fill="var(--step-text)" font-size="8">Tool execution events</text>
+
+    <text x="15" y="70" fill="var(--muted)" font-size="7.5">ResponseWriter.Write() buffers SSE data · Flush() sends streamBodyMsg via gRPC · finish() sends end_of_stream · No HTTP upstream — all handled inside ExtProc</text>
+  </g>
+
+  <!-- Tagline -->
+  <text x="550" y="1380" text-anchor="middle" fill="var(--muted)" font-size="9" font-weight="600" letter-spacing="1.5">
+    22 STEPS  ·  4 PHASES  ·  ZERO EXTRA HOPS  ·  PURE EXTPROC
+  </text>
+
+  <!-- Animated pulse on the agentic loop boundary -->
+  <rect x="780" y="595" width="290" height="420" rx="6" fill="none" stroke="var(--arrow-tool)" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0.3;0" dur="4s" repeatCount="indefinite"/>
+  </rect>
+</svg>

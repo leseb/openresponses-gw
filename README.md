@@ -11,6 +11,17 @@ The **stateful layer** for the [Open Responses API](https://github.com/openrespo
   <img alt="Open Responses Gateway Architecture" src="docs/architecture-animated.svg">
 </picture>
 
+<details>
+<summary><strong>Request flow: streaming + agentic tool loop</strong></summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/request-flow.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/request-flow.svg">
+  <img alt="Request Flow Diagram" src="docs/request-flow.svg">
+</picture>
+
+</details>
+
 ## Why
 
 Inference servers like vLLM now expose the
