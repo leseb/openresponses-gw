@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -20,12 +21,20 @@ type Config struct {
 	FileStore    FileStoreConfig    `yaml:"file_store"`
 	SessionStore SessionStoreConfig `yaml:"session_store"`
 	WebSearch    WebSearchConfig    `yaml:"web_search"`
+	ExtProc      ExtProcConfig      `yaml:"extproc"`
 }
 
 // WebSearchConfig contains web search provider configuration
 type WebSearchConfig struct {
 	Provider string `yaml:"provider"` // "brave" or "tavily"
 	APIKey   string `yaml:"api_key"`
+}
+
+// ExtProcConfig contains ExtProc gRPC server configuration
+type ExtProcConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port"`
 }
 
 // SessionStoreConfig contains session store backend configuration
@@ -156,12 +165,23 @@ func Load(path string) (*Config, error) {
 		cfg.WebSearch.APIKey = v
 	}
 
+	// ExtProc env overrides
+	if v := os.Getenv("EXTPROC_ENABLED"); v == "true" {
+		cfg.ExtProc.Enabled = true
+	}
+	if v := os.Getenv("EXTPROC_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			cfg.ExtProc.Port = p
+		}
+	}
+
 	// Apply defaults
 	applyEngineDefaults(&cfg.Engine)
 	applyEmbeddingDefaults(&cfg.Embedding)
 	applyVectorStoreDefaults(&cfg.VectorStore)
 	applyFileStoreDefaults(&cfg.FileStore)
 	applySessionStoreDefaults(&cfg.SessionStore)
+	applyExtProcDefaults(&cfg.ExtProc)
 
 	return &cfg, nil
 }
@@ -218,6 +238,17 @@ func Default() *Config {
 		APIKey:   os.Getenv("WEB_SEARCH_API_KEY"),
 	}
 
+	epCfg := ExtProcConfig{}
+	if v := os.Getenv("EXTPROC_ENABLED"); v == "true" {
+		epCfg.Enabled = true
+	}
+	if v := os.Getenv("EXTPROC_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil {
+			epCfg.Port = p
+		}
+	}
+	applyExtProcDefaults(&epCfg)
+
 	return &Config{
 		Server: ServerConfig{
 			Host:    "0.0.0.0",
@@ -230,6 +261,7 @@ func Default() *Config {
 		FileStore:    fsCfg,
 		SessionStore: ssCfg,
 		WebSearch:    wsCfg,
+		ExtProc:      epCfg,
 	}
 }
 
@@ -266,5 +298,14 @@ func applySessionStoreDefaults(cfg *SessionStoreConfig) {
 	}
 	if cfg.DSN == "" {
 		cfg.DSN = ":memory:"
+	}
+}
+
+func applyExtProcDefaults(cfg *ExtProcConfig) {
+	if cfg.Port == 0 {
+		cfg.Port = 50051
+	}
+	if cfg.Host == "" {
+		cfg.Host = "0.0.0.0"
 	}
 }
