@@ -41,7 +41,7 @@ func (m *mockStream) Recv() (*extprocv3.ProcessingRequest, error) {
 	return req, nil
 }
 
-func (m *mockStream) Context() context.Context    { return m.ctx }
+func (m *mockStream) Context() context.Context     { return m.ctx }
 func (m *mockStream) SetHeader(metadata.MD) error  { return nil }
 func (m *mockStream) SendHeader(metadata.MD) error { return nil }
 func (m *mockStream) SetTrailer(metadata.MD)       {}
