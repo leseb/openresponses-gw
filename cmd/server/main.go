@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	extprocAdapter "github.com/leseb/openresponses-gw/pkg/adapters/extproc"
 	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
@@ -209,6 +210,13 @@ func main() {
 	handler := httpAdapter.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
 	logger.Info("Initialized HTTP adapter")
 
+	// Initialize ExtProc adapter (optional)
+	var extprocServer *extprocAdapter.Server
+	if cfg.ExtProc.Enabled {
+		extprocServer = extprocAdapter.NewServer(eng, logger)
+		logger.Info("Initialized ExtProc adapter")
+	}
+
 	// Create HTTP server
 	httpAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
@@ -232,6 +240,17 @@ func main() {
 		}
 	}()
 
+	// Start ExtProc gRPC server (if enabled)
+	if extprocServer != nil {
+		grpcAddr := fmt.Sprintf("%s:%d", cfg.ExtProc.Host, cfg.ExtProc.Port)
+		go func() {
+			if err := extprocServer.Start(grpcAddr); err != nil {
+				logger.Error("ExtProc gRPC server error", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	// Wait for interrupt signal
 	<-ctx.Done()
 	logger.Info("Shutdown signal received")
@@ -242,6 +261,10 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", "error", err)
+	}
+
+	if extprocServer != nil {
+		extprocServer.Stop()
 	}
 
 	logger.Info("Server stopped gracefully")
