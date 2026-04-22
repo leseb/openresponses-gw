@@ -210,38 +210,15 @@ func main() {
 	handler := handlers.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
 	logger.Info("Initialized request handlers")
 
-	// Initialize ExtProc adapter (optional)
-	var extprocServer *extprocAdapter.Server
-	if cfg.ExtProc.Enabled {
-		extprocServer = extprocAdapter.NewServer(handler, logger)
-		logger.Info("Initialized ExtProc adapter")
-	}
-
-	// Create HTTP server
-	httpAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	srv := &http.Server{
-		Addr:         httpAddr,
-		Handler:      handler,
-		ReadTimeout:  cfg.Server.Timeout,
-		WriteTimeout: cfg.Server.Timeout,
-		IdleTimeout:  120 * time.Second,
-	}
-
 	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start HTTP server
-	go func() {
-		logger.Info("HTTP server listening", "address", httpAddr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server error", "error", err)
-			os.Exit(1)
-		}
-	}()
+	var srv *http.Server
 
-	// Start ExtProc gRPC server (if enabled)
-	if extprocServer != nil {
+	if cfg.ExtProc.Enabled {
+		// ExtProc mode: gRPC server only, no HTTP listener
+		extprocServer := extprocAdapter.NewServer(handler, logger)
 		grpcAddr := fmt.Sprintf("%s:%d", cfg.ExtProc.Host, cfg.ExtProc.Port)
 		go func() {
 			if err := extprocServer.Start(grpcAddr); err != nil {
@@ -249,22 +226,36 @@ func main() {
 				os.Exit(1)
 			}
 		}()
-	}
 
-	// Wait for interrupt signal
-	<-ctx.Done()
-	logger.Info("Shutdown signal received")
-
-	// Graceful shutdown with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("HTTP server shutdown error", "error", err)
-	}
-
-	if extprocServer != nil {
+		<-ctx.Done()
+		logger.Info("Shutdown signal received")
 		extprocServer.Stop()
+	} else {
+		// Standalone mode: HTTP server
+		httpAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+		srv = &http.Server{
+			Addr:         httpAddr,
+			Handler:      handler,
+			ReadTimeout:  cfg.Server.Timeout,
+			WriteTimeout: cfg.Server.Timeout,
+			IdleTimeout:  120 * time.Second,
+		}
+		go func() {
+			logger.Info("HTTP server listening", "address", httpAddr)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("HTTP server error", "error", err)
+				os.Exit(1)
+			}
+		}()
+
+		<-ctx.Done()
+		logger.Info("Shutdown signal received")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("HTTP server shutdown error", "error", err)
+		}
 	}
 
 	logger.Info("Server stopped gracefully")
