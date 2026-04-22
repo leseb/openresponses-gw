@@ -35,7 +35,7 @@ repos:
         entry: bash -c 'export PATH="$HOME/go/bin:$PATH" && if ! which swag > /dev/null 2>&1; then echo "swag not installed, skipping (make install-swag)"; exit 0; fi && make gen-openapi && git diff --exit-code docs/openapi.yaml'
         language: system
         pass_filenames: false
-        files: ^(cmd/server/main\.go|pkg/adapters/http/.*\.go|pkg/core/schema/.*\.go)$
+        files: ^(cmd/server/main\.go|pkg/handlers/.*\.go|pkg/core/schema/.*\.go)$
 
       # Check OpenAPI conformance against OpenAI spec
       - id: openapi-conformance

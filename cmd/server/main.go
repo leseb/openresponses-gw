@@ -15,13 +15,13 @@ import (
 	"time"
 
 	extprocAdapter "github.com/leseb/openresponses-gw/pkg/adapters/extproc"
-	httpAdapter "github.com/leseb/openresponses-gw/pkg/adapters/http"
 	"github.com/leseb/openresponses-gw/pkg/core/api"
 	"github.com/leseb/openresponses-gw/pkg/core/config"
 	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/core/services"
 	"github.com/leseb/openresponses-gw/pkg/core/state"
 	"github.com/leseb/openresponses-gw/pkg/filestore"
+	"github.com/leseb/openresponses-gw/pkg/handlers"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 	"github.com/leseb/openresponses-gw/pkg/storage/memory"
 	"github.com/leseb/openresponses-gw/pkg/vectorstore"
@@ -207,8 +207,8 @@ func main() {
 	logger.Info("Initialized engine")
 
 	// Initialize HTTP adapter
-	handler := httpAdapter.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
-	logger.Info("Initialized HTTP adapter")
+	handler := handlers.New(eng, logger, promptsStore, filesStore, vectorStoresStore, connectorsStore, vectorStoreService)
+	logger.Info("Initialized request handlers")
 
 	// Initialize ExtProc adapter (optional)
 	var extprocServer *extprocAdapter.Server
