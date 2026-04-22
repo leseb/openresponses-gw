@@ -213,7 +213,7 @@ func main() {
 	// Initialize ExtProc adapter (optional)
 	var extprocServer *extprocAdapter.Server
 	if cfg.ExtProc.Enabled {
-		extprocServer = extprocAdapter.NewServer(eng, logger)
+		extprocServer = extprocAdapter.NewServer(handler, logger)
 		logger.Info("Initialized ExtProc adapter")
 	}
 

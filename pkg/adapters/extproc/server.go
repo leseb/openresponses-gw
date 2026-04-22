@@ -6,13 +6,13 @@ package extproc
 import (
 	"fmt"
 	"net"
+	"net/http"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/leseb/openresponses-gw/pkg/core/engine"
 	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 )
 
@@ -23,10 +23,11 @@ type Server struct {
 	logger     *logging.Logger
 }
 
-// NewServer creates a new ExtProc gRPC server.
-func NewServer(eng *engine.Engine, logger *logging.Logger) *Server {
+// NewServer creates a new ExtProc gRPC server that delegates all
+// request handling to the given http.Handler.
+func NewServer(handler http.Handler, logger *logging.Logger) *Server {
 	gs := grpc.NewServer()
-	processor := NewProcessor(eng, logger)
+	processor := NewProcessor(handler)
 	extprocv3.RegisterExternalProcessorServer(gs, processor)
 
 	healthSrv := health.NewServer()

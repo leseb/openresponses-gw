@@ -4,51 +4,34 @@
 package extproc
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 
 	filterv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
-	"github.com/leseb/openresponses-gw/pkg/core/engine"
-	"github.com/leseb/openresponses-gw/pkg/core/schema"
-	"github.com/leseb/openresponses-gw/pkg/observability/logging"
 )
 
-var responsePaths = map[string]bool{
-	"/responses":    true,
-	"/v1/responses": true,
-}
-
 // Processor implements the Envoy ExternalProcessorServer interface.
+// It delegates all request handling to an http.Handler, translating
+// between the ExtProc gRPC protocol and HTTP semantics.
 type Processor struct {
 	extprocv3.UnimplementedExternalProcessorServer
-	engine *engine.Engine
-	logger *logging.Logger
+	handler http.Handler
 }
 
-// NewProcessor creates a new ExtProc processor.
-func NewProcessor(eng *engine.Engine, logger *logging.Logger) *Processor {
-	if logger == nil {
-		logger = &logging.Logger{Logger: slog.Default()}
-	}
-	return &Processor{
-		engine: eng,
-		logger: logger,
-	}
+// NewProcessor creates a new ExtProc processor that delegates to the given handler.
+func NewProcessor(handler http.Handler) *Processor {
+	return &Processor{handler: handler}
 }
 
 // Process handles the bidirectional gRPC stream from Envoy.
 func (p *Processor) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	var (
-		path           string
-		method         string
-		isResponsesAPI bool
-	)
+	var reqHeaders *extprocv3.HttpHeaders
 
 	for {
 		req, err := stream.Recv()
@@ -61,14 +44,10 @@ func (p *Processor) Process(stream extprocv3.ExternalProcessor_ProcessServer) er
 
 		switch v := req.Request.(type) {
 		case *extprocv3.ProcessingRequest_RequestHeaders:
-			path, method = extractPathAndMethod(v.RequestHeaders)
-			isResponsesAPI = method == "POST" && responsePaths[path]
+			reqHeaders = v.RequestHeaders
 
-			if !isResponsesAPI {
-				if err := stream.Send(passthroughResponse()); err != nil {
-					return fmt.Errorf("sending passthrough: %w", err)
-				}
-				continue
+			if v.RequestHeaders.EndOfStream {
+				return p.handle(stream, reqHeaders, nil)
 			}
 
 			if err := stream.Send(requestBodyBuffered()); err != nil {
@@ -76,127 +55,85 @@ func (p *Processor) Process(stream extprocv3.ExternalProcessor_ProcessServer) er
 			}
 
 		case *extprocv3.ProcessingRequest_RequestBody:
-			if !isResponsesAPI {
-				if err := stream.Send(passthroughResponse()); err != nil {
-					return fmt.Errorf("sending passthrough: %w", err)
-				}
-				continue
-			}
-
-			body := v.RequestBody.GetBody()
-			if err := p.handleResponsesRequest(stream, body); err != nil {
-				p.logger.Error("Failed to handle responses request", "error", err)
-				return err
-			}
+			return p.handle(stream, reqHeaders, v.RequestBody.GetBody())
 
 		default:
-			if err := stream.Send(passthroughResponse()); err != nil {
-				return fmt.Errorf("sending passthrough: %w", err)
-			}
+			continue
 		}
 	}
 }
 
-func (p *Processor) handleResponsesRequest(stream extprocv3.ExternalProcessor_ProcessServer, body []byte) error {
-	var req schema.ResponseRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return stream.Send(errorResponse(400, "invalid_request", "Failed to parse request body"))
-	}
-
-	if err := req.Validate(); err != nil {
+// handle builds an http.Request from ExtProc headers and body, passes it
+// to the HTTP handler, and translates the response back to ExtProc messages.
+func (p *Processor) handle(stream extprocv3.ExternalProcessor_ProcessServer, headers *extprocv3.HttpHeaders, body []byte) error {
+	httpReq, err := buildHTTPRequest(stream.Context(), headers, body)
+	if err != nil {
 		return stream.Send(errorResponse(400, "invalid_request", err.Error()))
 	}
 
-	p.logger.Info("ExtProc processing response request",
-		"model", req.Model,
-		"stream", req.Stream)
-
-	ctx := stream.Context()
-
-	if req.Stream {
-		return p.handleStreaming(ctx, stream, &req)
-	}
-	return p.handleNonStreaming(ctx, stream, &req)
+	w := newResponseWriter(stream)
+	p.handler.ServeHTTP(w, httpReq)
+	return w.finish()
 }
 
-func (p *Processor) handleNonStreaming(ctx context.Context, stream extprocv3.ExternalProcessor_ProcessServer, req *schema.ResponseRequest) error {
-	resp, err := p.engine.ProcessRequest(ctx, req)
-	if err != nil {
-		return stream.Send(errorResponse(500, "processing_error", err.Error()))
-	}
+// buildHTTPRequest reconstructs an http.Request from ExtProc headers and body.
+func buildHTTPRequest(ctx context.Context, headers *extprocv3.HttpHeaders, body []byte) (*http.Request, error) {
+	var method, path, authority string
+	httpHeaders := make(http.Header)
 
-	respJSON, err := json.Marshal(resp)
-	if err != nil {
-		return fmt.Errorf("marshaling response: %w", err)
-	}
-
-	return stream.Send(immediateResponseMsg(200, map[string]string{
-		"content-type": "application/json",
-	}, respJSON))
-}
-
-func (p *Processor) handleStreaming(ctx context.Context, stream extprocv3.ExternalProcessor_ProcessServer, req *schema.ResponseRequest) error {
-	events, err := p.engine.ProcessRequestStream(ctx, req)
-	if err != nil {
-		return stream.Send(errorResponse(500, "processing_error", err.Error()))
-	}
-
-	if err := stream.Send(streamHeadersMsg(200, map[string]string{
-		"content-type":  "text/event-stream",
-		"cache-control": "no-cache",
-		"connection":    "keep-alive",
-	})); err != nil {
-		return fmt.Errorf("sending stream headers: %w", err)
-	}
-
-	for event := range events {
-		data, err := json.Marshal(event)
-		if err != nil {
-			p.logger.Error("Failed to marshal event", "error", err)
-			continue
-		}
-
-		eventType := schema.ExtractEventType(event)
-		sseData := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, data)
-
-		if err := stream.Send(streamBodyMsg([]byte(sseData), false)); err != nil {
-			return fmt.Errorf("sending SSE event: %w", err)
-		}
-	}
-
-	if err := stream.Send(streamBodyMsg(nil, true)); err != nil {
-		return fmt.Errorf("sending end of stream: %w", err)
-	}
-
-	p.logger.Info("ExtProc streaming completed")
-	return nil
-}
-
-func extractPathAndMethod(headers *extprocv3.HttpHeaders) (string, string) {
-	if headers == nil || headers.Headers == nil {
-		return "", ""
-	}
-	var path, method string
-	for _, h := range headers.Headers.Headers {
-		switch h.Key {
-		case ":path":
-			path = string(h.RawValue)
-			if path == "" {
-				path = h.Value
+	if headers != nil && headers.Headers != nil {
+		for _, h := range headers.Headers.Headers {
+			val := string(h.RawValue)
+			if val == "" {
+				val = h.Value
 			}
-			if idx := strings.IndexByte(path, '?'); idx >= 0 {
-				path = path[:idx]
-			}
-		case ":method":
-			method = string(h.RawValue)
-			if method == "" {
-				method = h.Value
+			switch h.Key {
+			case ":method":
+				method = val
+			case ":path":
+				path = val
+			case ":authority":
+				authority = val
+			case ":scheme":
+				// skip pseudo-header
+			default:
+				httpHeaders.Set(h.Key, val)
 			}
 		}
 	}
-	return path, method
+
+	if method == "" {
+		method = "GET"
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	u, err := url.ParseRequestURI(path)
+	if err != nil {
+		return nil, fmt.Errorf("invalid path %q: %w", path, err)
+	}
+
+	var bodyReader io.Reader
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header = httpHeaders
+	req.Host = authority
+	if len(body) > 0 {
+		req.ContentLength = int64(len(body))
+	}
+
+	return req, nil
 }
 
+// requestBodyBuffered tells Envoy to buffer the full request body and send it.
 func requestBodyBuffered() *extprocv3.ProcessingResponse {
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -206,4 +143,97 @@ func requestBodyBuffered() *extprocv3.ProcessingResponse {
 			RequestBodyMode: filterv3.ProcessingMode_BUFFERED,
 		},
 	}
+}
+
+// responseWriter adapts http.ResponseWriter to ExtProc responses.
+// For SSE streaming (Content-Type: text/event-stream), it sends headers via
+// StreamedImmediateResponse and pipes each Flush() as a body chunk.
+// For all other responses, it buffers and sends an ImmediateResponse.
+type responseWriter struct {
+	stream      extprocv3.ExternalProcessor_ProcessServer
+	header      http.Header
+	status      int
+	isSSE       bool
+	wroteHeader bool
+	buf         bytes.Buffer
+	sendErr     error
+}
+
+func newResponseWriter(stream extprocv3.ExternalProcessor_ProcessServer) *responseWriter {
+	return &responseWriter{
+		stream: stream,
+		header: make(http.Header),
+		status: http.StatusOK,
+	}
+}
+
+func (w *responseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *responseWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.status = statusCode
+	w.isSSE = w.header.Get("Content-Type") == "text/event-stream"
+
+	if w.isSSE {
+		hdrs := w.headerMap()
+		if err := w.stream.Send(streamHeadersMsg(statusCode, hdrs)); err != nil {
+			w.sendErr = err
+		}
+	}
+}
+
+func (w *responseWriter) Write(data []byte) (int, error) {
+	if w.sendErr != nil {
+		return 0, w.sendErr
+	}
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.buf.Write(data)
+}
+
+// Flush sends buffered SSE data as a StreamedImmediateResponse body chunk.
+func (w *responseWriter) Flush() {
+	if w.sendErr != nil || !w.isSSE || w.buf.Len() == 0 {
+		return
+	}
+	if err := w.stream.Send(streamBodyMsg(w.buf.Bytes(), false)); err != nil {
+		w.sendErr = err
+	}
+	w.buf.Reset()
+}
+
+// finish completes the ExtProc response. For SSE, sends end_of_stream.
+// For non-SSE, sends the buffered body as an ImmediateResponse.
+func (w *responseWriter) finish() error {
+	if w.sendErr != nil {
+		return w.sendErr
+	}
+
+	if w.isSSE {
+		if w.buf.Len() > 0 {
+			if err := w.stream.Send(streamBodyMsg(w.buf.Bytes(), false)); err != nil {
+				return err
+			}
+		}
+		return w.stream.Send(streamBodyMsg(nil, true))
+	}
+
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.stream.Send(immediateResponseMsg(w.status, w.headerMap(), w.buf.Bytes()))
+}
+
+func (w *responseWriter) headerMap() map[string]string {
+	hdrs := make(map[string]string, len(w.header))
+	for k := range w.header {
+		hdrs[strings.ToLower(k)] = w.header.Get(k)
+	}
+	return hdrs
 }
